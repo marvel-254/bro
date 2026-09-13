@@ -1,0 +1,7 @@
+node_modules/
+.expo/
+build/
+.env
+.env*
+*.jks
+!.env.example
