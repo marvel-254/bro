@@ -83,8 +83,6 @@ jobs:
 
       - run: npm install --legacy-peer-deps
 
-      - run: npx expo install
-
       - run: npx expo prebuild --no-install --platform android
 
       - name: Validate Expo config
