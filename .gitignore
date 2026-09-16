@@ -1,7 +1,15 @@
 node_modules/
 .expo/
 build/
+dist/
+web-build/
 .env
-.env*
+.env.local
+.env.development
+.env.production
 *.jks
-!.env.example
+*.keystore
+android/app/*.apk
+android/app/build/
+coverage/
+.nyc_output/

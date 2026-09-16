@@ -1,0 +1,97 @@
+name: BRO Release Test Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Job-level env: all steps can access these values.
+env:
+  EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+  EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Secrets
+        run: |
+          set -euo pipefail
+
+          if [ -z "${EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY:-}" ]; then
+            echo "ERROR: EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is not set."
+            echo "Set it at: Settings -> Secrets and variables -> Actions -> Repository secrets"
+            echo "See .github/workflows/secrets-setup.md for instructions."
+            exit 1
+          fi
+
+          if [ -z "${EXPO_PUBLIC_API_URL:-}" ]; then
+            echo "WARN: EXPO_PUBLIC_API_URL is not set. The app will fall back to https://api.bro.app."
+          fi
+
+          echo "Secret check passed."
+
+      - name: Validate Clerk Publishable Key Format
+        run: |
+          set -euo pipefail
+
+          KEY="${EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY:-}"
+
+          if [ -z "$KEY" ]; then
+            echo "ERROR: EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is empty — cannot validate format."
+            exit 1
+          fi
+
+          case "$KEY" in
+            pk_*)
+              echo "Clerk publishable key format is valid (starts with 'pk_')."
+              ;;
+            *)
+              echo "ERROR: EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY does not start with 'pk_'."
+              echo "Clerk publishable keys always begin with 'pk_' (e.g. pk_test_... or pk_live_...)."
+              echo "You may have copied the Clerk secret key (sk_...) instead."
+              exit 1
+              ;;
+          esac
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # Generate the native Android project from app.json / package.json.
+      # The `android/` directory does not exist before this step, so it must
+      # run before any Gradle invocation.
+      - name: Prebuild Android
+        run: npx expo prebuild --platform android --clean
+        timeout-minutes: 30
+        env:
+          EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+
+      # F-Droid handles release signing and publishing. This workflow builds a
+      # debug APK for testing tagged versions. For production, F-Droid builds
+      # from source.
+      - name: Build Test APK (Debug)
+        working-directory: android
+        run: ./gradlew assembleDebug
+        env:
+          EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+        timeout-minutes: 30
+
+      - name: Upload Test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: BRO-test-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30

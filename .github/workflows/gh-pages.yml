@@ -1,0 +1,162 @@
+name: BRO Privacy Policy (GitHub Pages)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'PRIVACY.md'
+      - '.github/workflows/gh-pages.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+
+    concurrency:
+      group: bro-gh-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Render privacy policy to HTML
+        run: |
+          npm install --no-save markdown-it@15 markdown-it-anchor@10 markdown-it-toc-done-right@4
+          node - <<'EOF'
+          const fs = require('fs');
+          const path = require('path');
+          const MarkdownIt = require('markdown-it');
+          const markdownItAnchor = require('markdown-it-anchor');
+          const markdownItToc = require('markdown-it-toc-done-right');
+
+          const md = new MarkdownIt({
+            html: true,
+            linkify: true,
+            typographer: true,
+            highlight: (code, info) => {
+              const lang = (info || '').trim();
+              return `<pre class="md-code"><code>${md.utils.escapeHtml(code)}</code></pre>`;
+            },
+          })
+            .use(markdownItAnchor, { slugify: (s) => s.toLowerCase().replace(/[^\w]+/g, '-').replace(/^-+|-+$/g, '') })
+            .use(markdownItToc, {
+              placeholder: '${toc}',
+              containerClass: 'table-of-contents',
+            });
+
+          const source = fs.readFileSync(path.join(process.cwd(), 'PRIVACY.md'), 'utf8');
+          const body = md.render(source);
+
+          const page = `<!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Privacy Policy — BRO</title>
+            <meta name="description" content="Privacy Policy for BRO, a free and open-source social communication platform.">
+            <style>
+              :root {
+                color-scheme: dark light;
+                --bg: #0f1117;
+                --fg: #e4e6eb;
+                --fg-dim: #a0a4ab;
+                --link: #4c9aff;
+                --card: #1a1c23;
+                --border: #2a2d36;
+                --accent: #5a67d8;
+              }
+              @media (prefers-color-scheme: light) {
+                :root { --bg:#ffffff; --fg:#1a1a1a; --fg-dim:#5a5d66; --card:#f4f4f5; --border:#e4e4e7; --accent:#4361ee; }
+              }
+              * { box-sizing: border-box; }
+              body {
+                margin: 0;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                background: var(--bg);
+                color: var(--fg);
+                line-height: 1.6;
+                padding: 3rem 1rem;
+              }
+              main {
+                max-width: 720px;
+                margin: 0 auto;
+                background: var(--card);
+                border: 1px solid var(--border);
+                border-radius: 14px;
+                padding: 2.5rem;
+              }
+              h1 { font-size: 2rem; margin-top: 0; border-bottom: 2px solid var(--border); padding-bottom: .75rem; }
+              h2 { font-size: 1.4rem; margin-top: 2rem; border-bottom: 1px solid var(--border); padding-bottom: .4rem; }
+              h3 { font-size: 1.15rem; margin-top: 1.5rem; }
+              a { color: var(--link); }
+              code {
+                background: #1a1c23;
+                padding: .1em .4em;
+                border-radius: 4px;
+                font-size: .9em;
+                color: var(--fg);
+              }
+              @media (prefers-color-scheme: light) {
+                code { background: #f1f1f3; }
+              }
+              pre.md-code {
+                background: #0f1117;
+                padding: 1rem;
+                border-radius: 8px;
+                overflow-x: auto;
+                color: #e4e6eb;
+              }
+              table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+              th, td { border: 1px solid var(--border); padding: .5rem; text-align: left; }
+              ul { padding-left: 1.25rem; }
+              .meta { color: var(--fg-dim); font-size: .9rem; }
+              .table-of-contents { margin-bottom: 2rem; }
+              .table-of-contents ul { padding-left: 1.25rem; }
+              .table-of-contents a { text-decoration: none; }
+              .footer { color: var(--fg-dim); font-size: .85rem; margin-top: 2rem; text-align: center; }
+            </style>
+          </head>
+          <body>
+            <main>
+              <h1>Privacy Policy</h1>
+              <p class="meta">Last updated: auto-built from <code>PRIVACY.md</code> in the BRO repository.</p>
+              ${body}
+              <p class="footer">BRO — TALK. CONNECT. EXIST.</p>
+            </main>
+          </body>
+          </html>`;
+
+          fs.mkdirSync(path.join(process.cwd(), 'privacy'), { recursive: true });
+          fs.writeFileSync(path.join(process.cwd(), 'privacy', 'index.html'), page);
+          console.log('Wrote privacy/index.html (' + body.length + ' chars rendered)');
+          EOF
+
+      - name: Upload artifact (privacy HTML)
+        uses: actions/upload-artifact@v4
+        with:
+          name: privacy-policy
+          path: privacy/
+          retention-days: 1
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: privacy
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

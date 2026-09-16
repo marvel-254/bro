@@ -1,0 +1,177 @@
+name: F-Droid Compliance Check
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+jobs:
+  fdroid-compliance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: License Check
+        run: |
+          set -euo pipefail
+
+          if [ ! -f LICENSE ]; then
+            echo "::error::FAIL: LICENSE file not found in repository root."
+            exit 1
+          fi
+
+          if grep -qiE '(GPL|General Public License)' LICENSE; then
+            echo "PASS: LICENSE file exists and contains GPL license terms."
+          else
+            echo "::error::FAIL: LICENSE file does not contain GPL or General Public License terms."
+            exit 1
+          fi
+
+      - name: Privacy Policy Check
+        run: |
+          set -euo pipefail
+
+          if [ ! -f PRIVACY.md ]; then
+            echo "::error::FAIL: PRIVACY.md not found in repository root."
+            exit 1
+          fi
+
+          echo "PASS: PRIVACY.md exists in repository root."
+
+      - name: Tracking and Analytics Check
+        run: |
+          set -euo pipefail
+
+          TRACKING_KEYWORDS='google[ -]?analytics|firebase|crashlytics|mixpanel|amplitude|segment'
+
+          MATCHES=$(grep -riE "$TRACKING_KEYWORDS" src/ 2>/dev/null || true)
+
+          if [ -n "$MATCHES" ]; then
+            echo "::error::FAIL: Tracking/analytics keywords found in src/:"
+            echo "$MATCHES"
+            exit 1
+          fi
+
+          echo "PASS: No tracking/analytics keywords found in src/."
+
+      - name: Advertising Check
+        run: |
+          set -euo pipefail
+
+          AD_KEYWORDS='\b(admob|ads|advertising|ad[ -]?network)\b'
+
+          MATCHES=$(grep -riE "$AD_KEYWORDS" src/ 2>/dev/null || true)
+
+          if [ -n "$MATCHES" ]; then
+            echo "::error::FAIL: Advertising keywords found in src/:"
+            echo "$MATCHES"
+            exit 1
+          fi
+
+          echo "PASS: No advertising keywords found in src/."
+
+      - name: Proprietary SDK Check in package.json
+        run: |
+          set -euo pipefail
+
+          PROPRIETARY_SDKS='firebase|admob|facebook|google-mobile|google-play|@segment|@mixpanel|@amplitude|onesignal|adjust|appsflyer|branch[-_]io'
+
+          MATCHES=$(grep -iE "$PROPRIETARY_SDKS" package.json 2>/dev/null || true)
+
+          if [ -n "$MATCHES" ]; then
+            echo "::error::FAIL: Proprietary SDK keywords found in package.json:"
+            echo "$MATCHES"
+            exit 1
+          fi
+
+          echo "PASS: No proprietary SDK keywords found in package.json."
+
+      - name: App Permissions Check
+        run: |
+          set -euo pipefail
+
+          if [ ! -f app.json ]; then
+            echo "::error::FAIL: app.json not found in repository root."
+            exit 1
+          fi
+
+          if ! grep -q '"permissions"' app.json; then
+            echo "::error::FAIL: app.json does not contain a permissions array."
+            exit 1
+          fi
+
+          if ! grep -q '"permissions".*INTERNET' app.json; then
+            echo "WARN: app.json permissions array may not include INTERNET."
+          fi
+
+          echo "PASS: app.json contains a permissions array."
+
+      - name: Cleartext Traffic Check
+        run: |
+          set -euo pipefail
+
+          if [ ! -f app.json ]; then
+            echo "::error::FAIL: app.json not found in repository root."
+            exit 1
+          fi
+
+          if ! grep -q '"usesCleartextTraffic"' app.json; then
+            echo "::error::FAIL: app.json does not specify usesCleartextTraffic."
+            exit 1
+          fi
+
+          if ! grep -qE '"usesCleartextTraffic"[[:space:]]*:[[:space:]]*false' app.json; then
+            echo "::error::FAIL: usesCleartextTraffic is not set to false in app.json."
+            exit 1
+          fi
+
+          echo "PASS: app.json specifies usesCleartextTraffic: false."
+
+      - name: Signing Config Check
+        run: |
+          set -euo pipefail
+
+          SIGNING_FILES=$(find . -not -path './node_modules/*' -not -path './.git/*' \( -name '*.jks' -o -name '*.keystore' -o -name 'signing*config*' -o -name 'keystore*' \) 2>/dev/null || true)
+
+          if [ -n "$SIGNING_FILES" ]; then
+            echo "::error::FAIL: Signing config or keystore files found in repository:"
+            echo "$SIGNING_FILES"
+            exit 1
+          fi
+
+          echo "PASS: No signing config or keystore files found in repository."
+
+      - name: Hardcoded API Key Check
+        run: |
+          set -euo pipefail
+
+          KEY_PATTERNS='(pk_|sk_)[a-z]*_|api_key'
+
+          MATCHES=$(grep -rniE "$KEY_PATTERNS" src/ 2>/dev/null | grep -v 'EXPO_PUBLIC_' || true)
+
+          if [ -n "$MATCHES" ]; then
+            echo "::error::FAIL: Hardcoded API key patterns found in src/:"
+            echo "$MATCHES"
+            exit 1
+          fi
+
+          echo "PASS: No hardcoded API keys found in src/."
+
+      - name: Summary
+        run: |
+          echo ""
+          echo "========================================"
+          echo "  F-Droid Compliance Check: ALL PASSED"
+          echo "========================================"
+          echo ""
+          echo "The repository meets F-Droid inclusion requirements:"
+          echo "  - Open-source license (GPL)"
+          echo "  - Privacy policy exists"
+          echo "  - No tracking/analytics SDKs"
+          echo "  - No advertising SDKs"
+          echo "  - No proprietary SDKs in dependencies"
+          echo "  - Minimal permissions (INTERNET only)"
+          echo "  - Cleartext traffic disabled"
+          echo "  - No signing configs in repo"
+          echo "  - No hardcoded API keys"

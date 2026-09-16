@@ -1,0 +1,1829 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BRO — Communication, Reimagined</title>
+  <meta name="description" content="BRO is a living communication environment. Pulse. People. Conversations. Branches. Spaces.">
+  <meta name="theme-color" content="#090A0F">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="BRO">
+  <link rel="icon" type="image/png" sizes="48x48" href="/favicon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    /* ========================================
+       RESET & BASE
+       ======================================== */
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      /* Canvas */
+      --canvas-root: #090A0F;
+      --surface-1: #0E1118;
+      --surface-2: #161B26;
+      --surface-3: #1d2027;
+      --surface-4: #272a32;
+
+      /* Accent */
+      --accent: #00F0FF;
+      --accent-dim: #006970;
+      --accent-ghost: rgba(0, 240, 255, 0.08);
+      --accent-ghost-border: rgba(0, 240, 255, 0.12);
+      --accent-glow: rgba(0, 240, 255, 0.15);
+
+      /* Text */
+      --text-primary: #F2F5F9;
+      --text-secondary: #8F9CAE;
+      --text-dim: #4F5B6E;
+
+      /* Structure */
+      --border: rgba(255, 255, 255, 0.06);
+      --border-accent: rgba(0, 240, 255, 0.15);
+
+      /* Typography */
+      --font-display: 'Outfit', system-ui, sans-serif;
+      --font-body: 'Geist', system-ui, -apple-system, sans-serif;
+
+      /* Spacing */
+      --space-xs: 4px;
+      --space-sm: 8px;
+      --space-md: 12px;
+      --space-lg: 20px;
+      --space-xl: 32px;
+      --space-2xl: 48px;
+      --space-3xl: 64px;
+      --space-4xl: 96px;
+      --space-5xl: 128px;
+
+      /* Layout */
+      --max-width: 1280px;
+      --gutter: clamp(20px, 5vw, 80px);
+    }
+
+    html {
+      font-size: 16px;
+      scroll-behavior: smooth;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--canvas-root);
+      color: var(--text-primary);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    img {
+      max-width: 100%;
+      display: block;
+    }
+
+    /* ========================================
+       TYPOGRAPHY
+       ======================================== */
+    .t-display {
+      font-family: var(--font-display);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.05;
+    }
+
+    .t-display-xl {
+      font-size: clamp(2.75rem, 7vw, 5.5rem);
+    }
+
+    .t-display-lg {
+      font-size: clamp(2rem, 5vw, 3.5rem);
+    }
+
+    .t-display-md {
+      font-size: clamp(1.5rem, 3vw, 2rem);
+    }
+
+    .t-body-lg {
+      font-size: clamp(1rem, 1.5vw, 1.25rem);
+      line-height: 1.7;
+      color: var(--text-secondary);
+    }
+
+    .t-body-md {
+      font-size: 1rem;
+      line-height: 1.6;
+      color: var(--text-secondary);
+    }
+
+    .t-label {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 0.75rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    /* ========================================
+       LAYOUT UTILITIES
+       ======================================== */
+    .container {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding-left: var(--gutter);
+      padding-right: var(--gutter);
+    }
+
+    .section {
+      padding-top: var(--space-5xl);
+      padding-bottom: var(--space-5xl);
+    }
+
+    /* ========================================
+       NAV
+       ======================================== */
+    .nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      padding: var(--space-lg) 0;
+      background: rgba(9, 10, 15, 0.6);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      transition: background 0.3s ease;
+    }
+
+    .nav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .nav-logo {
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: 1.25rem;
+      letter-spacing: 0.15em;
+      color: var(--accent);
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xl);
+      list-style: none;
+    }
+
+    .nav-links a {
+      font-family: var(--font-display);
+      font-weight: 500;
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      transition: color 0.2s ease;
+      letter-spacing: 0.02em;
+    }
+
+    .nav-links a:hover {
+      color: var(--text-primary);
+    }
+
+    .nav-cta {
+      font-family: var(--font-display) !important;
+      font-weight: 600 !important;
+      font-size: 0.8125rem !important;
+      letter-spacing: 0.08em !important;
+      text-transform: uppercase;
+      color: var(--canvas-root) !important;
+      background: var(--accent);
+      padding: 10px 24px;
+      border-radius: 100px;
+      transition: transform 0.15s ease, box-shadow 0.2s ease;
+    }
+
+    .nav-cta:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 24px var(--accent-glow);
+    }
+
+    .nav-cta:active {
+      transform: translateY(0);
+    }
+
+    .nav-install {
+      font-family: var(--font-display) !important;
+      font-weight: 600 !important;
+      font-size: 0.8125rem !important;
+      letter-spacing: 0.04em !important;
+      color: var(--accent) !important;
+      background: none;
+      border: 1px solid var(--border-accent);
+      padding: 9px 20px;
+      border-radius: 100px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .nav-install:hover {
+      background: var(--accent-ghost);
+      border-color: var(--accent);
+    }
+
+    .nav-install svg {
+      width: 14px;
+      height: 14px;
+      vertical-align: -2px;
+      margin-right: 4px;
+    }
+
+    .install-banner {
+      display: none;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 200;
+      background: var(--surface-1);
+      border-top: 1px solid var(--border-accent);
+      padding: 16px var(--gutter);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }
+
+    .install-banner.visible {
+      display: block;
+    }
+
+    .install-banner-inner {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .install-banner-text {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .install-banner-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .install-banner-icon span {
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: 0.875rem;
+      color: var(--accent);
+      letter-spacing: 0.1em;
+    }
+
+    .install-banner-title {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 0.875rem;
+      color: var(--text-primary);
+    }
+
+    .install-banner-desc {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+
+    .install-banner-actions {
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .install-btn-primary {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 0.75rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--canvas-root);
+      background: var(--accent);
+      border: none;
+      padding: 10px 20px;
+      border-radius: 100px;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .install-btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px var(--accent-glow);
+    }
+
+    .install-btn-dismiss {
+      font-family: var(--font-display);
+      font-weight: 500;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      background: none;
+      border: 1px solid var(--border);
+      padding: 10px 16px;
+      border-radius: 100px;
+      cursor: pointer;
+      transition: color 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .install-btn-dismiss:hover {
+      color: var(--text-secondary);
+    }
+
+    .nav-mobile-toggle {
+      display: none;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: var(--space-sm);
+    }
+
+    .nav-mobile-toggle span {
+      display: block;
+      width: 24px;
+      height: 2px;
+      background: var(--text-primary);
+      margin: 5px 0;
+      transition: all 0.3s ease;
+    }
+
+    /* ========================================
+       HERO
+       ======================================== */
+    .hero {
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      padding-top: var(--space-5xl);
+      padding-bottom: var(--space-4xl);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-3xl);
+      align-items: center;
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 2;
+    }
+
+    .hero-label {
+      display: inline-block;
+      margin-bottom: var(--space-xl);
+      padding: 6px 16px;
+      border: 1px solid var(--border-accent);
+      border-radius: 100px;
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 0.6875rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--accent);
+      background: var(--accent-ghost);
+    }
+
+    .hero-headline {
+      margin-bottom: var(--space-xl);
+    }
+
+    .hero-headline .accent {
+      color: var(--accent);
+    }
+
+    .hero-sub {
+      max-width: 480px;
+      margin-bottom: var(--space-2xl);
+    }
+
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--space-lg);
+    }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-sm);
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 0.875rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--canvas-root);
+      background: var(--accent);
+      padding: 16px 36px;
+      border: none;
+      border-radius: 100px;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.25s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn-primary::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.15) 0%, transparent 50%);
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px var(--accent-glow);
+    }
+
+    .btn-primary:hover::after {
+      opacity: 1;
+    }
+
+    .btn-primary:active {
+      transform: translateY(0);
+    }
+
+    .btn-ghost {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 0.875rem;
+      letter-spacing: 0.04em;
+      color: var(--text-secondary);
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 16px 0;
+      transition: color 0.2s ease;
+    }
+
+    .btn-ghost:hover {
+      color: var(--text-primary);
+    }
+
+    /* Hero Visual */
+    .hero-visual {
+      position: relative;
+      height: 520px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .hero-phone {
+      width: 280px;
+      height: 560px;
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      border-radius: 40px;
+      position: relative;
+      overflow: hidden;
+      box-shadow:
+        0 0 0 1px var(--border),
+        0 24px 80px rgba(0, 0, 0, 0.5),
+        0 0 120px var(--accent-ghost);
+    }
+
+    .phone-notch {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 120px;
+      height: 28px;
+      background: var(--canvas-root);
+      border-radius: 0 0 18px 18px;
+      z-index: 3;
+    }
+
+    .phone-screen {
+      position: absolute;
+      inset: 0;
+      padding: 44px 16px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .phone-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .phone-header-title {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 1rem;
+      color: var(--text-primary);
+    }
+
+    .phone-status-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--accent-glow); }
+      50% { opacity: 0.7; box-shadow: 0 0 0 6px transparent; }
+    }
+
+    .phone-card {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .phone-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      flex-shrink: 0;
+    }
+
+    .phone-avatar-1 { background: linear-gradient(135deg, #00F0FF, #006970); }
+    .phone-avatar-2 { background: linear-gradient(135deg, #6b13af, #d4a5ff); }
+    .phone-avatar-3 { background: linear-gradient(135deg, #00f984, #006d36); }
+
+    .phone-card-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .phone-card-name {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 0.8125rem;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+
+    .phone-card-msg {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .phone-card-meta {
+      font-size: 0.625rem;
+      color: var(--text-dim);
+      margin-top: 6px;
+    }
+
+    .phone-card-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      background: var(--accent-ghost);
+      border: 1px solid var(--accent-ghost-border);
+      border-radius: 100px;
+      font-size: 0.5625rem;
+      font-weight: 600;
+      color: var(--accent);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-top: 6px;
+    }
+
+    .phone-branch-line {
+      width: 2px;
+      height: 20px;
+      background: var(--accent-ghost-border);
+      margin-left: 34px;
+      position: relative;
+    }
+
+    .phone-branch-line::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -3px;
+      width: 8px;
+      height: 8px;
+      border: 2px solid var(--accent);
+      border-radius: 50%;
+      background: var(--canvas-root);
+    }
+
+    /* Floating elements around phone */
+    .float-element {
+      position: absolute;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      z-index: 1;
+    }
+
+    .float-element--1 {
+      top: 60px;
+      right: -20px;
+      animation: float-1 6s ease-in-out infinite;
+    }
+
+    .float-element--2 {
+      bottom: 100px;
+      left: -10px;
+      animation: float-2 7s ease-in-out infinite;
+    }
+
+    .float-element--3 {
+      top: 50%;
+      right: -40px;
+      animation: float-3 5s ease-in-out infinite;
+    }
+
+    .float-accent {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    @keyframes float-1 {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-12px); }
+    }
+
+    @keyframes float-2 {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(10px); }
+    }
+
+    @keyframes float-3 {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+
+    /* ========================================
+       METRICS BAR
+       ======================================== */
+    .metrics {
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: var(--space-2xl) 0;
+      background: var(--surface-1);
+    }
+
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: var(--space-xl);
+    }
+
+    .metric {
+      text-align: center;
+    }
+
+    .metric-value {
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: clamp(1.75rem, 3vw, 2.5rem);
+      color: var(--text-primary);
+      letter-spacing: -0.02em;
+    }
+
+    .metric-value .accent {
+      color: var(--accent);
+    }
+
+    .metric-label {
+      font-size: 0.8125rem;
+      color: var(--text-dim);
+      margin-top: 4px;
+      letter-spacing: 0.02em;
+    }
+
+    /* ========================================
+       FEATURE SECTIONS
+       ======================================== */
+    .feature-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-4xl);
+      align-items: center;
+    }
+
+    .feature-grid--reverse {
+      direction: rtl;
+    }
+
+    .feature-grid--reverse > * {
+      direction: ltr;
+    }
+
+    .feature-content {
+      max-width: 480px;
+    }
+
+    .feature-label {
+      display: inline-block;
+      margin-bottom: var(--space-lg);
+    }
+
+    .feature-headline {
+      margin-bottom: var(--space-lg);
+    }
+
+    .feature-desc {
+      margin-bottom: var(--space-xl);
+    }
+
+    .feature-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
+    }
+
+    .feature-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-md);
+      font-size: 0.9375rem;
+      color: var(--text-secondary);
+    }
+
+    .feature-list li::before {
+      content: '';
+      flex-shrink: 0;
+      width: 6px;
+      height: 6px;
+      margin-top: 8px;
+      background: var(--accent);
+      border-radius: 50%;
+    }
+
+    /* Feature Visual */
+    .feature-visual {
+      position: relative;
+      border-radius: 24px;
+      overflow: hidden;
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      aspect-ratio: 4/3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .feature-visual-inner {
+      padding: var(--space-2xl);
+      width: 100%;
+    }
+
+    /* Pulse Visual */
+    .pulse-visual-card {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+
+    .pulse-visual-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .pulse-visual-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+
+    .pulse-visual-title {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 0.875rem;
+      color: var(--text-primary);
+    }
+
+    .pulse-visual-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .pulse-visual-chip {
+      padding: 6px 12px;
+      background: var(--surface-3);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      font-size: 0.6875rem;
+      color: var(--text-dim);
+    }
+
+    .pulse-visual-chip--active {
+      border-color: var(--accent-ghost-border);
+      color: var(--accent);
+      background: var(--accent-ghost);
+    }
+
+    /* Branch Visual */
+    .branch-visual-tree {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .branch-node {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 16px;
+      position: relative;
+    }
+
+    .branch-node--root {
+      border-color: var(--accent-ghost-border);
+      background: var(--accent-ghost);
+    }
+
+    .branch-node-text {
+      font-size: 0.8125rem;
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .branch-node-meta {
+      font-size: 0.6875rem;
+      color: var(--text-dim);
+      margin-top: 4px;
+    }
+
+    .branch-connector {
+      width: 2px;
+      height: 24px;
+      background: var(--border);
+      margin-left: 24px;
+      position: relative;
+    }
+
+    .branch-connector--accent {
+      background: var(--accent-ghost-border);
+    }
+
+    .branch-connector::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: -3px;
+      width: 8px;
+      height: 8px;
+      border: 2px solid var(--text-dim);
+      border-radius: 50%;
+      background: var(--canvas-root);
+    }
+
+    .branch-connector--accent::after {
+      border-color: var(--accent);
+    }
+
+    .branch-children {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      margin-left: 32px;
+    }
+
+    .branch-count {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      background: var(--surface-3);
+      border-radius: 100px;
+      font-size: 0.6875rem;
+      color: var(--text-dim);
+      margin-top: 8px;
+    }
+
+    .branch-count .accent {
+      color: var(--accent);
+    }
+
+    /* Space Visual */
+    .space-visual-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .space-visual-card {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .space-visual-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.125rem;
+    }
+
+    .space-visual-icon--1 { background: rgba(0, 240, 255, 0.1); color: var(--accent); }
+    .space-visual-icon--2 { background: rgba(107, 19, 175, 0.15); color: #d4a5ff; }
+    .space-visual-icon--3 { background: rgba(0, 249, 132, 0.1); color: #00f984; }
+    .space-visual-icon--4 { background: rgba(255, 180, 171, 0.1); color: #ffb4ab; }
+
+    .space-visual-name {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 0.8125rem;
+      color: var(--text-primary);
+    }
+
+    .space-visual-meta {
+      font-size: 0.6875rem;
+      color: var(--text-dim);
+    }
+
+    /* ========================================
+       CTA SECTION
+       ======================================== */
+    .cta-section {
+      padding: var(--space-5xl) 0;
+      position: relative;
+    }
+
+    .cta-box {
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      border-radius: 32px;
+      padding: var(--space-4xl) var(--space-3xl);
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cta-box::before {
+      content: '';
+      position: absolute;
+      top: -1px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 200px;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    }
+
+    .cta-glow {
+      position: absolute;
+      top: -120px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, var(--accent-ghost) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .cta-headline {
+      position: relative;
+      z-index: 1;
+      margin-bottom: var(--space-lg);
+    }
+
+    .cta-desc {
+      position: relative;
+      z-index: 1;
+      max-width: 520px;
+      margin: 0 auto var(--space-2xl);
+    }
+
+    .cta-actions {
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ========================================
+       FOOTER
+       ======================================== */
+    .footer {
+      border-top: 1px solid var(--border);
+      padding: var(--space-2xl) 0;
+    }
+
+    .footer-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .footer-logo {
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: 1rem;
+      letter-spacing: 0.15em;
+      color: var(--text-dim);
+    }
+
+    .footer-links {
+      display: flex;
+      gap: var(--space-xl);
+      list-style: none;
+    }
+
+    .footer-links a {
+      font-size: 0.8125rem;
+      color: var(--text-dim);
+      transition: color 0.2s ease;
+    }
+
+    .footer-links a:hover {
+      color: var(--text-secondary);
+    }
+
+    .footer-copy {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+    }
+
+    /* ========================================
+       SCROLL REVEAL
+       ======================================== */
+    .reveal {
+      opacity: 0;
+      transform: translateY(32px);
+    }
+
+    .reveal-left {
+      opacity: 0;
+      transform: translateX(-40px);
+    }
+
+    .reveal-right {
+      opacity: 0;
+      transform: translateX(40px);
+    }
+
+    /* ========================================
+       RESPONSIVE
+       ======================================== */
+    @media (max-width: 1024px) {
+      .hero-grid {
+        grid-template-columns: 1fr;
+        gap: var(--space-3xl);
+      }
+
+      .hero-visual {
+        height: 420px;
+        justify-content: center;
+      }
+
+      .feature-grid {
+        grid-template-columns: 1fr;
+        gap: var(--space-2xl);
+      }
+
+      .feature-grid--reverse {
+        direction: ltr;
+      }
+
+      .feature-visual {
+        order: -1;
+      }
+
+      .metrics-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 768px) {
+      .nav-links {
+        display: none;
+      }
+
+      .nav-mobile-toggle {
+        display: block;
+      }
+
+      .nav-links.active {
+        display: flex;
+        flex-direction: column;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: rgba(9, 10, 15, 0.95);
+        backdrop-filter: blur(20px);
+        padding: var(--space-xl);
+        border-bottom: 1px solid var(--border);
+        gap: var(--space-lg);
+      }
+
+      .hero {
+        min-height: auto;
+        padding-top: calc(var(--space-5xl) + 60px);
+        padding-bottom: var(--space-3xl);
+      }
+
+      .hero-visual {
+        height: 360px;
+      }
+
+      .hero-phone {
+        width: 240px;
+        height: 480px;
+      }
+
+      .float-element {
+        display: none;
+      }
+
+      .section {
+        padding-top: var(--space-4xl);
+        padding-bottom: var(--space-4xl);
+      }
+
+      .metrics-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--space-lg);
+      }
+
+      .cta-box {
+        padding: var(--space-3xl) var(--space-xl);
+        border-radius: 24px;
+      }
+
+      .footer-inner {
+        flex-direction: column;
+        gap: var(--space-lg);
+        text-align: center;
+      }
+
+      .footer-links {
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+
+      .space-visual-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .install-banner-inner {
+        flex-direction: column;
+        text-align: center;
+      }
+
+      .install-banner-text {
+        justify-content: center;
+      }
+
+      .install-banner-actions {
+        width: 100%;
+      }
+
+      .install-btn-primary {
+        flex: 1;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .hero-actions {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .btn-primary {
+        justify-content: center;
+      }
+
+      .btn-ghost {
+        text-align: center;
+        padding: 8px 0;
+      }
+    }
+
+    /* ========================================
+       REDUCED MOTION
+       ======================================== */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+
+      .reveal, .reveal-left, .reveal-right {
+        opacity: 1;
+        transform: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ========== NAV ========== -->
+  <nav class="nav" id="nav">
+    <div class="container nav-inner">
+      <a href="#" class="nav-logo">BRO</a>
+      <ul class="nav-links" id="navLinks">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#pulse">Pulse</a></li>
+        <li><a href="#spaces">Spaces</a></li>
+        <li><button class="nav-install" id="navInstallBtn" onclick="promptInstall()">
+          <svg viewBox="0 0 16 16" fill="none"><path d="M8 1v10M4 7l4 4 4-4M2 13h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Install
+        </button></li>
+        <li><a href="#download" class="nav-cta">Get Early Access</a></li>
+      </ul>
+      <button class="nav-mobile-toggle" id="navToggle" aria-label="Toggle navigation">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ========== HERO ========== -->
+  <section class="hero">
+    <div class="container hero-grid">
+      <div class="hero-content">
+        <span class="hero-label reveal">Now in Early Access</span>
+        <h1 class="t-display t-display-xl hero-headline reveal">
+          Communication,<br><span class="accent">reimagined.</span>
+        </h1>
+        <p class="t-body-lg hero-sub reveal">
+          BRO is not another chat app. It is a living communication environment where conversations breathe, branches grow, and spaces come alive.
+        </p>
+        <div class="hero-actions reveal">
+          <button class="btn-primary" onclick="promptInstall()">
+            Install BRO
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M8 1v10M4 7l4 4 4-4M2 13h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <button class="btn-ghost">See how it works</button>
+        </div>
+      </div>
+
+      <div class="hero-visual reveal-right">
+        <div class="float-element float-element--1">
+          <span class="float-accent">3</span> new branches
+        </div>
+        <div class="float-element float-element--2">
+          <span class="float-accent">Live</span> in Design Space
+        </div>
+        <div class="float-element float-element--3">
+          <span class="float-accent">12</span> active now
+        </div>
+
+        <div class="hero-phone">
+          <div class="phone-notch"></div>
+          <div class="phone-screen">
+            <div class="phone-header">
+              <span class="phone-header-title">Pulse</span>
+              <span class="phone-status-dot"></span>
+            </div>
+
+            <div class="phone-card">
+              <div class="phone-avatar phone-avatar-1"></div>
+              <div class="phone-card-content">
+                <div class="phone-card-name">Sarah Chen</div>
+                <div class="phone-card-msg">Just shared a new design iteration for the onboarding flow</div>
+                <div class="phone-card-badge">Live Conversation</div>
+              </div>
+            </div>
+
+            <div class="phone-branch-line"></div>
+
+            <div class="phone-card">
+              <div class="phone-avatar phone-avatar-2"></div>
+              <div class="phone-card-content">
+                <div class="phone-card-name">Alex Rivera</div>
+                <div class="phone-card-msg">The branch approach works really well for this</div>
+                <div class="phone-card-meta">Branch: Design Review</div>
+              </div>
+            </div>
+
+            <div class="phone-card">
+              <div class="phone-avatar phone-avatar-3"></div>
+              <div class="phone-card-content">
+                <div class="phone-card-name">Maya Patel</div>
+                <div class="phone-card-msg">Space update: New members joined the engineering channel</div>
+                <div class="phone-card-meta">Space: Engineering</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== METRICS ========== -->
+  <section class="metrics">
+    <div class="container">
+      <div class="metrics-grid">
+        <div class="metric reveal">
+          <div class="metric-value">TALK.</div>
+          <div class="metric-label">Express yourself freely</div>
+        </div>
+        <div class="metric reveal">
+          <div class="metric-value">CONNECT.</div>
+          <div class="metric-label">Find your people</div>
+        </div>
+        <div class="metric reveal">
+          <div class="metric-value">EXIST.</div>
+          <div class="metric-label">In every conversation</div>
+        </div>
+        <div class="metric reveal">
+          <div class="metric-value accent">BRO.</div>
+          <div class="metric-label">Communication, reimagined</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== PULSE FEATURE ========== -->
+  <section class="section" id="pulse">
+    <div class="container feature-grid">
+      <div class="feature-content">
+        <span class="t-label feature-label reveal">Pulse</span>
+        <h2 class="t-display t-display-lg feature-headline reveal">
+          What's happening<br>right now
+        </h2>
+        <p class="t-body-lg feature-desc reveal">
+          Pulse is not a feed. It is a real-time snapshot of your communication world. See who is active, what conversations are alive, and where the energy is flowing.
+        </p>
+        <ul class="feature-list reveal">
+          <li>Active people and live conversations at a glance</li>
+          <li>Trending topics across your network</li>
+          <li>Real-time activity without the noise</li>
+          <li>Discover conversations worth joining</li>
+        </ul>
+      </div>
+
+      <div class="feature-visual reveal-right">
+        <div class="feature-visual-inner">
+          <div class="pulse-visual-card">
+            <div class="pulse-visual-header">
+              <span class="pulse-visual-dot"></span>
+              <span class="pulse-visual-title">Live Now</span>
+            </div>
+            <div class="pulse-visual-row">
+              <span class="pulse-visual-chip pulse-visual-chip--active">Design Systems</span>
+              <span class="pulse-visual-chip">React Native</span>
+              <span class="pulse-visual-chip pulse-visual-chip--active">Startup Life</span>
+              <span class="pulse-visual-chip">Music</span>
+            </div>
+          </div>
+          <div class="pulse-visual-card">
+            <div class="pulse-visual-header">
+              <span class="pulse-visual-title" style="color: var(--text-secondary);">Active People</span>
+            </div>
+            <div class="pulse-visual-row">
+              <span class="pulse-visual-chip">Sarah C.</span>
+              <span class="pulse-visual-chip">Alex R.</span>
+              <span class="pulse-visual-chip">Maya P.</span>
+              <span class="pulse-visual-chip">Jordan K.</span>
+              <span class="pulse-visual-chip" style="color: var(--accent);">+8 more</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== BRANCHES FEATURE ========== -->
+  <section class="section" id="features">
+    <div class="container feature-grid feature-grid--reverse">
+      <div class="feature-content">
+        <span class="t-label feature-label reveal">Branches</span>
+        <h2 class="t-display t-display-lg feature-headline reveal">
+          Conversations<br>that grow
+        </h2>
+        <p class="t-body-lg feature-desc reveal">
+          Every message can spark a new direction. Branches let conversations evolve naturally without losing context. One thread becomes many, each with its own life.
+        </p>
+        <ul class="feature-list reveal">
+          <li>Branch any message into a new direction</li>
+          <li>Keep parent context while exploring side topics</li>
+          <li>See branch counts and activity at a glance</li>
+          <li>Navigate back to the source anytime</li>
+        </ul>
+      </div>
+
+      <div class="feature-visual reveal-left">
+        <div class="feature-visual-inner">
+          <div class="branch-visual-tree">
+            <div class="branch-node branch-node--root">
+              <div class="branch-node-text">Should we redesign the onboarding?</div>
+              <div class="branch-node-meta">Sarah Chen -- 12 replies</div>
+            </div>
+
+            <div class="branch-connector branch-connector--accent"></div>
+
+            <div class="branch-children">
+              <div class="branch-node">
+                <div class="branch-node-text">I think we should simplify step 3</div>
+                <div class="branch-node-meta">Alex Rivera</div>
+                <div class="branch-count"><span class="accent">4</span> branches</div>
+              </div>
+
+              <div class="branch-connector"></div>
+
+              <div class="branch-node">
+                <div class="branch-node-text">What about the color system?</div>
+                <div class="branch-node-meta">Maya Patel</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== SPACES FEATURE ========== -->
+  <section class="section" id="spaces">
+    <div class="container feature-grid">
+      <div class="feature-content">
+        <span class="t-label feature-label reveal">Spaces</span>
+        <h2 class="t-display t-display-lg feature-headline reveal">
+          Communities<br>that breathe
+        </h2>
+        <p class="t-body-lg feature-desc reveal">
+          Spaces organize conversations around shared interests. They are not servers or channels. They are living environments where people gather, discuss, and create together.
+        </p>
+        <ul class="feature-list reveal">
+          <li>Create or join Spaces around any topic</li>
+          <li>Conversations flow naturally within Spaces</li>
+          <li>Members, roles, and moderation built in</li>
+          <li>Public or private, your choice</li>
+        </ul>
+      </div>
+
+      <div class="feature-visual reveal-right">
+        <div class="feature-visual-inner">
+          <div class="space-visual-grid">
+            <div class="space-visual-card">
+              <div class="space-visual-icon space-visual-icon--1">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              </div>
+              <div class="space-visual-name">Design Systems</div>
+              <div class="space-visual-meta">234 members</div>
+            </div>
+            <div class="space-visual-card">
+              <div class="space-visual-icon space-visual-icon--2">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              </div>
+              <div class="space-visual-name">Creative Writing</div>
+              <div class="space-visual-meta">89 members</div>
+            </div>
+            <div class="space-visual-card">
+              <div class="space-visual-icon space-visual-icon--3">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+              </div>
+              <div class="space-visual-name">Engineering</div>
+              <div class="space-visual-meta">312 members</div>
+            </div>
+            <div class="space-visual-card">
+              <div class="space-visual-icon space-visual-icon--4">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+              </div>
+              <div class="space-visual-name">Off Topic</div>
+              <div class="space-visual-meta">567 members</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== CTA ========== -->
+  <section class="cta-section" id="download">
+    <div class="container">
+      <div class="cta-box reveal">
+        <div class="cta-glow"></div>
+        <h2 class="t-display t-display-lg cta-headline">
+          Ready to experience<br>communication <span style="color: var(--accent);">differently</span>?
+        </h2>
+        <p class="t-body-lg cta-desc">
+          Join the early access. Be among the first to explore Pulse, Branches, and Spaces in a way no messaging app has offered before.
+        </p>
+        <div class="cta-actions">
+          <button class="btn-primary" onclick="promptInstall()">
+            Install BRO
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M8 1v10M4 7l4 4 4-4M2 13h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== FOOTER ========== -->
+  <footer class="footer">
+    <div class="container footer-inner">
+      <span class="footer-logo">BRO</span>
+      <ul class="footer-links">
+        <li><a href="#">Privacy</a></li>
+        <li><a href="#">Terms</a></li>
+        <li><a href="#">Contact</a></li>
+      </ul>
+      <span class="footer-copy">TALK. CONNECT. EXIST.</span>
+    </div>
+  </footer>
+
+  <!-- ========== INSTALL BANNER ========== -->
+  <div class="install-banner" id="installBanner">
+    <div class="install-banner-inner">
+      <div class="install-banner-text">
+        <div class="install-banner-icon"><span>BRO</span></div>
+        <div>
+          <div class="install-banner-title">Install BRO</div>
+          <div class="install-banner-desc">Add to your home screen for the full experience</div>
+        </div>
+      </div>
+      <div class="install-banner-actions">
+        <button class="install-btn-primary" onclick="promptInstall()">Install App</button>
+        <button class="install-btn-dismiss" onclick="dismissBanner()">Later</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== SCRIPTS ========== -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+  <script>
+    // Register ScrollTrigger
+    gsap.registerPlugin(ScrollTrigger);
+
+    // Mobile nav toggle
+    const navToggle = document.getElementById('navToggle');
+    const navLinks = document.getElementById('navLinks');
+    navToggle.addEventListener('click', () => {
+      navLinks.classList.toggle('active');
+    });
+
+    // Close mobile nav on link click
+    navLinks.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', () => {
+        navLinks.classList.remove('active');
+      });
+    });
+
+    // Scroll reveal animations
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (!prefersReducedMotion) {
+      // Basic reveal (fade up)
+      gsap.utils.toArray('.reveal').forEach((el, i) => {
+        gsap.fromTo(el,
+          { opacity: 0, y: 32 },
+          {
+            opacity: 1,
+            y: 0,
+            duration: 0.7,
+            ease: 'power3.out',
+            scrollTrigger: {
+              trigger: el,
+              start: 'top 88%',
+              once: true
+            }
+          }
+        );
+      });
+
+      // Reveal from left
+      gsap.utils.toArray('.reveal-left').forEach(el => {
+        gsap.fromTo(el,
+          { opacity: 0, x: -40 },
+          {
+            opacity: 1,
+            x: 0,
+            duration: 0.8,
+            ease: 'power3.out',
+            scrollTrigger: {
+              trigger: el,
+              start: 'top 85%',
+              once: true
+            }
+          }
+        );
+      });
+
+      // Reveal from right
+      gsap.utils.toArray('.reveal-right').forEach(el => {
+        gsap.fromTo(el,
+          { opacity: 0, x: 40 },
+          {
+            opacity: 1,
+            x: 0,
+            duration: 0.8,
+            ease: 'power3.out',
+            scrollTrigger: {
+              trigger: el,
+              start: 'top 85%',
+              once: true
+            }
+          }
+        );
+      });
+
+      // Stagger metrics
+      gsap.fromTo('.metric',
+        { opacity: 0, y: 24 },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.6,
+          stagger: 0.1,
+          ease: 'power3.out',
+          scrollTrigger: {
+            trigger: '.metrics-grid',
+            start: 'top 85%',
+            once: true
+          }
+        }
+      );
+
+      // Stagger space cards
+      gsap.fromTo('.space-visual-card',
+        { opacity: 0, scale: 0.92, y: 16 },
+        {
+          opacity: 1,
+          scale: 1,
+          y: 0,
+          duration: 0.5,
+          stagger: { each: 0.08, from: 'start' },
+          ease: 'back.out(1.4)',
+          scrollTrigger: {
+            trigger: '.space-visual-grid',
+            start: 'top 85%',
+            once: true
+          }
+        }
+      );
+
+      // Hero phone entrance
+      gsap.fromTo('.hero-phone',
+        { opacity: 0, y: 40, scale: 0.95 },
+        {
+          opacity: 1,
+          y: 0,
+          scale: 1,
+          duration: 1,
+          ease: 'power3.out',
+          delay: 0.3,
+          scrollTrigger: {
+            trigger: '.hero-visual',
+            start: 'top 80%',
+            once: true
+          }
+        }
+      );
+
+      // CTA glow pulse
+      gsap.to('.cta-glow', {
+        opacity: 0.5,
+        scale: 1.1,
+        duration: 3,
+        ease: 'sine.inOut',
+        repeat: -1,
+        yoyo: true
+      });
+    } else {
+      // Reduced motion: show everything immediately
+      document.querySelectorAll('.reveal, .reveal-left, .reveal-right').forEach(el => {
+        el.style.opacity = '1';
+        el.style.transform = 'none';
+      });
+    }
+
+    // Nav background on scroll
+    let lastScroll = 0;
+    window.addEventListener('scroll', () => {
+      const nav = document.getElementById('nav');
+      const scrollY = window.scrollY;
+      if (scrollY > 80) {
+        nav.style.background = 'rgba(9, 10, 15, 0.85)';
+      } else {
+        nav.style.background = 'rgba(9, 10, 15, 0.6)';
+      }
+      lastScroll = scrollY;
+    }, { passive: true });
+
+    // ========== PWA INSTALL ==========
+    let deferredPrompt = null;
+    const installBanner = document.getElementById('installBanner');
+    const BANNER_DISMISSED_KEY = 'bro_install_dismissed';
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      // Show banner after 3s if not dismissed
+      if (!sessionStorage.getItem(BANNER_DISMISSED_KEY)) {
+        setTimeout(() => {
+          installBanner.classList.add('visible');
+        }, 3000);
+      }
+    });
+
+    function promptInstall() {
+      if (!deferredPrompt) {
+        // Fallback: show instructions
+        const isAndroid = /android/i.test(navigator.userAgent);
+        const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+        let msg = 'To install BRO:\n\n';
+        if (isAndroid) {
+          msg += 'Tap the menu icon (three dots) in your browser, then select "Add to Home Screen" or "Install App".';
+        } else if (isIOS) {
+          msg += 'Tap the Share button, then "Add to Home Screen".';
+        } else {
+          msg += 'Use your browser\'s install option to add BRO to your home screen.';
+        }
+        alert(msg);
+        return;
+      }
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then((choice) => {
+        if (choice.outcome === 'accepted') {
+          installBanner.classList.remove('visible');
+        }
+        deferredPrompt = null;
+      });
+    }
+
+    function dismissBanner() {
+      installBanner.classList.remove('visible');
+      sessionStorage.setItem(BANNER_DISMISSED_KEY, '1');
+    }
+
+    window.addEventListener('appinstalled', () => {
+      installBanner.classList.remove('visible');
+      deferredPrompt = null;
+    });
+
+    // ========== SERVICE WORKER ==========
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>
