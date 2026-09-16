@@ -31,7 +31,7 @@ jobs:
 
       - name: Render privacy policy to HTML
         run: |
-          npm install --no-save markdown-it@15 markdown-it-anchor@10 markdown-it-toc-done-right@4
+          npm install --no-save --legacy-peer-deps markdown-it@15 markdown-it-anchor@10 markdown-it-toc-done-right@4
           node - <<'EOF'
           const fs = require('fs');
           const path = require('path');
