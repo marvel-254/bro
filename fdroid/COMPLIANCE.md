@@ -15,11 +15,11 @@ This report verifies BRO's compliance with F-Droid inclusion requirements.
 | 7 | UsesCleartextTraffic: false | ✅ Pass | app.json specifies `usesCleartextTraffic: false` |
 | 8 | No hardcoded secrets or API keys | ✅ Pass | No hardcoded secrets or API keys found |
 | 9 | No signing configs in repo | ✅ Pass | No signing configurations found in repository |
-| 10 | Privacy policy URL hosted at https://bro.app/privacy | ⚠️ Action Item | Privacy policy exists as PRIVACY.md in repo but is not yet hosted at https://bro.app/privacy |
+| 10 | Privacy policy URL hosted at https://bro-app.github.io/bro/privacy/ | ⚠️ Action Item | Privacy policy exists as PRIVACY.md in repo but is not yet hosted at https://bro-app.github.io/bro/privacy/ |
 
 ## Action Items
 
-1. **Host privacy policy at https://bro.app/privacy** — The privacy policy exists in the repository as `PRIVACY.md` but must be published at the URL referenced in metadata before F-Droid submission.
+1. **Host privacy policy at https://bro-app.github.io/bro/privacy/** — The privacy policy exists in the repository as `PRIVACY.md` but must be published at the URL referenced in metadata before F-Droid submission.
 
 ## Summary
 
