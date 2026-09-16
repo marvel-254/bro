@@ -45,8 +45,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         username: clerkUser.username ?? clerkUser.emailAddresses[0]?.emailAddress?.split('@')[0] ?? 'user',
         displayName: clerkUser.firstName ?? clerkUser.lastName ?? clerkUser.username ?? clerkUser.emailAddresses[0]?.emailAddress?.split('@')[0] ?? 'user',
         avatar: clerkUser.imageUrl,
-        isVerified: clerkUser.emailAddresses.find((addr: { verification?: { status?: string } }) => addr.verification && addr.verification.status === 'verified') !== undefined,
-        createdAt: clerkUser.createdAt,
+        isVerified: (clerkUser.emailAddresses as any[]).find((addr) => addr?.verification?.status === 'verified') !== undefined,
+        createdAt: clerkUser.createdAt?.toISOString() ?? new Date().toISOString(),
         status: isSignedIn ? 'online' : 'offline',
       };
       setUserState(broUser);
