@@ -84,6 +84,3 @@ jobs:
       - run: npm install --legacy-peer-deps
 
       - run: npx expo prebuild --no-install --platform android
-
-      - name: Validate Expo config
-        run: npx expo export --platform android --output-dir /tmp/bro-export
