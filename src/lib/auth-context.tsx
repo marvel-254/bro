@@ -28,7 +28,7 @@ export function useAuth(): AuthContextValue {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { isLoaded, isSignedIn } = useClerkAuth();
-  const { data: clerkUser, isLoaded: userIsLoaded } = useUser();
+  const { user: clerkUser, isLoaded: userIsLoaded } = useUser();
   const { signOut: clerkSignOut } = useClerk();
   const { signIn: clerkSignIn, isLoaded: signInIsLoaded } = useSignIn();
   const { signUp: clerkSignUp, isLoaded: signUpIsLoaded } = useSignUp();
@@ -67,8 +67,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!signInIsLoaded || !clerkSignIn) {
         throw new Error('Authentication not ready');
       }
-      await clerkSignIn.prepare({ identifier: email, password });
-      await clerkSignIn.attempt({ identifier: email, password });
+      const signIn = clerkSignIn as unknown as { prepare(params: { identifier: string; password: string }): Promise<unknown>; attempt(params: { identifier: string; password: string }): Promise<unknown> };
+      await signIn.prepare({ identifier: email, password });
+      await signIn.attempt({ identifier: email, password });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Sign in failed';
       console.error('Sign in failed:', err);
@@ -83,8 +84,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!signUpIsLoaded || !clerkSignUp) {
         throw new Error('Authentication not ready');
       }
-      await clerkSignUp.prepare({ emailAddress: email, password });
-      await clerkSignUp.create({ emailAddress: email, password });
+      const signUp = clerkSignUp as unknown as { prepare(params: { emailAddress: string; password: string }): Promise<unknown>; create(params: { emailAddress: string; password: string }): Promise<unknown> };
+      await signUp.prepare({ emailAddress: email, password });
+      await signUp.create({ emailAddress: email, password });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Sign up failed';
       console.error('Sign up failed:', err);
