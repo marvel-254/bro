@@ -125,7 +125,7 @@ pass them into the `env:` context of build steps.
 
 ## 4. Adding Secrets via the GitHub Web UI
 
-1. Open the repository on GitHub: **https://github.com/bro-app/bro**
+1. Open the repository on GitHub: **https://github.com/marvel-254/bro**
 2. Navigate to **Settings** → **Secrets and variables** → **Actions** →
    **Repository secrets**.
 3. Click **New repository secret**.
@@ -190,7 +190,7 @@ fall back to no-op auth, which will surface as auth errors in the emulator.
 |---------|-------|-----|
 | `gh: command not found` | GitHub CLI not installed | Install from https://cli.github.com/ |
 | `gh auth status` fails / "not logged in" | Not authenticated | Run `gh auth login` and follow the prompts |
-| `gh repo view bro-app/bro` fails | No read access, or wrong repo name | Verify the repo exists and you have access; adjust `REPO` in the script if you forked |
+| `gh repo view marvel-254/bro` fails | No read access, or wrong repo name | Verify the repo exists and you have access; adjust `REPO` in the script if you forked |
 | `gh secret set` returns a non-zero exit code | Insufficient permissions (e.g. collaborator without write access) | Ask a repository owner/admin to set the secret, or request write access |
 
 ### 7.4 Secrets are not picked up by a workflow run
