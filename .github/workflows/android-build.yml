@@ -105,6 +105,10 @@ jobs:
           EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
           EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
 
+      - name: Pin AGP Version
+        run: |
+          sed -i "s/classpath('com.android.tools.build:gradle')/classpath('com.android.tools.build:gradle:8.5.2')/" android/build.gradle
+          sed -i "s/classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')/classpath('org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.25')/" android/build.gradle
       - name: Run Tests
         run: npm test -- --passWithNoTests
 
@@ -131,6 +135,7 @@ jobs:
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: BRO-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
