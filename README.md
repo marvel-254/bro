@@ -30,7 +30,7 @@ Build instructions:
 
 ```bash
 # Clone the repository
-git clone https://github.com/bro-app/bro.git
+git clone https://github.com/marvel-254/bro.git
 cd bro
 
 # Install dependencies
@@ -95,7 +95,7 @@ See [LICENSE](LICENSE) for details.
 
 - **Website**: https://bro.app
 - **Privacy**: privacy@bro.app
-- **Source**: https://github.com/bro-app/bro
+- **Source**: https://github.com/marvel-254/bro
 
 ## Acknowledgements
 

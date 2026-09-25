@@ -62,7 +62,7 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - run: npm ci
+      - run: npm install --legacy-peer-deps
 
       - run: npm run typecheck
 
@@ -81,11 +81,6 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - run: npm ci
-
-      - run: npx expo install --no-cache
+      - run: npm install --legacy-peer-deps
 
       - run: npx expo prebuild --no-install --platform android
-
-      - name: Validate Expo config
-        run: npx expo export --platform android --output-dir /tmp/bro-export

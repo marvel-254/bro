@@ -17,7 +17,7 @@ status, common rejection reasons, and how to respond to reviewer feedback.
 | App name          | BRO                                |
 | Package           | `app.bro`                          |
 | License           | GPL-3.0-or-later                   |
-| Source code       | https://github.com/bro-app/bro     |
+| Source code       | https://github.com/marvel-254/bro     |
 | Category          | Communication                      |
 | Build command     | `cd android && ./gradlew assembleDebug` |
 
@@ -316,5 +316,5 @@ After submitting to F-Droid:
 - F-Droid inclusion policy: https://f-droid.org/docs/Inclusion_Policy/
 - F-Droid anti-features: https://f-droid.org/docs/Anti-Features/
 - F-Droid build server: https://build.fdroid.org/
-- BRO source: https://github.com/bro-app/bro
-- BRO privacy policy: https://bro-app.github.io/bro/privacy/
+- BRO source: https://github.com/marvel-254/bro
+- BRO privacy policy: https://marvel-254.github.io/bro/

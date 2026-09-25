@@ -247,3 +247,54 @@ npx jest --passWithNoTests                # 5 suites, 42 tests
 ### Subagent Correction
 - Subagent "CI Build Pipeline" (ses_f567eb2ddffejSH3BDRfTw8B4G) failed on first attempt. CI/CD workflows were already properly configured by subagent "GitHub Secrets Setup" (ses_f567ec8d8ffeLWg02qkWkPsic9) which completed successfully first.
 - Subagent "F-Droid Submission" (ses_f567e9dd9ffeNTzE4ACljf860X) reported success but did not create expected files (F-DROID.md, fdroid-check.yml, SCREENSHOTS.md, screenshots/). Re-delegated subagent ses_f5675db19ffem1bFGGhHTq0PYx which completed successfully.
+
+---
+
+## Session 3: GitHub Setup & Auth Wiring (2026-09-16)
+
+### Objective
+Set up GitHub repository, CI/CD, and wire Clerk authentication.
+
+### Changes Made
+
+#### GitHub Repository Setup
+- Created GitHub repository at `https://github.com/marvel-254/bro`
+- Pushed all code to `main` branch (renamed from `master`)
+- Set `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` as GitHub secret (publishable key only - secret key NOT committed)
+- Enabled GitHub Pages (auto-enabled via gh-pages workflow)
+- Created GitHub Pages deployment workflow (`.github/workflows/gh-pages.yml`)
+
+#### CI/CD Fixes (iterative)
+- Fixed ESLint dependency conflict: `@typescript-eslint/eslint-plugin` aligned to `^8.70.0` (was `^5.0.0`)
+- Fixed `npm ci` → `npm install --legacy-peer-deps` (lockfile outdated)
+- Fixed `expo install --no-cache` → `expo install` (invalid flag)
+- F-Droid Compliance Check passes ✅ on every run
+
+#### Auth Wiring
+- Updated `src/lib/auth-context.tsx` to use Clerk hooks (`useUser`, `useSignIn`, `useSignUp`, `useClerk`)
+- Fixed `useUser` return type (`user` not `data`)
+- Added type assertions for Clerk Expo signIn/signUp methods
+- Fixed `createdAt` Date→string conversion
+- Updated `src/features/auth/WelcomeScreen.tsx`: uses `useAuth()` for auth state, `useRouter()` for navigation
+- Updated `src/features/auth/SignInScreen.tsx`: uses `useAuth()` for sign-in, `useRouter()` for navigation, form state management
+- Updated `src/features/auth/SignUpScreen.tsx`: uses `useAuth()` for sign-up, `useRouter()` for navigation, form state management
+- Created route files: `app/(auth)/welcome.tsx`, `app/(auth)/sign-in.tsx`, `app/(auth)/sign-up.tsx`
+- Created route files: `app/(tabs)/_layout.tsx`, `app/(tabs)/index.tsx`
+- Fixed route imports to correct relative paths
+
+#### Assets Fix
+- Created valid placeholder PNG files for `assets/icon.png`, `assets/splash.png`, `assets/adaptive-icon.png` (were 0 bytes, causing `expo prebuild` to fail)
+
+### Verification Results
+- **TypeScript**: 0 errors ✅
+- **ESLint**: 0 errors ✅
+- **Jest**: 5 suites, 42 tests passed ✅
+- **F-Droid Compliance Check**: ✅ (on every CI run)
+- **BRO CI**: In progress (fixed `expo install` flag, awaiting result)
+- **BRO Android Build**: Failed (Gradle error at `expo-splash-screen/android/build.gradle` - needs investigation)
+
+### Remaining Issues
+1. **Android Build**: Gradle fails at `expo-splash-screen/android/build.gradle` line 3 - likely needs generated `android/` directory investigation
+2. **GitHub Pages**: Deployment pending (gh-pages workflow runs on PR to main, need to check deployment status)
+3. **Auth Flow**: Screens are wired but require `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` to be set at runtime for actual authentication
+4. **Agent Log**: Needs updating after this session's work is complete

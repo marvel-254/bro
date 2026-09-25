@@ -31,7 +31,7 @@ which runs on every push to `main`.
 **Canonical URL:**
 
 ```
-https://bro-app.github.io/bro/privacy/
+https://marvel-254.github.io/bro/
 ```
 
 > Adjust `bro-app` if the repository is forked/renamed.
@@ -52,7 +52,7 @@ https://bro-app.github.io/bro/privacy/
 Serve the raw `PRIVACY.md` directly from GitHub:
 
 ```
-https://raw.githubusercontent.com/bro-app/bro/main/PRIVACY.md
+https://raw.githubusercontent.com/marvel-254/bro/main/PRIVACY.md
 ```
 
 GitHub serves raw files with `Content-Type: text/plain`, so browsers display
@@ -98,17 +98,17 @@ Update `fdroid/metadata.toml` `Disclaimer` / add a `PrivacyPolicy` reference so
 F-Droid points to the rendered page:
 
 ```toml
-Website: https://bro.app
-Source: https://github.com/bro-app/bro
+Website: https://marvel-254.github.io/bro/
+Source: https://github.com/marvel-254/bro
 # ... existing fields ...
-Disclaimer: ... Privacy policy: https://bro-app.github.io/bro/privacy/
+Disclaimer: ... Privacy policy: https://marvel-254.github.io/bro/
 ```
 
 ### Implementation steps (already provided by this change set)
 
 1. Ensure `PRIVACY.md` exists at the repo root. (Done.)
 2. The workflow `.github/workflows/gh-pages.yml` renders `PRIVACY.md` to
-   `https://bro-app.github.io/bro/privacy/` on every push to `main`.
+   `https://marvel-254.github.io/bro/` on every push to `main`.
 3. Enable GitHub Pages in the repository settings (Settings → Pages →
    "Deploy from a branch" → source: `gh-pages` branch / `/ (root)`).
    The `peaceiris/actions-gh-pages` action in the workflow commits the built

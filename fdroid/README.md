@@ -51,8 +51,8 @@ BRO does **not** include any tracking, analytics, or advertising SDKs. No user d
 
 ## Source Code
 
-https://github.com/bro-app/bro
+https://github.com/marvel-254/bro
 
 ## License
 
-GPL-3.0-or-later — See [LICENSE](https://github.com/bro-app/bro/blob/main/LICENSE) in the repository.
+GPL-3.0-or-later — See [LICENSE](https://github.com/marvel-254/bro/blob/main/LICENSE) in the repository.
