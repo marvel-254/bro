@@ -5,6 +5,9 @@ const tsParser = require('@typescript-eslint/parser');
 const tsPlugin = require('@typescript-eslint/eslint-plugin');
 
 module.exports = [
+  {
+    ignores: ['bro/**', 'brarvel/**', 'node_modules/**', 'android/**', 'website/**'],
+  },
   js.configs.recommended,
   {
     files: ['src/**/*.{ts,tsx}'],

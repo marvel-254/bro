@@ -1,5 +1,8 @@
 node_modules/
 .expo/
+# stray nested copies of the project (not part of the real source)
+bro/
+brarvel/
 build/
 dist/
 web-build/
