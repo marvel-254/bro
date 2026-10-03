@@ -5,8 +5,8 @@ Project root: `/home/marvel/Projects/bro/`
 Branch: `feat/supabase-chat` (working branch, pushed, PR #3 open → main)
 App name: **bro** (NOT "BROS" — sir confirmed the name stays `bro`, package `app.bro`)
 
-Current state: typecheck clean, lint 0 errors (4 `any` warnings), 87/87 tests pass,
-all 5 PR checks green (quality, validate, secrets-check, fdroid-compliance,
+Current state: typecheck clean, lint 0 errors (2 `any` warnings), 156/156 tests
+pass, all 5 PR checks green (quality, validate, secrets-check, fdroid-compliance,
 build-android with `BRO-debug` APK artifact).
 
 ---
@@ -97,24 +97,39 @@ AsyncStorage, auto-refresh on. `handle_new_user` trigger auto-creates a
   Supabase (were Clerk).
 
 ### Build state — honest status vs. the docs
-Built and verified: auth, presence, chat (list + detail), new chat, Supabase
-backend + RLS.
+Built and verified: auth, presence, chat (list + detail), new chat, live Pulse,
+global search, Spaces, Supabase backend + RLS.
 
-**Not built — screens are placeholders or hardcoded mock data:**
-- `src/features/search/SearchScreen.tsx` — 8-line placeholder ("Search" text only).
-  Docs want people/spaces/conversations/messages/media search + FTS.
-- `src/features/pulse/PulseScreen.tsx` — hardcoded `activeUsers` /
-  `liveConversations` arrays. Docs want a live Pulse (Live now / Tap-in / Around).
-- `src/features/spaces/SpacesScreen.tsx` — hardcoded `spaces` + `channels` arrays.
+**Landed this session:**
+- **Pulse made live** (`5ea5eed`) — `src/lib/pulse.ts`. Live now (≥2 non-self
+  messages in a 15-min window), Tap-in (unexpired plans with a Going tally),
+  Around (peers + presence). Chronological only, no ranking, so it cannot decay
+  into a feed. Mock `activeUsers`/`liveConversations` arrays deleted.
+- **Global search** (`e5bd40e`) — `src/lib/search.ts` + migration
+  `20261003000300_search.sql` (applied to the live DB). Generated tsvector over
+  message bodies with the `simple` config so slang is not stemmed, GIN index, and
+  a `search_messages` SECURITY DEFINER RPC that filters every row through
+  `is_conversation_member()`. Verified an anon call returns no rows.
+  SearchScreen was an 8-line placeholder with **no route at all**; it is now
+  reachable at `/search` from the Pulse header.
+- **Spaces** (`c425027`) — `src/lib/spaces.ts`. Real join/leave/create with
+  slug-collision retry and rollback. Mock "24.8k members" removed.
+
+**Still not built:**
 - `src/features/activity/` — **empty directory**, no feature at all.
-- Branches: `BranchDetail.tsx` exists but nothing creates a branch or renders the
-  "↳ N replies" pill from the chat screen.
-- Drops / Plans / Squads / Statuses: tables exist in migration 002, no UI.
+- Branches: `BranchDetail.tsx` exists but nothing creates a branch or renders
+  the "↳ N replies" pill from the chat screen.
+- Drops / Plans creation UI / Squads / Statuses: tables exist, read-only in Pulse.
 - Media: no `expo-image-picker`/`expo-av`, no Storage buckets created.
 - Push notifications: nothing. No `push_tokens` table, no fanout.
+- `SpaceDetail.tsx` is still a 9-line placeholder.
+- `YouScreen` / `SpaceListItem` still carry `any` casts (2 lint warnings left).
 
-Next feature per the docs build order is **Pulse made live** (it is the main
-screen and currently fake), then Spaces, then Search, then Activity.
+**Nav note:** `app/(tabs)/spaces.tsx` and `create.tsx` existed but were
+unregistered in `_layout.tsx`, so both were unreachable. They are now routable
+but hidden with `href: null`, keeping the frozen Home/Chats/Bros/Me tab set.
+
+Next feature per the docs build order is **Activity**, then branches.
 
 ### NOT YET BUILT (future features, in sir's order)
 - Friends/friend requests (no `friendships` table yet — Who's Around currently
