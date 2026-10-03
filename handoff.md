@@ -5,7 +5,7 @@ Project root: `/home/marvel/Projects/bro/`
 Branch: `feat/supabase-chat` (working branch, pushed, PR #3 open → main)
 App name: **bro** (NOT "BROS" — sir confirmed the name stays `bro`, package `app.bro`)
 
-Current state: typecheck clean, lint 0 errors (2 `any` warnings), 156/156 tests
+Current state: typecheck clean, lint 0 errors (2 `any` warnings), 181/181 tests
 pass, all 5 PR checks green (quality, validate, secrets-check, fdroid-compliance,
 build-android with `BRO-debug` APK artifact).
 
@@ -114,22 +114,33 @@ global search, Spaces, Supabase backend + RLS.
   reachable at `/search` from the Pulse header.
 - **Spaces** (`c425027`) — `src/lib/spaces.ts`. Real join/leave/create with
   slug-collision retry and rollback. Mock "24.8k members" removed.
+- **Activity** — `src/lib/activity.ts`, `ActivityScreen.tsx`,
+  `activity-badge-context.tsx`, route `/activity`, badge on the Chats header.
+  Migration `20261003000400_activity_notifications.sql` (applied) fixes a
+  **privacy leak**: `activity` was readable by any signed-in user, so everyone
+  could read everyone else's replies, mentions, reactions and follows. The
+  policy is now relevance-scoped (you, your targets, your conversations), and
+  the screen reads owner-scoped `notifications` instead so the narrow path is
+  the only path. The same migration adds an `activity_fan_out` trigger, because
+  nothing had ever written to `notifications` — an Activity screen built on it
+  would otherwise have been permanently empty.
 
 **Still not built:**
-- `src/features/activity/` — **empty directory**, no feature at all.
-- Branches: `BranchDetail.tsx` exists but nothing creates a branch or renders
-  the "↳ N replies" pill from the chat screen.
+- **Branches** — the signature feature. `BranchDetail.tsx` exists but nothing
+  creates a branch or renders the "↳ N replies" pill from the chat screen.
 - Drops / Plans creation UI / Squads / Statuses: tables exist, read-only in Pulse.
+  Nothing calls `recordActivity`, so the fan-out trigger has no producers yet.
 - Media: no `expo-image-picker`/`expo-av`, no Storage buckets created.
-- Push notifications: nothing. No `push_tokens` table, no fanout.
+- Push notifications: no `push_tokens` table, no fanout, no OS delivery.
 - `SpaceDetail.tsx` is still a 9-line placeholder.
 - `YouScreen` / `SpaceListItem` still carry `any` casts (2 lint warnings left).
 
 **Nav note:** `app/(tabs)/spaces.tsx` and `create.tsx` existed but were
 unregistered in `_layout.tsx`, so both were unreachable. They are now routable
 but hidden with `href: null`, keeping the frozen Home/Chats/Bros/Me tab set.
+`/search`, `/activity` and `/new-chat` are stack routes off the tabs.
 
-Next feature per the docs build order is **Activity**, then branches.
+Next feature per the docs build order is **conversation branches**.
 
 ### NOT YET BUILT (future features, in sir's order)
 - Friends/friend requests (no `friendships` table yet — Who's Around currently

@@ -4,6 +4,7 @@ import { View } from 'react-native';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { PresenceProvider } from '@/lib/presence-context';
 import { PeopleProvider } from '@/lib/people-context';
+import { ActivityBadgeProvider } from '@/lib/activity-badge-context';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
@@ -11,7 +12,9 @@ function AppProviders({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   return (
     <PresenceProvider user={user}>
-      <PeopleProvider userId={user?.id ?? null}>{children}</PeopleProvider>
+      <PeopleProvider userId={user?.id ?? null}>
+        <ActivityBadgeProvider userId={user?.id ?? null}>{children}</ActivityBadgeProvider>
+      </PeopleProvider>
     </PresenceProvider>
   );
 }

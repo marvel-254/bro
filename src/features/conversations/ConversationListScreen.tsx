@@ -16,6 +16,7 @@ import {
   subscribeToConversationList,
 } from '../../lib/conversations';
 import { isSupabaseConfigured } from '../../lib/supabase';
+import { useActivityBadge } from '../../lib/activity-badge-context';
 import type { ConversationSummary } from '../../lib/database.types';
 import { LoadingState, ErrorState, EmptyState } from '../../components/feedback/States';
 
@@ -47,6 +48,7 @@ function titleFor(summary: ConversationSummary): string {
 
 export default function ConversationListScreen() {
   const router = useRouter();
+  const { unreadCount: unreadActivity, refresh: refreshActivityBadge } = useActivityBadge();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -134,6 +136,25 @@ export default function ConversationListScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.logo}>BRO</Text>
+        <TouchableOpacity
+          style={styles.headerBtn}
+          onPress={() => {
+            router.push('/activity');
+            // Opening the screen is the natural moment to clear the badge.
+            void refreshActivityBadge();
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Activity"
+        >
+          <Ionicons name="notifications-outline" size={22} color={COLORS.onSurface} />
+          {unreadActivity > 0 ? (
+            <View style={styles.activityBadge}>
+              <Text style={styles.activityBadgeText}>
+                {unreadActivity > 9 ? '9+' : unreadActivity}
+              </Text>
+            </View>
+          ) : null}
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>Chats</Text>
         <TouchableOpacity
           style={styles.newBtn}
@@ -199,6 +220,24 @@ const styles = StyleSheet.create({
   },
   newBtn: {
     padding: SPACING.spaceSm,
+  },
+  headerBtn: {
+    padding: SPACING.spaceSm,
+  },
+  activityBadge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    minWidth: 16,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    backgroundColor: COLORS.primaryContainer,
+    alignItems: 'center',
+  },
+  activityBadgeText: {
+    ...TYPOGRAPHY.labelSM,
+    fontWeight: '700',
+    color: COLORS.onSurface,
   },
   listContent: {
     paddingHorizontal: SPACING.gutter,
