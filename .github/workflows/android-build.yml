@@ -11,6 +11,8 @@ on:
 # Secrets are read via the `secrets` context and exposed as environment
 # variables to the build. Expo embeds EXPO_PUBLIC_* values at build time.
 env:
+  EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+  EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
   EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
 
 jobs:
