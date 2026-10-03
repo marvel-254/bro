@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import { type User } from '../types';
+import { setSupabaseTokenProvider } from './supabase';
 import { useAuth as useClerkAuth, useUser, useClerk, useSignIn, useSignUp } from '@clerk/clerk-expo';
 
 interface AuthState {
@@ -27,7 +28,7 @@ export function useAuth(): AuthContextValue {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { isLoaded, isSignedIn } = useClerkAuth();
+  const { isLoaded, isSignedIn, getToken } = useClerkAuth();
   const { user: clerkUser, isLoaded: userIsLoaded } = useUser();
   const { signOut: clerkSignOut } = useClerk();
   const { signIn: clerkSignIn, isLoaded: signInIsLoaded } = useSignIn();
@@ -60,6 +61,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setIsLoading(!isLoaded);
   }, [isLoaded]);
+
+  // Clerk owns the session; Supabase borrows its token so RLS sees auth.uid()
+  // equal to the Clerk user id.
+  useEffect(() => {
+    setSupabaseTokenProvider(async () => {
+      try {
+        return await getToken();
+      } catch {
+        return null;
+      }
+    });
+  }, [getToken]);
 
   const signInFunc = useCallback(async (email: string, password: string) => {
     setError(null);
