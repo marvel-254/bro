@@ -91,6 +91,10 @@ export interface MessageReactionRow {
 /** A message joined with the sender's public profile, as returned by the app. */
 export interface MessageWithSender extends MessageRow {
   sender: Pick<ProfileRow, 'id' | 'username' | 'display_name' | 'avatar_url' | 'status'> | null;
+  expires_at?: string | null;
+  edited_at?: string | null;
+  deleted_at?: string | null;
+  deleted_for_everyone?: boolean;
 }
 
 export interface ConversationSummary {
@@ -100,5 +104,15 @@ export interface ConversationSummary {
   avatar_url: string | null;
   last_message_at: string | null;
   last_message_preview: string | null;
+  last_message_sender: string | null;
   unread_count: number;
+  /** Peers (everyone except the caller) with presence, for the list avatar. */
+  peers: Array<{
+    user_id: string;
+    display_name: string;
+    avatar_url: string | null;
+    presence: string | null;
+    presence_text: string | null;
+    presence_emoji: string | null;
+  }>;
 }
