@@ -1,19 +1,32 @@
 import { COLORS } from '@/theme';
 import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
-import { AuthProvider } from '@/lib/auth-context';
+import { AuthProvider, useAuth } from '@/lib/auth-context';
+import { PresenceProvider } from '@/lib/presence-context';
+import { PeopleProvider } from '@/lib/people-context';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+
+function AppProviders({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  return (
+    <PresenceProvider user={user}>
+      <PeopleProvider userId={user?.id ?? null}>{children}</PeopleProvider>
+    </PresenceProvider>
+  );
+}
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <AuthProvider>
-          <View style={{ flex: 1, backgroundColor: COLORS.semantic.canvasRoot }}>
-            <StatusBar style="light" />
-            {children}
-          </View>
+          <AppProviders>
+            <View style={{ flex: 1, backgroundColor: COLORS.semantic.canvasRoot }}>
+              <StatusBar style="light" />
+              {children}
+            </View>
+          </AppProviders>
         </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

@@ -34,7 +34,7 @@ export async function fetchMessages(
   const { data, error } = await supabase
     .from('messages')
     .select(
-      'id, conversation_id, sender_id, content, type, status, reply_to_message_id, branch_id, created_at, updated_at, sender:profiles!messages_sender_id_fkey (id, username, display_name, avatar_url, status)',
+      'id, conversation_id, sender_id, content, type, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone, sender:profiles!messages_sender_id_fkey (id, username, display_name, avatar_url, status, presence, presence_text, presence_emoji)',
     )
     .eq('conversation_id', conversationId)
     .order('created_at', { ascending: false })
@@ -53,7 +53,12 @@ export async function fetchMessages(
 export async function sendMessage(
   conversationId: string,
   content: string,
-  options: { replyToMessageId?: string | null; branchId?: string | null } = {},
+  options: {
+    replyToMessageId?: string | null;
+    branchId?: string | null;
+    /** Seconds until the message disappears. null or undefined means never. */
+    expiresInSeconds?: number | null;
+  } = {},
 ): Promise<SendResult> {
   const supabase = getSupabase();
   if (!supabase) {
@@ -80,8 +85,12 @@ export async function sendMessage(
       status: 'sent',
       reply_to_message_id: options.replyToMessageId ?? null,
       branch_id: options.branchId ?? null,
+      expires_at:
+        options.expiresInSeconds == null
+          ? null
+          : new Date(Date.now() + options.expiresInSeconds * 1000).toISOString(),
     })
-    .select('id, conversation_id, sender_id, content, type, status, reply_to_message_id, branch_id, created_at, updated_at')
+    .select('id, conversation_id, sender_id, content, type, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone')
     .single();
 
   if (error) {
@@ -257,4 +266,96 @@ export async function toggleReaction(messageId: string, emoji: string): Promise<
   await supabase
     .from('message_reactions')
     .insert({ message_id: messageId, user_id: userData.user.id, emoji });
+}
+/** Edit the content of a message the caller sent. RLS restricts this to the sender. */
+export async function editMessage(messageId: string, content: string): Promise<SendResult> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return { ok: false, error: 'Backend not configured' };
+  }
+
+  const trimmed = content.trim();
+  if (!trimmed) {
+    return { ok: false, error: 'Message cannot be empty' };
+  }
+
+  const { data, error } = await supabase
+    .from('messages')
+    .update({ content: trimmed, edited_at: new Date().toISOString() })
+    .eq('id', messageId)
+    .select('id, conversation_id, sender_id, content, type, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone')
+    .single();
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  return { ok: true, message: data as MessageRow };
+}
+
+/**
+ * Delete for everyone. The row survives so replies and branches do not dangle;
+ * the body is blanked and hidden from every reader by the RLS policy.
+ */
+export async function deleteMessage(messageId: string): Promise<SendResult> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return { ok: false, error: 'Backend not configured' };
+  }
+
+  const { data, error } = await supabase
+    .from('messages')
+    .update({ deleted_for_everyone: true, content: '', deleted_at: new Date().toISOString() })
+    .eq('id', messageId)
+    .select('id, conversation_id, sender_id, content, type, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone')
+    .single();
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  return { ok: true, message: data as MessageRow };
+}
+
+/** How far a caller has read into a conversation. */
+export async function fetchReadCursor(conversationId: string): Promise<string | null> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return null;
+  }
+
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) {
+    return null;
+  }
+
+  const { data } = await supabase
+    .from('conversation_members')
+    .select('last_read_at')
+    .eq('conversation_id', conversationId)
+    .eq('user_id', userData.user.id)
+    .maybeSingle<{ last_read_at: string | null }>();
+
+  return data?.last_read_at ?? null;
+}
+
+/** Per-member read cursors, used to render read receipts. */
+export async function fetchReadCursors(
+  conversationId: string,
+): Promise<Record<string, string | null>> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return {};
+  }
+
+  const { data } = await supabase
+    .from('conversation_members')
+    .select('user_id, last_read_at')
+    .eq('conversation_id', conversationId);
+
+  const cursors: Record<string, string | null> = {};
+  for (const row of (data ?? []) as Array<{ user_id: string; last_read_at: string | null }>) {
+    cursors[row.user_id] = row.last_read_at;
+  }
+  return cursors;
 }

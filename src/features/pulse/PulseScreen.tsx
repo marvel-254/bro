@@ -111,7 +111,7 @@ export default function PulseScreen() {
           {activeUsers.map((user) => (
             <TouchableOpacity key={user.id} style={styles.userItem}>
               <View style={styles.userAvatarWrapper}>
-                <Avatar name={user.name} size={60} status={user.status === 'online' ? 'online' : undefined} />
+                <Avatar name={user.name} size={60} presence={user.status === "online" ? "online" : null} />
               </View>
               <Text style={styles.userName}>{user.name}</Text>
               <Text style={[styles.userActivity, { color: user.status === 'online' ? COLORS.primaryContainer : COLORS.semantic.textDim }]}>
