@@ -1,61 +1,61 @@
-import { View, Text } from 'react-native';
-import { Tab, Tabs } from 'expo-router';
+import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '@/theme';
 
 export default function TabsLayout() {
   return (
-    <Tabs>
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: COLORS.surfaceTint,
+        tabBarInactiveTintColor: COLORS.semantic.textDim,
+        tabBarStyle: {
+          backgroundColor: COLORS.semantic.canvasRoot,
+          borderTopColor: COLORS.semantic.ghostBorderLight,
+        },
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Pulse',
+          title: 'Home',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name="pulse" size={22} color={focused ? COLORS.primaryContainer : color} />
+            <Ionicons name={focused ? 'home' : 'home-outline'} size={22} color={color} />
           ),
-          tabBarLabel: 'Pulse',
+        }}
+      />
+      <Tabs.Screen
+        name="chats"
+        options={{
+          title: 'Chats',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'chatbubbles' : 'chatbubbles-outline'} size={22} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="people"
         options={{
-          title: 'People',
+          title: 'Bros',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name="people" size={22} color={focused ? COLORS.primaryContainer : color} />
+            <Ionicons name={focused ? 'people' : 'people-outline'} size={22} color={color} />
           ),
-          tabBarLabel: 'People',
-        }}
-      />
-      <Tabs.Screen
-        name="create"
-        options={{
-          title: 'Create',
-          tabBarIcon: () => (
-            <Ionicons name="add-circle" size={28} color={COLORS.primaryContainer} />
-          ),
-          tabBarLabel: '',
-        }}
-      />
-      <Tabs.Screen
-        name="spaces"
-        options={{
-          title: 'Spaces',
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name="chatbubble-ellipses" size={22} color={focused ? COLORS.primaryContainer : color} />
-          ),
-          tabBarLabel: 'Spaces',
         }}
       />
       <Tabs.Screen
         name="you"
         options={{
-          title: 'You',
+          title: 'Me',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name="person" size={22} color={focused ? COLORS.primaryContainer : color} />
+            <Ionicons name={focused ? 'person' : 'person-outline'} size={22} color={color} />
           ),
-          tabBarLabel: 'You',
         }}
       />
+      {/* v1 nav is frozen at Home / Chats / Bros / Me. Spaces and Create stay
+          routable (search results and the Create action point at them) but are
+          hidden from the tab bar with `href: null`. */}
+      <Tabs.Screen name="spaces" options={{ href: null }} />
+      <Tabs.Screen name="create" options={{ href: null }} />
     </Tabs>
   );
 }

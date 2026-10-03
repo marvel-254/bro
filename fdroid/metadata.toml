@@ -6,5 +6,5 @@ Source: https://github.com/marvel-254/bro
 License: GPL-3.0-or-later
 Category: Communication
 Description: A living communication environment centered around conversations, people, spaces, and presence.
-Disclaimer: BRO uses Clerk for authentication and Convex for backend services. Privacy policy at https://marvel-254.github.io/bro/
+Disclaimer: BRO uses Supabase for authentication, database, real-time sync, and storage. Privacy policy at https://marvel-254.github.io/bro/
 PrivacyPolicy: https://marvel-254.github.io/bro/

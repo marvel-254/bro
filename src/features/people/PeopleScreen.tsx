@@ -1,148 +1,219 @@
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  StyleSheet,
+  Modal,
+  TextInput,
+  Pressable,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING, RADIUS } from '../../theme';
+import { COLORS, SPACING, RADIUS, TYPOGRAPHY } from '../../theme';
+import { Avatar } from '../../components/ui/Avatar';
+import { usePeople } from '../../lib/people-context';
+import { usePresence } from '../../lib/presence-context';
+import { PRESENCE_LABELS, PRESENCE_COLORS, type Presence } from '../../lib/presence';
+import { LoadingState, ErrorState, EmptyState } from '../../components/feedback/States';
 
-const suggested = [
-  { id: '1', name: 'Marcus Chen', handle: '@mchen', mutualSpaces: 3, status: 'online' },
-  { id: '2', name: 'Elena Voss', handle: '@elena', mutualSpaces: 2, status: 'online' },
-  { id: '3', name: 'Kwame Asante', handle: '@kwame', mutualSpaces: 5, status: 'away' },
-  { id: '4', name: 'Yuki Tanaka', handle: '@yuki', mutualSpaces: 1, status: 'online' },
+/**
+ * Who's Around — the presence layer.
+ *
+ * Lists everyone the signed-in user shares a conversation with, with a live
+ * presence dot and custom activity line. A modal lets the user set their own
+ * presence and a one-line activity (e.g. "💻 coding", "📍 outside").
+ */
+
+const PRESENCE_OPTIONS: Presence[] = [
+  'online',
+  'busy',
+  'chilling',
+  'gaming',
+  'listening',
+  'afk',
 ];
 
-const filters = ['Suggested', 'Active Now', 'Mutual Spaces', 'New'];
-
-const activeNow = [
-  { id: '1', name: 'Sarah', activity: 'Building agents', status: 'online' },
-  { id: '2', name: 'Brian', activity: 'Code review', status: 'online' },
-  { id: '3', name: 'Nia', activity: 'Design session', status: 'online' },
-  { id: '4', name: 'Alex', activity: 'Team sync', status: 'online' },
-];
-
-const peopleList = [
-  { id: '1', name: 'Sarah Kimani', handle: '@sarah_k', bio: 'AI researcher. Building the future of agentic systems.', mutualSpaces: 4, status: 'online' },
-  { id: '2', name: 'Brian Oduya', handle: '@brian.dev', bio: 'Full-stack engineer. Edge computing enthusiast.', mutualSpaces: 3, status: 'online' },
-  { id: '3', name: 'Nia Mwangi', handle: '@nia_m', bio: 'Tech community builder. Nairobi based.', mutualSpaces: 2, status: 'away' },
-  { id: '4', name: 'Alex Rivera', handle: '@alex.ai', bio: 'ML engineer exploring on-device AI.', mutualSpaces: 6, status: 'online' },
+const QUICK_ACTIVITIES = [
+  '💻 coding',
+  '📍 outside',
+  '🎧 listening',
+  '🎮 gaming',
+  '⚽ watching the game',
+  '😴 afk',
 ];
 
 export default function PeopleScreen() {
+  const { people, loading, error, refresh } = usePeople();
+  const { presence, statusText, emoji, setPresence, isBusy } = usePresence();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [draftText, setDraftText] = useState('');
+
+  const onlineCount = people.filter((person) => person.presence === 'online').length;
+
+  const openPicker = () => {
+    setDraftText(statusText ?? '');
+    setPickerOpen(true);
+  };
+
+  const savePresence = async (next: Presence, text?: string) => {
+    await setPresence(next, { text: text ?? undefined, emoji: undefined });
+    setPickerOpen(false);
+  };
+
+  const renderPerson = ({ item }: { item: (typeof people)[number] }) => {
+    const activity = item.emoji || item.statusText;
+    return (
+      <View style={styles.personRow}>
+        <Avatar
+          uri={item.avatarUrl}
+          name={item.displayName}
+          size={44}
+          presence={item.presence}
+        />
+        <View style={styles.personInfo}>
+          <Text style={styles.personName}>{item.displayName}</Text>
+          {activity ? (
+            <Text style={styles.personActivity}>
+              {item.emoji ? `${item.emoji} ` : ''}
+              {item.statusText ?? ''}
+            </Text>
+          ) : (
+            <Text style={styles.personPresence}>{PRESENCE_LABELS[item.presence]}</Text>
+          )}
+        </View>
+        <View style={styles.personActions}>
+          <TouchableOpacity style={styles.iconBtn}>
+            <Ionicons name="chatbubble-outline" size={18} color={COLORS.onSurface} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <View style={styles.logoBox}>
-            <Text style={styles.logoText}>BRO</Text>
-          </View>
+          <Text style={styles.logo}>BRO</Text>
           <View>
-            <Text style={styles.headerTitle}>People</Text>
-            <Text style={styles.headerSub}>Discover and connect</Text>
+            <Text style={styles.headerTitle}>Who's Around</Text>
+            <Text style={styles.headerSub}>
+              {onlineCount} online · {people.length} in your circle
+            </Text>
           </View>
         </View>
-        <TouchableOpacity style={styles.profileIcon}>
-          <Ionicons name="person" size={20} color={COLORS.onSurface} />
+        <TouchableOpacity style={styles.youBtn} onPress={openPicker}>
+          <Avatar
+            name="You"
+            size={34}
+            presence={presence === 'offline' ? null : presence}
+          />
         </TouchableOpacity>
       </View>
 
-      {/* Search Bar */}
-      <View style={styles.searchBar}>
-        <Ionicons name="search" size={18} color={COLORS.semantic.textDim} />
-        <Text style={styles.searchPlaceholder}>Search nodes...</Text>
-        <TouchableOpacity>
-          <Ionicons name="mic" size={18} color={COLORS.semantic.textDim} />
-        </TouchableOpacity>
-      </View>
-
-      {/* Filter Chips */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersRow}>
-        {filters.map((filter, i) => (
-          <TouchableOpacity key={filter} style={[styles.filterChip, i === 0 && styles.filterChipActive]}>
-            <Text style={[styles.filterText, i === 0 && styles.filterTextActive]}>{filter}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      {/* Suggested Section */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Suggested for you</Text>
-          <TouchableOpacity>
-            <Text style={styles.seeAll}>See all</Text>
-          </TouchableOpacity>
+      {/* Your own presence line */}
+      <TouchableOpacity style={styles.selfCard} onPress={openPicker}>
+        <View style={[styles.selfDot, { backgroundColor: PRESENCE_COLORS[presence] }]} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.selfLabel}>
+            {PRESENCE_LABELS[presence]}
+            {statusText ? ` — ${emoji ? `${emoji} ` : ''}${statusText}` : ''}
+          </Text>
+          <Text style={styles.selfHint}>Tap to set your status</Text>
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestedRow}>
-          {suggested.map((person) => (
-            <View key={person.id} style={styles.suggestedCard}>
-              <View style={styles.suggestedAvatar}>
-                <Text style={styles.avatarText}>{person.name[0]}</Text>
-                <View style={[styles.suggestedStatus, person.status === 'online' && styles.suggestedStatusActive]} />
-              </View>
-              <Text style={styles.suggestedName}>{person.name.split(' ')[0]}</Text>
-              <Text style={styles.suggestedHandle}>{person.handle}</Text>
-              <Text style={styles.suggestedMutual}>{person.mutualSpaces} mutual</Text>
-              <TouchableOpacity style={styles.connectBtn}>
-                <Text style={styles.connectText}>Connect</Text>
+        <Ionicons name="chevron-forward" size={18} color={COLORS.semantic.textDim} />
+      </TouchableOpacity>
+
+      {/* List */}
+      {loading ? (
+        <LoadingState message="Finding who's around..." />
+      ) : error ? (
+        <ErrorState message={error} onRetry={() => void refresh()} />
+      ) : people.length === 0 ? (
+        <EmptyState
+          message="Nobody around yet. Start a conversation and the people in it will show up here."
+        />
+      ) : (
+        <FlatList
+          data={people}
+          keyExtractor={(item) => item.userId}
+          renderItem={renderPerson}
+          contentContainerStyle={styles.listContent}
+        />
+      )}
+
+      {/* Presence picker */}
+      <Modal
+        visible={pickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPickerOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Set your status</Text>
+              <TouchableOpacity onPress={() => setPickerOpen(false)}>
+                <Ionicons name="close" size={22} color={COLORS.onSurface} />
               </TouchableOpacity>
             </View>
-          ))}
-        </ScrollView>
-      </View>
 
-      {/* Active Now */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <View style={styles.sectionHeaderLeft}>
-            <View style={styles.activeDot} />
-            <Text style={styles.sectionTitle}>Active now</Text>
-            <View style={styles.countBadge}>
-              <Text style={styles.countText}>12</Text>
+            <View style={styles.presenceGrid}>
+              {PRESENCE_OPTIONS.map((option) => (
+                <TouchableOpacity
+                  key={option}
+                  style={[
+                    styles.presenceOption,
+                    presence === option && styles.presenceOptionActive,
+                  ]}
+                  onPress={() => void savePresence(option)}
+                >
+                  <View
+                    style={[
+                      styles.optionDot,
+                      { backgroundColor: PRESENCE_COLORS[option] },
+                    ]}
+                  />
+                  <Text style={styles.optionLabel}>{PRESENCE_LABELS[option]}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
-          </View>
-        </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.activeRow}>
-          {activeNow.map((person) => (
-            <View key={person.id} style={styles.activeCard}>
-              <View style={[styles.activeAvatar, person.status === 'online' && styles.activeAvatarOnline]}>
-                <Text style={styles.activeAvatarText}>{person.name[0]}</Text>
-              </View>
-              <Text style={styles.activeName}>{person.name}</Text>
-              <Text style={styles.activeActivity}>{person.activity}</Text>
-            </View>
-          ))}
-        </ScrollView>
-      </View>
 
-      {/* People List */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>People</Text>
-          <Text style={styles.sectionCount}>42</Text>
-        </View>
-        {peopleList.map((person) => (
-          <View key={person.id} style={styles.personCard}>
-            <View style={styles.personLeft}>
-              <View style={styles.personAvatar}>
-                <Text style={styles.personAvatarText}>{person.name[0]}</Text>
-              </View>
-              <View style={styles.personInfo}>
-                <View style={styles.personNameRow}>
-                  <Text style={styles.personName}>{person.name}</Text>
-                  <View style={[styles.personStatus, person.status === 'online' && styles.personStatusOnline]} />
-                </View>
-                <Text style={styles.personHandle}>{person.handle}</Text>
-                <Text style={styles.personBio} numberOfLines={1}>{person.bio}</Text>
-                <Text style={styles.personMutual}>{person.mutualSpaces} mutual Spaces</Text>
-              </View>
+            <Text style={styles.activityLabel}>Custom activity</Text>
+            <TextInput
+              style={styles.activityInput}
+              value={draftText}
+              onChangeText={setDraftText}
+              placeholder="e.g. Vibing to Burna Boy"
+              placeholderTextColor={COLORS.semantic.textDim}
+              maxLength={60}
+            />
+
+            <View style={styles.quickRow}>
+              {QUICK_ACTIVITIES.map((activity) => (
+                <Pressable
+                  key={activity}
+                  style={styles.quickChip}
+                  onPress={() => setDraftText(activity)}
+                >
+                  <Text style={styles.quickChipText}>{activity}</Text>
+                </Pressable>
+              ))}
             </View>
-            <TouchableOpacity style={styles.personAction}>
-              <Ionicons name="person-add" size={20} color={COLORS.primaryContainer} />
+
+            <TouchableOpacity
+              style={[styles.saveBtn, isBusy && styles.saveBtnDisabled]}
+              onPress={() => void savePresence(presence, draftText)}
+              disabled={isBusy}
+            >
+              <Text style={styles.saveBtnText}>{isBusy ? 'Saving...' : 'Set status'}</Text>
             </TouchableOpacity>
           </View>
-        ))}
-      </View>
-
-      <View style={{ height: 80 }} />
-    </ScrollView>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
@@ -155,313 +226,193 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: SPACING.margin,
-    paddingTop: SPACING.spaceXs,
-    paddingBottom: SPACING.spaceSm,
+    paddingHorizontal: SPACING.gutter,
+    paddingTop: SPACING.spaceLg,
+    paddingBottom: SPACING.spaceMd,
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.spaceSm,
+    gap: SPACING.spaceMd,
   },
-  logoBox: {
-    paddingHorizontal: SPACING.spaceSm,
-    paddingVertical: 4,
-    backgroundColor: COLORS.surfaceContainerHigh,
-    borderRadius: RADIUS.DEFAULT,
-  },
-  logoText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.primaryContainer,
+  logo: {
+    ...TYPOGRAPHY.headlineMD,
+    color: COLORS.semantic.textPrimary,
+    fontWeight: '800',
     letterSpacing: 1,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: COLORS.onSurface,
+    ...TYPOGRAPHY.headlineSM,
+    color: COLORS.semantic.textPrimary,
   },
   headerSub: {
-    fontSize: 12,
-    color: COLORS.onSurfaceVariant,
-  },
-  profileIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.surfaceContainerHigh,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.spaceSm,
-    marginHorizontal: SPACING.margin,
-    paddingHorizontal: SPACING.spaceMd,
-    paddingVertical: 10,
-    backgroundColor: COLORS.surfaceContainer,
-    borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-  },
-  searchPlaceholder: {
-    flex: 1,
-    fontSize: 14,
+    ...TYPOGRAPHY.labelMD,
     color: COLORS.semantic.textDim,
+    fontFamily: 'monospace',
   },
-  filtersRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: SPACING.margin,
-    paddingVertical: SPACING.spaceSm,
+  youBtn: {
+    padding: 2,
   },
-  filterChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.surfaceContainer,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-  },
-  filterChipActive: {
-    backgroundColor: COLORS.primaryContainer + '15',
-    borderColor: COLORS.primaryContainer,
-  },
-  filterText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.onSurfaceVariant,
-  },
-  filterTextActive: {
-    color: COLORS.primaryContainer,
-  },
-  section: {
-    marginTop: SPACING.spaceLg,
-  },
-  sectionHeader: {
+  selfCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACING.margin,
-    marginBottom: SPACING.spaceSm,
-  },
-  sectionHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.onSurface,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  sectionCount: {
-    fontSize: 12,
-    color: COLORS.primaryContainer,
-    fontWeight: '600',
-  },
-  seeAll: {
-    fontSize: 12,
-    color: COLORS.primaryContainer,
-    fontWeight: '600',
-  },
-  countBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-    backgroundColor: COLORS.surfaceContainerHigh,
-  },
-  countText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: COLORS.primaryContainer,
-  },
-  activeDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.tertiaryContainer,
-  },
-  suggestedRow: {
-    flexDirection: 'row',
     gap: SPACING.spaceMd,
-    paddingHorizontal: SPACING.margin,
-    paddingVertical: SPACING.spaceXs,
+    marginHorizontal: SPACING.gutter,
+    marginBottom: SPACING.spaceMd,
+    padding: SPACING.spaceMd,
+    backgroundColor: COLORS.semantic.surfaceLevel1,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.semantic.ghostBorder,
+    borderRadius: RADIUS.sm,
   },
-  suggestedCard: {
-    alignItems: 'center',
-    width: 90,
-    paddingVertical: SPACING.spaceSm,
-  },
-  suggestedAvatar: {
-    position: 'relative',
-    marginBottom: 6,
-  },
-  avatarText: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: COLORS.onSurface,
-    textAlign: 'center',
-  },
-  suggestedStatus: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
+  selfDot: {
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: COLORS.outlineVariant,
-    borderWidth: 2,
-    borderColor: COLORS.semantic.canvasRoot,
   },
-  suggestedStatusActive: {
-    backgroundColor: COLORS.tertiaryContainer,
+  selfLabel: {
+    ...TYPOGRAPHY.bodyMD,
+    color: COLORS.semantic.textPrimary,
   },
-  suggestedName: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.onSurface,
-  },
-  suggestedHandle: {
-    fontSize: 11,
-    color: COLORS.primaryContainer,
-  },
-  suggestedMutual: {
-    fontSize: 10,
-    color: COLORS.onSurfaceVariant,
-    marginTop: 2,
-  },
-  connectBtn: {
-    marginTop: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 5,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.primaryContainer,
-  },
-  connectText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.onPrimary,
-  },
-  activeRow: {
-    flexDirection: 'row',
-    gap: SPACING.spaceMd,
-    paddingHorizontal: SPACING.margin,
-    paddingVertical: SPACING.spaceXs,
-  },
-  activeCard: {
-    alignItems: 'center',
-    width: 72,
-  },
-  activeAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: COLORS.surfaceContainerHigh,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.outlineVariant,
-  },
-  activeAvatarOnline: {
-    borderColor: COLORS.primaryContainer,
-    shadowColor: COLORS.primaryContainer,
-    shadowRadius: 8,
-    shadowOpacity: 0.4,
-  },
-  activeAvatarText: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: COLORS.onSurface,
-  },
-  activeName: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.onSurface,
-    marginTop: 6,
-  },
-  activeActivity: {
-    fontSize: 10,
+  selfHint: {
+    ...TYPOGRAPHY.labelSM,
     color: COLORS.semantic.textDim,
-    marginTop: 2,
+    fontFamily: 'monospace',
   },
-  personCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginHorizontal: SPACING.margin,
-    padding: SPACING.spaceMd,
-    marginTop: SPACING.spaceSm,
-    backgroundColor: COLORS.surfaceContainer,
-    borderRadius: RADIUS.DEFAULT,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.04)',
+  listContent: {
+    paddingHorizontal: SPACING.gutter,
+    paddingBottom: SPACING.spaceXl,
   },
-  personLeft: {
+  personRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.spaceMd,
-    flex: 1,
-  },
-  personAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: COLORS.surfaceContainerHigh,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  personAvatarText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: COLORS.onSurface,
+    paddingVertical: SPACING.spaceSm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.semantic.ghostBorderLight,
   },
   personInfo: {
     flex: 1,
   },
-  personNameRow: {
+  personName: {
+    ...TYPOGRAPHY.bodyMD,
+    color: COLORS.semantic.textPrimary,
+    fontWeight: '600',
+  },
+  personActivity: {
+    ...TYPOGRAPHY.labelMD,
+    color: COLORS.semantic.textSecondary,
+  },
+  personPresence: {
+    ...TYPOGRAPHY.labelSM,
+    color: COLORS.semantic.textDim,
+    fontFamily: 'monospace',
+  },
+  personActions: {
+    flexDirection: 'row',
+    gap: SPACING.spaceSm,
+  },
+  iconBtn: {
+    padding: SPACING.spaceSm,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    padding: SPACING.margin,
+  },
+  modalCard: {
+    backgroundColor: COLORS.semantic.surfaceLevel2,
+    borderRadius: RADIUS.md,
+    padding: SPACING.spaceLg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.semantic.ghostBorder,
+  },
+  modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 2,
+    marginBottom: SPACING.spaceLg,
   },
-  personName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.onSurface,
+  modalTitle: {
+    ...TYPOGRAPHY.headlineSM,
+    color: COLORS.semantic.textPrimary,
   },
-  personStatus: {
+  presenceGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.spaceSm,
+    marginBottom: SPACING.spaceLg,
+  },
+  presenceOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.spaceSm,
+    paddingHorizontal: SPACING.spaceMd,
+    paddingVertical: SPACING.spaceSm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.semantic.ghostBorderLight,
+    borderRadius: RADIUS.sm,
+  },
+  presenceOptionActive: {
+    borderColor: COLORS.semantic.ghostBorder,
+    backgroundColor: COLORS.semantic.surfaceLevel1,
+  },
+  optionDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: COLORS.outlineVariant,
   },
-  personStatusOnline: {
-    backgroundColor: COLORS.tertiaryContainer,
+  optionLabel: {
+    ...TYPOGRAPHY.labelMD,
+    color: COLORS.semantic.textPrimary,
   },
-  personHandle: {
-    fontSize: 12,
-    color: COLORS.primaryContainer,
-  },
-  personBio: {
-    fontSize: 12,
-    color: COLORS.onSurfaceVariant,
-    marginTop: 2,
-  },
-  personMutual: {
-    fontSize: 10,
+  activityLabel: {
+    ...TYPOGRAPHY.labelSM,
     color: COLORS.semantic.textDim,
-    marginTop: 2,
+    fontFamily: 'monospace',
+    marginBottom: SPACING.spaceSm,
   },
-  personAction: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.primaryContainer + '15',
-    justifyContent: 'center',
+  activityInput: {
+    ...TYPOGRAPHY.bodyMD,
+    color: COLORS.semantic.textPrimary,
+    backgroundColor: COLORS.semantic.surfaceLevel1,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.semantic.ghostBorder,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.spaceMd,
+    paddingVertical: SPACING.spaceSm,
+    marginBottom: SPACING.spaceMd,
+  },
+  quickRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.spaceSm,
+    marginBottom: SPACING.spaceLg,
+  },
+  quickChip: {
+    paddingHorizontal: SPACING.spaceMd,
+    paddingVertical: SPACING.spaceXs,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.semantic.ghostBorderLight,
+    borderRadius: RADIUS.full,
+  },
+  quickChipText: {
+    ...TYPOGRAPHY.labelMD,
+    color: COLORS.semantic.textSecondary,
+  },
+  saveBtn: {
+    backgroundColor: COLORS.surfaceTint,
+    borderRadius: RADIUS.sm,
+    paddingVertical: SPACING.spaceMd,
     alignItems: 'center',
+  },
+  saveBtnDisabled: {
+    opacity: 0.5,
+  },
+  saveBtnText: {
+    ...TYPOGRAPHY.labelLG,
+    color: COLORS.onPrimary,
+    fontWeight: '700',
   },
 });
