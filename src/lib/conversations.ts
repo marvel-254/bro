@@ -12,7 +12,7 @@ import type {
  *
  * Every call goes through RLS, so the caller only ever supplies identifiers it
  * already knows. No user id is trusted from the client: RLS derives the caller
- * from the Clerk token via auth.uid().
+ * from the Supabase session via auth.uid().
  */
 
 export const MESSAGES_PAGE_SIZE = 50;

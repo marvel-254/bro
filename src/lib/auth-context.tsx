@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { type User } from '../types';
-import { setSupabaseTokenProvider } from './supabase';
-import { useAuth as useClerkAuth, useUser, useClerk, useSignIn, useSignUp } from '@clerk/clerk-expo';
+import { getSupabase, isSupabaseConfigured } from './supabase';
 
 interface AuthState {
   user: User | null;
@@ -14,9 +14,11 @@ interface AuthContextValue extends AuthState {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-  verifyEmail: (_code: string) => Promise<void>;
+  verifyEmail: (code: string) => Promise<void>;
   setUser: (user: User | null) => void;
   clearError: () => void;
+  /** True when sign-up created an account that still needs email confirmation. */
+  awaitingEmailConfirmation: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -27,142 +29,156 @@ export function useAuth(): AuthContextValue {
   return ctx;
 }
 
+/** Map a Supabase auth user onto the app's User shape. */
+function toBroUser(supabaseUser: SupabaseUser): User {
+  const email = supabaseUser.email ?? '';
+  const fallback = email.split('@')[0] || 'user';
+  const meta = supabaseUser.user_metadata ?? {};
+
+  return {
+    id: supabaseUser.id,
+    username: (meta.username as string | undefined) ?? fallback,
+    displayName: (meta.display_name as string | undefined) ?? (meta.full_name as string | undefined) ?? fallback,
+    avatar: (meta.avatar_url as string | undefined),
+    bio: (meta.bio as string | undefined) ?? undefined,
+    status: 'online',
+    isVerified: Boolean(supabaseUser.email_confirmed_at),
+    createdAt: supabaseUser.created_at ?? new Date().toISOString(),
+  };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { isLoaded, isSignedIn, getToken } = useClerkAuth();
-  const { user: clerkUser, isLoaded: userIsLoaded } = useUser();
-  const { signOut: clerkSignOut } = useClerk();
-  const { signIn: clerkSignIn, isLoaded: signInIsLoaded } = useSignIn();
-  const { signUp: clerkSignUp, isLoaded: signUpIsLoaded } = useSignUp();
-
-  const [user, setUserState] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [awaitingEmailConfirmation, setAwaitingEmailConfirmation] = useState(false);
+  const [overrideUser, setOverrideUser] = useState<User | null>(null);
 
   useEffect(() => {
-    if (userIsLoaded && clerkUser) {
-      const broUser: User = {
-        id: clerkUser.id,
-        username: clerkUser.username ?? clerkUser.emailAddresses[0]?.emailAddress?.split('@')[0] ?? 'user',
-        displayName: clerkUser.firstName ?? clerkUser.lastName ?? clerkUser.username ?? clerkUser.emailAddresses[0]?.emailAddress?.split('@')[0] ?? 'user',
-        avatar: clerkUser.imageUrl,
-        isVerified: (clerkUser.emailAddresses as any[]).find((addr) => addr?.verification?.status === 'verified') !== undefined,
-        createdAt: clerkUser.createdAt?.toISOString() ?? new Date().toISOString(),
-        status: isSignedIn ? 'online' : 'offline',
-      };
-      setUserState(broUser);
-      setIsAuthenticated(true);
-    } else {
-      setUserState(null);
-      setIsAuthenticated(false);
+    const supabase = getSupabase();
+    if (!supabase) {
+      // Without env vars there is no session to restore; fail closed.
+      setIsLoading(false);
+      return;
     }
-  }, [userIsLoaded, clerkUser, isSignedIn]);
 
-  useEffect(() => {
-    setIsLoading(!isLoaded);
-  }, [isLoaded]);
+    let active = true;
 
-  // Clerk owns the session; Supabase borrows its token so RLS sees auth.uid()
-  // equal to the Clerk user id.
-  useEffect(() => {
-    setSupabaseTokenProvider(async () => {
-      try {
-        return await getToken();
-      } catch {
-        return null;
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (active) {
+          setSession(data.session ?? null);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setIsLoading(false);
+        }
+      });
+
+    const { data: subscription } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      setIsLoading(false);
+      if (nextSession) {
+        setAwaitingEmailConfirmation(false);
       }
     });
-  }, [getToken]);
+
+    return () => {
+      active = false;
+      subscription.subscription.unsubscribe();
+    };
+  }, []);
 
   const signInFunc = useCallback(async (email: string, password: string) => {
-    setError(null);
-    try {
-      if (!signInIsLoaded || !clerkSignIn) {
-        throw new Error('Authentication not ready');
-      }
-      const signIn = clerkSignIn as unknown as { prepare(params: { identifier: string; password: string }): Promise<unknown>; attempt(params: { identifier: string; password: string }): Promise<unknown> };
-      await signIn.prepare({ identifier: email, password });
-      await signIn.attempt({ identifier: email, password });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Sign in failed';
-      console.error('Sign in failed:', err);
-      setError(message);
-      throw new Error(message);
+    const supabase = getSupabase();
+    if (!supabase) {
+      throw new Error('Backend not configured');
     }
-  }, [clerkSignIn, signInIsLoaded]);
+
+    setError(null);
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    if (signInError) {
+      setError(signInError.message);
+      throw new Error(signInError.message);
+    }
+  }, []);
 
   const signUpFunc = useCallback(async (email: string, password: string) => {
-    setError(null);
-    try {
-      if (!signUpIsLoaded || !clerkSignUp) {
-        throw new Error('Authentication not ready');
-      }
-      const signUp = clerkSignUp as unknown as { prepare(params: { emailAddress: string; password: string }): Promise<unknown>; create(params: { emailAddress: string; password: string }): Promise<unknown> };
-      await signUp.prepare({ emailAddress: email, password });
-      await signUp.create({ emailAddress: email, password });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Sign up failed';
-      console.error('Sign up failed:', err);
-      setError(message);
-      throw new Error(message);
+    const supabase = getSupabase();
+    if (!supabase) {
+      throw new Error('Backend not configured');
     }
-  }, [clerkSignUp, signUpIsLoaded]);
+
+    setError(null);
+    const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
+
+    if (signUpError) {
+      setError(signUpError.message);
+      throw new Error(signUpError.message);
+    }
+
+    // Supabase returns a user but no session when email confirmation is on.
+    if (!data.session) {
+      setAwaitingEmailConfirmation(true);
+    }
+  }, []);
 
   const signOutFunc = useCallback(async () => {
-    try {
-      await clerkSignOut();
-    } catch (err) {
-      console.error('Sign out failed:', err);
-      throw new Error('Sign out failed');
+    const supabase = getSupabase();
+    if (!supabase) {
+      return;
     }
-  }, [clerkSignOut]);
 
-  const verifyEmailFunc = useCallback(async (_code: string) => {
-    throw new Error('Email verification not implemented — use Clerk dashboard or API');
+    const { error: signOutError } = await supabase.auth.signOut();
+    if (signOutError) {
+      setError(signOutError.message);
+      throw new Error(signOutError.message);
+    }
+    setOverrideUser(null);
   }, []);
 
-  const setUserFunc = useCallback((user: User | null) => {
-    setUserState(user);
-    setIsAuthenticated(!!user);
-  }, []);
+  const verifyEmailFunc = useCallback(async (code: string) => {
+    const supabase = getSupabase();
+    if (!supabase) {
+      throw new Error('Backend not configured');
+    }
+
+    setError(null);
+    const { error: verifyError } = await supabase.auth.verifyOtp({
+      email: session?.user?.email ?? '',
+      token: code,
+      type: 'email',
+    });
+
+    if (verifyError) {
+      setError(verifyError.message);
+      throw new Error(verifyError.message);
+    }
+    setAwaitingEmailConfirmation(false);
+  }, [session?.user?.email]);
 
   const clearErrorFunc = useCallback(() => {
     setError(null);
   }, []);
 
-  if (isLoading) {
-    return (
-      <AuthContext.Provider
-        value={{
-          user: null,
-          isLoading: true,
-          isAuthenticated: false,
-          error: null,
-          signIn: async () => { throw new Error('Loading...'); },
-          signUp: async () => { throw new Error('Loading...'); },
-          signOut: async () => { throw new Error('Loading...'); },
-          verifyEmail: async () => { throw new Error('Loading...'); },
-          setUser: setUserFunc,
-          clearError: clearErrorFunc,
-        }}
-      >
-        {children}
-      </AuthContext.Provider>
-    );
-  }
+  const user = overrideUser ?? (session?.user ? toBroUser(session.user) : null);
+  const isConfigured = isSupabaseConfigured;
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        isLoading: false,
-        isAuthenticated,
+        isLoading,
+        isAuthenticated: Boolean(session) && isConfigured,
         error,
+        awaitingEmailConfirmation,
         signIn: signInFunc,
         signUp: signUpFunc,
         signOut: signOutFunc,
         verifyEmail: verifyEmailFunc,
-        setUser: setUserFunc,
+        setUser: setOverrideUser,
         clearError: clearErrorFunc,
       }}
     >

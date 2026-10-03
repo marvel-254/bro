@@ -1,71 +1,38 @@
 # Supabase backend for BRO
 
-Supabase is the backend for conversations, messages, spaces and realtime sync.
-Clerk stays the identity provider — Supabase borrows Clerk's JWT so row level
-security can resolve the caller without a second login.
+Supabase is the backend for everything: authentication, conversations, messages,
+spaces and realtime sync. There is no separate identity provider — Supabase Auth
+issues the session, and Postgres resolves the caller through `auth.uid()`, so the
+row level security policies in `supabase/migrations` apply unchanged.
 
 ## 1. Create the project
 
-Either use the Supabase CLI or the dashboard.
-
-CLI:
-
 ```bash
 supabase login
-supabase projects create bro --org-id <your-org-id> --region eu-central-1 --db-password '<strong-password>'
-supabase link --project-ref <project-ref>
+supabase projects create bro --org-id <org-id> --region eu-central-1 --db-password '<strong-password>'
+supabase link --project-ref <project-ref> --password '<db-password>'
 ```
-
-Dashboard: <https://supabase.com/dashboard> -> New project.
 
 ## 2. Apply the schema
 
 ```bash
-supabase db push
+supabase db push --password '<db-password>'
 ```
 
-This applies `supabase/migrations/20261003000100_bro_initial_schema.sql`:
-tables, row level security policies, indexes, and realtime publication entries.
+This applies `supabase/migrations/20261003000100_bro_initial_schema.sql`: tables,
+indexes, row level security policies, the `handle_new_user` signup trigger, and
+realtime publication entries.
 
-## 3. Connect Clerk to Supabase
+## 3. Configure auth
 
-Supabase validates Clerk JWTs using its own JWT secret, so the two must agree.
+Dashboard -> Authentication -> Sign In / Providers -> Email:
 
-### 3a. Copy the Supabase JWT secret
+- **Email provider**: enabled
+- **Confirm email**: enable in production so unverified accounts cannot sign in
+  and `profiles.is_verified` reflects reality
 
-Dashboard -> Project Settings -> API -> JWT Secret. Keep it private.
-
-### 3b. Add it to Clerk
-
-Clerk Dashboard -> Configure -> API Keys -> Add a custom authentication provider:
-
-- Name: `supabase`
-- Domain: `<project-ref>.supabase.co`
-- Audience: `supabase`
-
-### 3c. Create a Clerk JWT template
-
-Clerk Dashboard -> Customize Session Token -> Templates -> New template:
-
-- Name: `supabase`
-- Claims:
-
-```json
-{
-  "sub": "{{user.id}}",
-  "role": "authenticated",
-  "aud": "supabase",
-  "email": "{{user.primary_email_address}}"
-}
-```
-
-Leave the lifetime at the default (about 60 seconds). The app fetches a fresh
-token per request through `accessToken`, so a short lifetime is correct.
-
-### 3d. Enable third-party auth on Supabase
-
-Dashboard -> Authentication -> Sign In / Providers -> Third-Party Auth ->
-Clerk -> enable, using the same values as step 3b.
+`handle_new_user()` creates the `profiles` row automatically on first signup,
+so there is no separate onboarding write to get right.
 
 ## 4. Configure the app
 
@@ -76,10 +43,10 @@ EXPO_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=<anon public key>
 ```
 
-Both values are safe to ship in the client bundle. Access control is enforced by
-row level security, not by keeping these secret.
+The anon key is safe to ship in the client bundle. It is not a secret: access is
+limited by row level security, which the app cannot bypass.
 
-For CI, set the same two as repository secrets:
+For CI:
 
 ```bash
 gh secret set EXPO_PUBLIC_SUPABASE_URL --repo marvel-254/bro
@@ -89,31 +56,32 @@ gh secret set EXPO_PUBLIC_SUPABASE_ANON_KEY --repo marvel-254/bro
 ## 5. Verify
 
 ```bash
-# schema and policies applied
-supabase db push --dry-run
-
-# app compiles and tests pass
 npm run typecheck && npm run lint && npm test
+supabase inspect db table-stats --linked   # 11 tables should be listed
 ```
 
-Then run the app, sign in with Clerk, and open a conversation. A message sent from
-one client should appear in the other without a refresh — that is the realtime
-channel on `messages` working.
+Runtime smoke test — anonymous access must be denied:
 
-## Troubleshooting
+```bash
+# expect [] — RLS blocks unauthenticated reads
+curl -s "$EXPO_PUBLIC_SUPABASE_URL/rest/v1/messages?select=id" \
+  -H "apikey: $EXPO_PUBLIC_SUPABASE_ANON_KEY"
 
-| Symptom | Cause |
-|---|---|
-| "Backend not configured" | env vars missing at build time; rebuild the APK |
-| Every query returns empty | RLS is denying; confirm the Clerk token has `role: authenticated` |
-| Realtime never fires | table missing from `supabase_realtime` publication; re-run `supabase db push` |
-| `Invalid JWT` errors | Clerk JWT secret does not match the Supabase JWT secret |
+# expect 401 — RLS blocks unauthenticated writes
+curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+  "$EXPO_PUBLIC_SUPABASE_URL/rest/v1/messages" \
+  -H "apikey: $EXPO_PUBLIC_SUPABASE_ANON_KEY" \
+  -H 'Content-Type: application/json' -d '{}'
+```
+
+Then run the app, sign up, open a conversation, and send a message from a second
+client to confirm realtime delivery.
 
 ## Schema reference
 
 | Table | Purpose |
 |---|---|
-| `profiles` | one row per auth user, auto-created on first sign-in |
+| `profiles` | one row per auth user, auto-created on first sign-up |
 | `spaces` | communities; `is_public` controls discoverability |
 | `space_members` | membership and role (`owner`, `admin`, `member`) |
 | `conversations` | direct, group, space and live conversations |
@@ -126,3 +94,21 @@ channel on `messages` working.
 
 Policy helpers (`is_conversation_member`, `is_space_member`,
 `is_conversation_admin`) are `security definer` so member checks do not recurse.
+They are defined after the table definitions because Postgres validates `sql`
+function bodies at creation time.
+
+## Legacy schema
+
+`drop-legacy-church-app.sql` clears a `public` schema left behind by an abandoned
+app. It is not in `migrations/`, so `db push` never runs it. Only apply it to a
+project you intend to hand over entirely.
+
+## Troubleshooting
+
+| Symptom | Cause |
+|---|---|
+| "Backend not configured" | env vars missing at build time; rebuild the APK |
+| Every query returns empty | no session; check `isAuthenticated` and sign-in errors |
+| Sign-up succeeds but app stays on welcome | email confirmation is on; confirm before signing in |
+| Realtime never fires | table missing from `supabase_realtime`; re-run `supabase db push` |
+| `JWT` / `403` on writes | RLS denies; verify `conversation_members` has a row for the user |

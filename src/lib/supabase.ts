@@ -1,11 +1,12 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 /**
  * Supabase client for BRO.
  *
- * Identity is owned by Clerk. The Clerk session token is passed through as the
- * Supabase access token, so Postgres sees auth.uid() equal to the Clerk user id
- * and the RLS policies in supabase/migrations apply unchanged.
+ * Supabase owns identity as well as data: the session is persisted locally and
+ * refreshed automatically, and Postgres resolves the caller through
+ * auth.uid(), so the RLS policies in supabase/migrations apply unchanged.
  *
  * Required env vars (see .env.example):
  *   EXPO_PUBLIC_SUPABASE_URL
@@ -17,18 +18,6 @@ const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
-type TokenProvider = () => Promise<string | null>;
-
-let tokenProvider: TokenProvider | null = null;
-
-/**
- * Wire the Clerk token getter in once, from the auth layer. Kept separate from
- * module init so the client is not rebuilt when auth state changes.
- */
-export function setSupabaseTokenProvider(provider: TokenProvider): void {
-  tokenProvider = provider;
-}
-
 function createSupabaseClient(): SupabaseClient | null {
   if (!isSupabaseConfigured) {
     return null;
@@ -36,16 +25,11 @@ function createSupabaseClient(): SupabaseClient | null {
 
   return createClient(supabaseUrl as string, supabaseAnonKey as string, {
     auth: {
-      // Clerk owns the session; Supabase must not persist or refresh it.
-      persistSession: false,
-      autoRefreshToken: false,
+      // React Native has no window.localStorage; AsyncStorage stands in for it.
+      storage: AsyncStorage,
+      persistSession: true,
+      autoRefreshToken: true,
       detectSessionInUrl: false,
-    },
-    accessToken: async () => {
-      if (!tokenProvider) {
-        return null;
-      }
-      return tokenProvider();
     },
   });
 }
