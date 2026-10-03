@@ -12,6 +12,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - Clerk authentication integrated
 - Expo Router navigation
 
+## [0.1.1] — 2026-10-03
+
+### Fixed
+- Upgraded to Expo SDK 53 (expo-modules-core 2.5.0) — fixes the missing `expo-module-gradle-plugin` that broke the Android APK build (expo/expo#36638)
+- React Native 0.79, React 19, expo-router 5
+- Jest `transformIgnorePatterns` added so expo packages transform under jest
+- Working Android debug APK (`BRO-v0.1.1-debug.apk`) attached to the release
+
 ## [0.1.0] — 2026-10-02
 
 Initial release.
