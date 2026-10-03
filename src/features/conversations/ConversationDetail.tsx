@@ -12,6 +12,8 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS, RADIUS, SEMANTIC_COLORS, SPACING, TYPOGRAPHY } from '../../theme';
 import {
   deleteMessage,
@@ -28,6 +30,13 @@ import {
 import { sendTyping, watchTyping } from '../../lib/presence';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth-context';
+import {
+  fetchBranchesByRoot,
+  fetchReplyCounts,
+  branchFromReplies,
+  subscribeToBranches,
+  BRANCH_SUGGEST_AT,
+} from '../../lib/branches';
 import type { MessageReactionRow, MessageWithSender } from '../../lib/database.types';
 
 /**
@@ -44,6 +53,7 @@ interface Props {
 }
 
 export default function ConversationDetail({ conversationId, title }: Props) {
+  const router = useRouter();
   const { user: currentUser } = useAuth();
   const [messages, setMessages] = useState<MessageWithSender[]>([]);
   const [draft, setDraft] = useState('');
@@ -52,6 +62,9 @@ export default function ConversationDetail({ conversationId, title }: Props) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reactions, setReactions] = useState<Record<string, MessageReactionRow[]>>({});
+  const [replyCounts, setReplyCounts] = useState<Record<string, number>>({});
+  const [branchByRoot, setBranchByRoot] = useState<Record<string, string>>({});
+  const [branching, setBranching] = useState<string | null>(null);
   const [readCursors, setReadCursors] = useState<Record<string, string | null>>({});
   const [typists, setTypists] = useState<Map<string, string>>(new Map());
   const [replyingTo, setReplyingTo] = useState<MessageWithSender | null>(null);
@@ -77,6 +90,14 @@ export default function ConversationDetail({ conversationId, title }: Props) {
       const ids = rows.map((message) => message.id);
       if (ids.length > 0) {
         setReactions(await fetchReactions(ids));
+        // Branch pills: one reply-count query and one branch lookup for the whole
+        // page, never one per message.
+        const [counts, branches] = await Promise.all([
+          fetchReplyCounts(ids),
+          fetchBranchesByRoot(ids),
+        ]);
+        setReplyCounts(counts);
+        setBranchByRoot(branches);
       }
       setReadCursors(await fetchReadCursors(conversationId));
     } catch (err) {
@@ -118,6 +139,9 @@ export default function ConversationDetail({ conversationId, title }: Props) {
   useEffect(() => {
     return subscribeToConversation(conversationId, {
       onInsert: (incoming) => {
+        // Branch messages share the conversation_id, so this channel delivers
+        // them too. They belong to the branch screen, not here.
+        if (incoming.branch_id) return;
         setMessages((current) => {
           if (current.some((message) => message.id === incoming.id)) {
             return current;
@@ -143,6 +167,12 @@ export default function ConversationDetail({ conversationId, title }: Props) {
       },
     });
   }, [conversationId]);
+
+  // Branch creation and counter changes must refresh the pills, otherwise a
+  // branch spun off in another client leaves a stale count here.
+  useEffect(() => {
+    return subscribeToBranches(conversationId, { onChange: () => void load() });
+  }, [conversationId, load]);
 
   // Typing indicator.
   useEffect(() => {
@@ -240,6 +270,33 @@ export default function ConversationDetail({ conversationId, title }: Props) {
     setDraft(message.content);
   };
 
+  /**
+   * Spin a reply thread off into a branch. Existing replies are moved across
+   * rather than copied, so nobody retypes anything and the parent chat stops
+   * carrying a thread that has outgrown it.
+   */
+  const openBranch = useCallback(
+    async (message: MessageWithSender) => {
+      const existing = branchByRoot[message.id];
+      if (existing) {
+        router.push(`/chat/${conversationId}/branch/${existing}`);
+        return;
+      }
+
+      setBranching(message.id);
+      const result = await branchFromReplies(conversationId, message.id);
+      setBranching(null);
+
+      if (!result.ok) {
+        Alert.alert('Could not open a branch', result.error);
+        return;
+      }
+      setBranchByRoot((current) => ({ ...current, [message.id]: result.branch.id }));
+      router.push(`/chat/${conversationId}/branch/${result.branch.id}`);
+    },
+    [branchByRoot, conversationId, router],
+  );
+
   const renderItem = useCallback(
     ({ item, index }: { item: MessageWithSender; index: number }) => {
       const previous = index > 0 ? messages[index - 1] : null;
@@ -323,11 +380,59 @@ export default function ConversationDetail({ conversationId, title }: Props) {
                 ))}
               </View>
             ) : null}
+
+            {/* Branch pill: appears once a thread is busy enough to deserve its own
+                room, or immediately when a branch already exists for this
+                message. Tapping opens the branch rather than making a second one. */}
+            {(() => {
+              const existingBranchId = branchByRoot[item.id];
+              const count = replyCounts[item.id] ?? 0;
+              if (!existingBranchId && count < BRANCH_SUGGEST_AT) return null;
+              const busy = branching === item.id;
+
+              return (
+                <Pressable
+                  style={styles.branchPill}
+                  onPress={() => void openBranch(item)}
+                  disabled={busy}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    existingBranchId
+                      ? `Open branch, ${count} ${count === 1 ? 'reply' : 'replies'}`
+                      : `Move ${count} replies into a branch`
+                  }
+                >
+                  <Ionicons
+                    name="return-down-forward"
+                    size={12}
+                    color={COLORS.primaryContainer}
+                  />
+                  <Text style={styles.branchPillText}>
+                    {busy
+                      ? 'opening...'
+                      : `${count} ${count === 1 ? 'reply' : 'replies'}${
+                          existingBranchId ? ' — open branch' : ' — make a branch'
+                        }`}
+                  </Text>
+                </Pressable>
+              );
+            })()}
           </View>
         </Pressable>
       );
     },
-    [messages, selfId, reactions, readCursors, onDelete, onReact],
+    [
+      messages,
+      selfId,
+      reactions,
+      readCursors,
+      onDelete,
+      onReact,
+      replyCounts,
+      branchByRoot,
+      branching,
+      openBranch,
+    ],
   );
 
   if (!isSupabaseConfigured) {
@@ -544,6 +649,23 @@ const styles = StyleSheet.create({
   },
   reactionText: {
     fontSize: 14,
+  },
+  branchPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: SPACING.spaceXs,
+    paddingVertical: 4,
+    paddingHorizontal: SPACING.spaceXs,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    borderColor: COLORS.primaryContainer,
+    alignSelf: 'flex-start',
+  },
+  branchPillText: {
+    ...TYPOGRAPHY.labelSM,
+    fontWeight: '700',
+    color: COLORS.primaryContainer,
   },
   centered: {
     flex: 1,

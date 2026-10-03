@@ -5,7 +5,7 @@ Project root: `/home/marvel/Projects/bro/`
 Branch: `feat/supabase-chat` (working branch, pushed, PR #3 open → main)
 App name: **bro** (NOT "BROS" — sir confirmed the name stays `bro`, package `app.bro`)
 
-Current state: typecheck clean, lint 0 errors (2 `any` warnings), 181/181 tests
+Current state: typecheck clean, lint 0 errors (2 `any` warnings), 216/216 tests
 pass, all 5 PR checks green (quality, validate, secrets-check, fdroid-compliance,
 build-android with `BRO-debug` APK artifact).
 
@@ -58,6 +58,11 @@ tightened `activity_select` from "any signed-in user" to relevance-scoped, added
 the `activity_fan_out` trigger that writes `notifications`, added
 `notifications` to the realtime publication, and indexed `activity(target_type,
 target_id, created_at desc)`.
+
+Migration `20261003000500_branches.sql` (applied): added the missing foreign key
+on `conversation_branches.root_message_id`, a `messages_sync_branch` trigger that
+maintains `message_count` and `last_activity_at`, and a partial index on
+`messages(reply_to_message_id, created_at desc)` for the reply pill.
 
 **GOTCHA (critical):** Postgres validates `language sql` function bodies at
 creation time, so RLS helper functions (is_conversation_member, is_space_member,
@@ -152,12 +157,34 @@ global search, Spaces, Supabase backend + RLS.
   the only path. The same migration adds an `activity_fan_out` trigger, because
   nothing had ever written to `notifications` — an Activity screen built on it
   would otherwise have been permanently empty.
+- **Conversation branches — the signature feature** — `src/lib/branches.ts`, a
+  real `BranchDetail.tsx`, route `/chat/[id]/branch/[branchId]`, and a branch
+  pill in the chat screen. Migration `20261003000500_branches.sql` (applied)
+  fixes two things that made branches impossible before: `root_message_id` had
+  **no foreign key**, and `message_count` was a stored integer **nothing
+  maintained**, so it would have read 0 forever — exactly the number the pill
+  shows. A `messages_sync_branch` trigger now keeps it and `last_activity_at`
+  honest on insert, move and delete.
+  - Reply counts for the page come from one query, not one per message.
+  - A thread becomes a branch at 5 replies; tapping an existing branch opens it
+    rather than creating a second one for the same message.
+  - `branchFromReplies` **moves** existing replies in rather than copying them,
+    and rolls the branch back if the move fails.
+  - The context header (who said what it started from) is permanent, and back
+    is Branch → parent conversation, explicitly.
+
+**Two branch bugs found and fixed while wiring it up** — both would have shipped
+silently, duplicating every threaded message:
+  - `fetchMessages` had no `branch_id` filter, so branch messages appeared in the
+    main chat as well as the branch screen. Now `.is('branch_id', null)`.
+  - The conversation realtime channel filters on `conversation_id` only, which
+    branches share, so `onInsert` was appending branch messages into the main
+    chat live. Now skipped when `branch_id` is set.
 
 **Still not built:**
-- **Branches** — the signature feature. `BranchDetail.tsx` exists but nothing
-  creates a branch or renders the "↳ N replies" pill from the chat screen.
 - Drops / Plans creation UI / Squads / Statuses: tables exist, read-only in Pulse.
-  Nothing calls `recordActivity`, so the fan-out trigger has no producers yet.
+  Nothing calls `recordActivity`, so the Activity fan-out trigger has no
+  producers yet — the feed stays empty until chat replies/reactions emit.
 - Media: no `expo-image-picker`/`expo-av`, no Storage buckets created.
 - Push notifications: no `push_tokens` table, no fanout, no OS delivery.
 - `SpaceDetail.tsx` is still a 9-line placeholder.
@@ -166,10 +193,10 @@ global search, Spaces, Supabase backend + RLS.
 **Nav note:** `app/(tabs)/spaces.tsx` and `create.tsx` existed but were
 unregistered in `_layout.tsx`, so both were unreachable. They are now routable
 but hidden with `href: null`, keeping the frozen Home/Chats/Bros/Me tab set.
-`/search`, `/activity` and `/new-chat` are stack routes off the tabs.
+Stack routes off the tabs: `/chat/[id]`, `/chat/[id]/branch/[branchId]`,
+`/new-chat`, `/search`, `/activity`.
 
-Next feature per the docs build order is **conversation branches**, then wiring
-`recordActivity` producers so the Activity feed has real events.
+Next: wire `recordActivity()` producers, then media and push.
 
 ### Deferred / not started (sir's original order)
 - Friends/friend requests — no `friendships` table yet. Who's Around lists
@@ -220,9 +247,11 @@ Privacy, and the whole Activity feed).
 | `src/lib/spaces.ts` | my/discoverable spaces, join, leave, create |
 | `src/lib/activity.ts` | activity feed + unread count + mark read + `recordActivity` |
 | `src/lib/activity-badge-context.tsx` | shared unread-activity badge, mounted in `app/_layout.tsx` |
+| `src/lib/branches.ts` | branch CRUD, reply counts, move-replies-into-a-branch |
 | `src/lib/database.types.ts` | row types |
 | `src/features/conversations/ConversationDetail.tsx` | chat screen (real, working) |
 | `src/features/conversations/ConversationListScreen.tsx` | Chats tab + activity badge |
+| `src/features/conversations/BranchDetail.tsx` | branch thread with permanent context header |
 | `src/features/pulse/PulseScreen.tsx` | Pulse: Live now / Tap-in / Around |
 | `src/features/search/SearchScreen.tsx` | grouped global search |
 | `src/features/spaces/SpacesScreen.tsx` | Your spaces / Discover + create sheet |
@@ -230,13 +259,14 @@ Privacy, and the whole Activity feed).
 | `src/features/people/PeopleScreen.tsx` | Who's Around |
 | `src/components/ui/Avatar.tsx` | avatar + presence dot |
 | `src/lib/__tests__/conversations.test.ts` | the chainable query-builder mock pattern to copy |
-| `supabase/migrations/` | 001 initial, 002 tranche-1, 003 search, 004 activity |
+| `supabase/migrations/` | 001 initial, 002 tranche-1, 003 search, 004 activity, 005 branches |
 | `supabase/README.md` | backend setup docs |
 
 ### Routes
 `app/(tabs)/` — `index` (Pulse), `chats`, `people` (Bros), `you` (Me);
 `spaces` and `create` registered with `href: null` (routable, hidden).
-Stack routes off the tabs: `/chat/[id]`, `/new-chat`, `/search`, `/activity`.
+Stack routes: `/chat/[id]`, `/chat/[id]/branch/[branchId]`, `/new-chat`,
+`/search`, `/activity`.
 
 ## 8. CI / Build
 

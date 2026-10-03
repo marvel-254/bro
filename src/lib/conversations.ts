@@ -21,7 +21,13 @@ export type SendResult =
   | { ok: true; message: MessageRow }
   | { ok: false; error: string };
 
-/** Fetch a page of messages, newest-last, with sender profiles attached. */
+/**
+ * Fetch a page of messages, newest-last, with sender profiles attached.
+ *
+ * Messages that live inside a branch are excluded: they belong to the branch
+ * screen, and showing them here too would duplicate the thread and double-count
+ * it in the reply pill.
+ */
 export async function fetchMessages(
   conversationId: string,
   limit: number = MESSAGES_PAGE_SIZE,
@@ -38,6 +44,7 @@ export async function fetchMessages(
       'id, conversation_id, sender_id, content, type, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone, sender:profiles!messages_sender_id_fkey (id, username, display_name, avatar_url, status, presence, presence_text, presence_emoji)',
     )
     .eq('conversation_id', conversationId)
+    .is('branch_id', null)
     .order('created_at', { ascending: false })
     .limit(limit);
 

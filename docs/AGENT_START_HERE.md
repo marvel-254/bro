@@ -11,7 +11,7 @@ Stack locked: Expo SDK 53 + RN 0.79.6 + expo-router 5.1.11 + TypeScript + Supaba
 
 Branch: `feat/supabase-chat` (working, pushed, PR #3 open → main, all checks green). Package `app.bro`, scheme `bro://`.
 
-Current state: 181/181 tests, typecheck clean, lint 0 errors.
+Current state: 216/216 tests, typecheck clean, lint 0 errors.
 
 ## 2. Frozen decisions — do not re-debate
 
@@ -29,18 +29,20 @@ Voice core: `yoh, tsup bruv, uko wapi msee, cuz, pull up, tap in, run it back`.
 - `app/_layout.tsx` — Auth + Presence + People + ActivityBadge providers.
 - `app/(tabs)/` — index=Home Pulse, chats, people=Bros, you=Me. `spaces` and
   `create` are registered with `href: null` (routable but hidden from the bar).
-  Stack routes: `/chat/[id]`, `/new-chat`, `/search`, `/activity`.
+  Stack routes: `/chat/[id]`, `/chat/[id]/branch/[branchId]`, `/new-chat`,
+  `/search`, `/activity`.
 - `src/features/auth/WelcomeScreen.tsx` — current `BRO / Communication, reimagined / Create account / Sign in`.
 - `src/features/pulse/PulseScreen.tsx` — **live**: Live now / Tap-in / Around.
-- `src/features/conversations/` — List, Detail, NewChat, BranchDetail (last one still a stub).
+- `src/features/conversations/` — List, Detail, NewChat, BranchDetail (all real now).
 - `src/features/search/SearchScreen.tsx` — grouped global search (was an unreachable placeholder).
 - `src/features/spaces/SpacesScreen.tsx` — Your spaces / Discover + create sheet (was mock).
 - `src/features/activity/ActivityScreen.tsx` — activity feed (was an empty directory).
 - `src/lib/` — `supabase.ts` (AsyncStorage session), `auth-context.tsx`,
-  `conversations.ts`, `pulse.ts`, `search.ts`, `spaces.ts`, `activity.ts`,
-  `activity-badge-context.tsx`, `presence.ts`, `presence-context.tsx`,
-  `people-context.tsx`, `database.types.ts`.
-- `supabase/migrations/` — 001 initial (11 tables+RLS), 002 tranche-1, 003 search, 004 activity.
+  `conversations.ts`, `branches.ts`, `pulse.ts`, `search.ts`, `spaces.ts`,
+  `activity.ts`, `activity-badge-context.tsx`, `presence.ts`,
+  `presence-context.tsx`, `people-context.tsx`, `database.types.ts`.
+- `supabase/migrations/` — 001 initial (11 tables+RLS), 002 tranche-1,
+  003 search, 004 activity, 005 branches.
 - `.github/workflows/` — ci, android-build (debug APK `BRO-debug`), release, validate-secrets, fdroid-check.
 
 ## 4. Where to start — in order
@@ -59,8 +61,11 @@ Then the feature order actually used, all landed and on `feat/supabase-chat`:
 - Spaces — `c425027`
 - Activity (+ migration 004, closed a privacy leak) — `862f714`
 
-Next: **conversation branches** (the signature feature, still unbuilt), then
-wire `recordActivity()` producers so the Activity feed has real events.
+- Activity (+ migration 004, closed a privacy leak) — `862f714`
+- Conversation branches (+ migration 005) — the signature feature
+
+Next: wire `recordActivity()` producers so the Activity feed has real events,
+then media (Storage buckets) and push notifications.
 
 P1 reliability: `expo-sqlite` + outbox + `client_msg_id` + ack + reconnect refetch + pagination.
 P2 media+push: buckets RLS + compress pipeline + `expo-av` voice + Expo push offline-only fanout + `bro://` deep links.
