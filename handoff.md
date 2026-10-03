@@ -1,6 +1,6 @@
 # BRO — Handoff / State of Work
 
-Date: 2026-10-03 (updated after chat system + CI fixes landed)
+Date: 2026-10-03 (updated after Activity landed — see section 5)
 Project root: `/home/marvel/Projects/bro/`
 Branch: `feat/supabase-chat` (working branch, pushed, PR #3 open → main)
 App name: **bro** (NOT "BROS" — sir confirmed the name stays `bro`, package `app.bro`)
@@ -8,6 +8,9 @@ App name: **bro** (NOT "BROS" — sir confirmed the name stays `bro`, package `a
 Current state: typecheck clean, lint 0 errors (2 `any` warnings), 181/181 tests
 pass, all 5 PR checks green (quality, validate, secrets-check, fdroid-compliance,
 build-android with `BRO-debug` APK artifact).
+
+**Read section 5 before trusting any screen.** Three of them were hardcoded mock
+data or unreachable placeholders until this session.
 
 ---
 
@@ -39,16 +42,41 @@ Migration `20261003000100_bro_initial_schema.sql` (11 tables, full RLS):
 profiles, spaces, space_members, conversations, conversation_members, messages,
 conversation_branches, message_reactions, attachments, activity, notifications.
 
-Migration `20261003000200_features_tranche_1.sql` (applied, uncommitted until
-commit 23d1895): added presence columns to profiles, disappearing-message
-columns to messages, invites, pinned_messages, drops + drop_responses,
+Migration `20261003000200_features_tranche_1.sql` (applied, committed in
+`23d1895`): presence columns on profiles, disappearing-message columns on
+messages, invites, pinned_messages, drops + drop_responses,
 status_updates + status_replies, squads, plans + plan_responses,
 custom_reactions, blocks, user_mutes. RLS on all. Realtime publication updated.
+
+Migration `20261003000300_search.sql` (applied, `e5bd40e`): generated `tsvector`
+on `messages` using the `simple` config, GIN index, and `search_messages(text,int)`
+SECURITY DEFINER with a pinned search_path. Execute granted to `authenticated`,
+revoked from `anon`.
+
+Migration `20261003000400_activity_notifications.sql` (applied, `862f714`):
+tightened `activity_select` from "any signed-in user" to relevance-scoped, added
+the `activity_fan_out` trigger that writes `notifications`, added
+`notifications` to the realtime publication, and indexed `activity(target_type,
+target_id, created_at desc)`.
 
 **GOTCHA (critical):** Postgres validates `language sql` function bodies at
 creation time, so RLS helper functions (is_conversation_member, is_space_member,
 is_conversation_admin) MUST be defined AFTER the tables they reference, not at
 the top of a migration. This bit us on the first `db push`.
+
+**GOTCHA:** in a `SECURITY DEFINER` migration, a second `drop function if exists`
+after the `create function` silently deletes the function you just made, and the
+`grant` that follows then fails. Write the drop once, before the create.
+
+**GOTCHA:** combining a tsvector match with an `ilike` fallback using `AND`
+makes the fallback unreachable — the index match gates it. They must be `OR`ed
+or partial words ("tsu") can never match "tsup".
+
+**GOTCHA (RLS shape):** some tables are only readable *inside* a scope you are
+already a member of. `space_members` is readable only for spaces you belong to,
+so a member count for a public space you have not joined is genuinely unknown —
+return `null` and render that, never `0`. Same reasoning drove reading
+`notifications` instead of `activity` for the Activity screen.
 
 ## 4. Auth
 
@@ -73,7 +101,7 @@ AsyncStorage, auto-refresh on. `handle_new_user` trigger auto-creates a
   - `PeopleScreen.tsx`: "Who's Around" list + presence picker modal with custom
     activity + quick chips.
   - `presence.ts`: broadcast-channel presence + typing helpers (typing never touches disk).
-  - Verified: typecheck 0, eslint 0, 42/42 tests.
+  - Verified: typecheck 0, eslint 0.
 - **Chat system (Feature 2)** — commit `51795e1`: list + detail together.
   - `ConversationListScreen.tsx`: peer avatars + presence dot, last-message preview,
     unread badge, realtime reorder on new message.
@@ -85,7 +113,7 @@ AsyncStorage, auto-refresh on. `handle_new_user` trigger auto-creates a
   - Decision made: list + detail shipped together (sir's call).
 - **Tests for the chat module** — commit `e018915`: 45 unit tests for
   `conversations.ts` (chainable Supabase query-builder mock, terminal-method
-  overrides). 87 tests total, all passing.
+  overrides). This is the mock pattern later test files reuse.
 - **Doc stack drift fixed** — commit `e018915`: README, PRIVACY, fdroid/README,
   fdroid/metadata.toml, website/PRIVACY, website/download.html now say Supabase
   (were still claiming Clerk + Convex). Verified zero `clerk|convex` matches outside
@@ -140,24 +168,24 @@ unregistered in `_layout.tsx`, so both were unreachable. They are now routable
 but hidden with `href: null`, keeping the frozen Home/Chats/Bros/Me tab set.
 `/search`, `/activity` and `/new-chat` are stack routes off the tabs.
 
-Next feature per the docs build order is **conversation branches**.
+Next feature per the docs build order is **conversation branches**, then wiring
+`recordActivity` producers so the Activity feed has real events.
 
-### NOT YET BUILT (future features, in sir's order)
-- Friends/friend requests (no `friendships` table yet — Who's Around currently
-  lists conversation peers as the honest interim)
-- Bro Board (temporary social board, 24h posts) — schema exists (drops/statuses)
-- Statuses (24h) — schema exists (status_updates/status_replies)
-- Plans (Going/Maybe/Can't) — schema exists (plans/plan_responses)
-- Voice notes (needs recording + upload)
-- Media uploads (Supabase Storage buckets: avatars, chat-media, voice-notes,
-  statuses — NOT created yet)
-- 1-to-1 voice/video calls (WebRTC) — needs `react-native-webrtc` native module,
-  custom dev build (NOT Expo Go), STUN/TURN, HTTPS for browser testing. SFU
-  (LiveKit) abstraction for group calls later. **Cannot verify real calls from
-  here; mark incomplete honestly.**
-- Notifications (in-app first, Web Push later)
-- PWA — NOT applicable (native app)
-- Disappearing messages — schema exists (expires_at) but UI not built
+### Deferred / not started (sir's original order)
+- Friends/friend requests — no `friendships` table yet. Who's Around lists
+  conversation peers as the honest interim.
+- Bro Board (temporary 24h board) — schema exists (`drops`, `status_updates`).
+- Statuses (24h) — schema exists, no UI. Replies must resolve to a DM per the docs.
+- Plans creation UI — `plans` is read by Pulse's Tap-in strip but nothing creates one.
+- Squads — schema exists, no UI.
+- Voice notes — needs recording + upload.
+- Media uploads — Storage buckets (avatars, chat-media, voice-notes, statuses)
+  are NOT created yet.
+- 1-to-1 voice/video calls — needs `react-native-webrtc`, a custom dev build
+  (NOT Expo Go), STUN/TURN, and HTTPS for browser testing. LiveKit SFU for group
+  calls later. **Cannot be verified from here; mark incomplete honestly.**
+- Disappearing messages — `messages.expires_at` exists, no UI, no sweeper.
+- PWA — not applicable (native app).
 
 ## 6. Design direction (from the reverted web spec — ADOPT)
 
@@ -166,7 +194,16 @@ text, ONE configurable accent, thin borders, minimal gradients/glassmorphism,
 strong typography, monospace for metadata/status, small purposeful animations,
 streetwear/underground character. AVOID: generic SaaS dashboard, excessive
 rounded cards, purple AI gradients, giant icons, everything-in-a-card, fake
-stats/data. Bottom nav: Home / Chats / Calls / Bros / Me.
+stats/data.
+
+Bottom nav is **Home (Pulse) / Chats / Bros / Me** and is frozen — there is no
+Calls tab and no layout picker (`docs/research/dashboard-layout-A.md`). Spaces
+and Create are routable but hidden from the bar. The Calls icon does not appear
+in the chat header until WebRTC is real; do not add a dead button.
+
+Copy: `docs/research/bro-voice-guide.md` has 20 locked lines, max 1 slang per
+line, and clean English for anything about other people (Block/Delete/Report/
+Privacy, and the whole Activity feed).
 
 ## 7. Key files
 
@@ -178,12 +215,28 @@ stats/data. Bottom nav: Home / Chats / Calls / Bros / Me.
 | `src/lib/presence-context.tsx` | presence lifecycle provider |
 | `src/lib/people-context.tsx` | Who's Around roster provider |
 | `src/lib/conversations.ts` | message fetch/send/edit/delete, reactions, read cursors, realtime subscribe |
+| `src/lib/pulse.ts` | Pulse strips: live conversations, upcoming plans, realtime |
+| `src/lib/search.ts` | global search; messages via the `search_messages` RPC |
+| `src/lib/spaces.ts` | my/discoverable spaces, join, leave, create |
+| `src/lib/activity.ts` | activity feed + unread count + mark read + `recordActivity` |
+| `src/lib/activity-badge-context.tsx` | shared unread-activity badge, mounted in `app/_layout.tsx` |
 | `src/lib/database.types.ts` | row types |
 | `src/features/conversations/ConversationDetail.tsx` | chat screen (real, working) |
+| `src/features/conversations/ConversationListScreen.tsx` | Chats tab + activity badge |
+| `src/features/pulse/PulseScreen.tsx` | Pulse: Live now / Tap-in / Around |
+| `src/features/search/SearchScreen.tsx` | grouped global search |
+| `src/features/spaces/SpacesScreen.tsx` | Your spaces / Discover + create sheet |
+| `src/features/activity/ActivityScreen.tsx` | activity feed |
 | `src/features/people/PeopleScreen.tsx` | Who's Around |
 | `src/components/ui/Avatar.tsx` | avatar + presence dot |
-| `supabase/migrations/` | schema (001 initial, 002 features) |
+| `src/lib/__tests__/conversations.test.ts` | the chainable query-builder mock pattern to copy |
+| `supabase/migrations/` | 001 initial, 002 tranche-1, 003 search, 004 activity |
 | `supabase/README.md` | backend setup docs |
+
+### Routes
+`app/(tabs)/` — `index` (Pulse), `chats`, `people` (Bros), `you` (Me);
+`spaces` and `create` registered with `href: null` (routable, hidden).
+Stack routes off the tabs: `/chat/[id]`, `/new-chat`, `/search`, `/activity`.
 
 ## 8. CI / Build
 
@@ -207,25 +260,39 @@ stats/data. Bottom nav: Home / Chats / Calls / Bros / Me.
    Bypasses RLS. Only sir can do this in the dashboard. **Still open.**
 2. **Realtime unproven** — WebSocket handshake returned 500 to a plain GET
    (may be meaningless); never confirmed a message arriving in a second client.
-   Needs two devices/accounts to settle.
+   Needs two devices/accounts to settle. Note that migration 004 *did* add
+   `notifications` to the realtime publication, so that path is unverified too.
 3. **One test user** (`broprobe2026@gmail.com`) + one "Smoke Test" conversation
    + one message exist in the DB (created during verification). Offer to delete.
 4. **Storage buckets** not created (avatars, chat-media, voice-notes, statuses).
 5. **Friendships table** not created — Who's Around lists conversation peers.
-6. **PR #2** (`fix/validate-secrets-api`) is superseded by `77157ef`; close it.
-7. Screens still mock/placeholder — see "Build state" in section 5.
+6. **PR #2** (`fix/validate-secrets-api`) was superseded by `77157ef` and has
+   been closed.
+7. **Activity has no producers** — the fan-out trigger works, but nothing calls
+   `recordActivity()`, so replies/reactions do not yet create activity rows.
+   Until that is wired the Activity screen stays empty in practice.
+8. **Authorized-path search and activity unverified** — anon correctly gets `[]`
+   on both, and the code and RLS are right, but no end-to-end check has run as a
+   signed-in member with real rows. Needs a session.
 
 ## 10. How to verify / continue
 
 ```bash
 cd /home/marvel/Projects/bro
 git checkout feat/supabase-chat
-npm run typecheck && npm run lint && npm test
-# apply schema (if new migrations added):
+npx tsc --noEmit && npx eslint . && npx jest
+
+# apply schema (if new migrations added) — dry-run first:
+supabase db push --password "$(grep '^SUPABASE_DB_PASSWORD=' .env | cut -d= -f2-)" --dry-run
 supabase db push --password "$(grep '^SUPABASE_DB_PASSWORD=' .env | cut -d= -f2-)"
+
 # trigger a build:
 gh workflow run android-build.yml --repo marvel-254/bro --ref feat/supabase-chat
+gh pr checks 3
 ```
+
+`npm run` scripts time out on this machine; call `npx tsc` / `npx eslint` /
+`npx jest` directly instead.
 
 Supabase CLI token: `~/.config/supabase/access-token` (can list projects, NOT
 read keys or admin-read). **GOTCHA:** running `supabase projects api-keys` inside
