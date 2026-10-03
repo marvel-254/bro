@@ -1,9 +1,13 @@
 # BRO — Handoff / State of Work
 
-Date: 2026-10-03
+Date: 2026-10-03 (updated after chat system + CI fixes landed)
 Project root: `/home/marvel/Projects/bro/`
-Branch: `feat/supabase-chat` (working branch, pushed to origin)
+Branch: `feat/supabase-chat` (working branch, pushed, PR #3 open → main)
 App name: **bro** (NOT "BROS" — sir confirmed the name stays `bro`, package `app.bro`)
+
+Current state: typecheck clean, lint 0 errors (4 `any` warnings), 87/87 tests pass,
+all 5 PR checks green (quality, validate, secrets-check, fdroid-compliance,
+build-android with `BRO-debug` APK artifact).
 
 ---
 
@@ -70,16 +74,47 @@ AsyncStorage, auto-refresh on. `handle_new_user` trigger auto-creates a
     activity + quick chips.
   - `presence.ts`: broadcast-channel presence + typing helpers (typing never touches disk).
   - Verified: typecheck 0, eslint 0, 42/42 tests.
+- **Chat system (Feature 2)** — commit `51795e1`: list + detail together.
+  - `ConversationListScreen.tsx`: peer avatars + presence dot, last-message preview,
+    unread badge, realtime reorder on new message.
+  - `ConversationDetail.tsx`: replies, reactions, edit/delete-for-everyone, typing
+    indicator, read receipts, pagination, compact sender-name-above-message layout.
+  - `NewChatScreen.tsx`: start/resume a direct chat from the Who's Around roster.
+  - `conversations.ts`: full data access + `subscribeToConversation` /
+    `subscribeToConversationList` realtime channels.
+  - Decision made: list + detail shipped together (sir's call).
+- **Tests for the chat module** — commit `e018915`: 45 unit tests for
+  `conversations.ts` (chainable Supabase query-builder mock, terminal-method
+  overrides). 87 tests total, all passing.
+- **Doc stack drift fixed** — commit `e018915`: README, PRIVACY, fdroid/README,
+  fdroid/metadata.toml, website/PRIVACY, website/download.html now say Supabase
+  (were still claiming Clerk + Convex). Verified zero `clerk|convex` matches outside
+  `docs/research/` (which legitimately narrates the migration).
+- **CI secrets-check fixed** — commit `77157ef`: `validate-secrets.yml` used
+  `gh secret view`, which cannot read repo secrets under the default GITHUB_TOKEN,
+  so it failed every PR even though the secrets existed. Now uses the `secrets`
+  context via `env:`. `secrets-setup.md` + `setup-secrets.sh` rewritten for
+  Supabase (were Clerk).
 
-### NEXT (Feature 2 — chat system)
-Per sir's order, feature-by-feature. Feature 2 = real 1-to-1 + group messaging:
-replies, reactions, edit/delete, typing, read receipts, unread counts,
-pagination, compact "sender name above message" layout.
+### Build state — honest status vs. the docs
+Built and verified: auth, presence, chat (list + detail), new chat, Supabase
+backend + RLS.
 
-**Decision pending with sir:** build conversation LIST + DETAIL together
-(recommended) vs. only upgrade the detail screen. The current
-`ConversationDetail.tsx` is a single conversation view; there is NO conversation
-list screen yet. Recommended: build both as feature 2.
+**Not built — screens are placeholders or hardcoded mock data:**
+- `src/features/search/SearchScreen.tsx` — 8-line placeholder ("Search" text only).
+  Docs want people/spaces/conversations/messages/media search + FTS.
+- `src/features/pulse/PulseScreen.tsx` — hardcoded `activeUsers` /
+  `liveConversations` arrays. Docs want a live Pulse (Live now / Tap-in / Around).
+- `src/features/spaces/SpacesScreen.tsx` — hardcoded `spaces` + `channels` arrays.
+- `src/features/activity/` — **empty directory**, no feature at all.
+- Branches: `BranchDetail.tsx` exists but nothing creates a branch or renders the
+  "↳ N replies" pill from the chat screen.
+- Drops / Plans / Squads / Statuses: tables exist in migration 002, no UI.
+- Media: no `expo-image-picker`/`expo-av`, no Storage buckets created.
+- Push notifications: nothing. No `push_tokens` table, no fanout.
+
+Next feature per the docs build order is **Pulse made live** (it is the main
+screen and currently fake), then Spaces, then Search, then Activity.
 
 ### NOT YET BUILT (future features, in sir's order)
 - Friends/friend requests (no `friendships` table yet — Who's Around currently
@@ -128,23 +163,31 @@ stats/data. Bottom nav: Home / Chats / Calls / Bros / Me.
 
 - `android-build.yml` — builds debug APK, requires Supabase env secrets.
 - `release.yml` — builds on `v*` tags.
-- `validate-secrets.yml` — was ALREADY broken (bad YAML indentation, OWNER=/REPO=
-  at column 0) before I touched it; fixed it to require the Supabase pair.
+- `validate-secrets.yml` — was broken twice: first bad YAML indentation, then it
+  used `gh secret view`, which cannot read repo secrets under the default
+  GITHUB_TOKEN and so failed every PR despite the secrets existing. Fixed in
+  `77157ef` to read the `secrets` context via `env:`.
 - **GOTCHA:** tag pushes may not trigger workflows in this repo (GitHub-side
   issue seen on the aide project). Publish via `gh workflow run ... --ref <tag>`.
 - APK artifact name: `BRO-debug` (~49MB compressed, ~169MB uncompressed debug APK).
+- `ci.yml` / `fdroid-check.yml` / `validate-secrets.yml` trigger only on
+  `main`/`develop` (push or PR). To exercise them on a feature branch, open a PR.
+- **PR #3** (`feat/supabase-chat` → `main`) is open and all 5 checks are green:
+  `quality`, `validate`, `secrets-check`, `fdroid-compliance`, `build-android`.
 
 ## 9. Open items / security
 
 1. **Rotate service-role key** — it was pasted in chat and is in local `.env`.
-   Bypasses RLS. Only sir can do this in the dashboard.
+   Bypasses RLS. Only sir can do this in the dashboard. **Still open.**
 2. **Realtime unproven** — WebSocket handshake returned 500 to a plain GET
    (may be meaningless); never confirmed a message arriving in a second client.
+   Needs two devices/accounts to settle.
 3. **One test user** (`broprobe2026@gmail.com`) + one "Smoke Test" conversation
    + one message exist in the DB (created during verification). Offer to delete.
-4. **Conversation list screen** does not exist yet (feature 2).
-5. **Storage buckets** not created (avatars, chat-media, voice-notes, statuses).
-6. **Friendships table** not created.
+4. **Storage buckets** not created (avatars, chat-media, voice-notes, statuses).
+5. **Friendships table** not created — Who's Around lists conversation peers.
+6. **PR #2** (`fix/validate-secrets-api`) is superseded by `77157ef`; close it.
+7. Screens still mock/placeholder — see "Build state" in section 5.
 
 ## 10. How to verify / continue
 
