@@ -6,8 +6,7 @@ Branch: `feat/supabase-chat` (working branch, pushed, PR #3 open → main)
 App name: **bro** (NOT "BROS" — sir confirmed the name stays `bro`, package `app.bro`)
 
 Current state: typecheck clean, lint 0 errors (2 `any` warnings), 216/216 tests
-pass, all 5 PR checks green (quality, validate, secrets-check, fdroid-compliance,
-build-android with `BRO-debug` APK artifact).
+pass. All 5 PR checks green as of `bdf7f60`.
 
 **Read section 5 before trusting any screen.** Three of them were hardcoded mock
 data or unreachable placeholders until this session.
@@ -63,6 +62,11 @@ Migration `20261003000500_branches.sql` (applied): added the missing foreign key
 on `conversation_branches.root_message_id`, a `messages_sync_branch` trigger that
 maintains `message_count` and `last_activity_at`, and a partial index on
 `messages(reply_to_message_id, created_at desc)` for the reply pill.
+
+Migration `20261003000600_activity_producers.sql` (applied, **verified working
+end to end**): triggers that derive replies, @mentions, reactions and space joins
+from the rows themselves. Deliberately in the database rather than the client —
+see the note below. Adds `prune_old_activity()` for a 30-day retention sweep.
 
 **GOTCHA (critical):** Postgres validates `language sql` function bodies at
 creation time, so RLS helper functions (is_conversation_member, is_space_member,
@@ -183,10 +187,11 @@ silently, duplicating every threaded message:
 
 **Still not built:**
 - Drops / Plans creation UI / Squads / Statuses: tables exist, read-only in Pulse.
-  Nothing calls `recordActivity`, so the Activity fan-out trigger has no
-  producers yet — the feed stays empty until chat replies/reactions emit.
+  `invite` and `follow` activity have no table to hang a trigger off, so they
+  still go through the client `recordActivity()` — and neither has UI yet.
 - Media: no `expo-image-picker`/`expo-av`, no Storage buckets created.
 - Push notifications: no `push_tokens` table, no fanout, no OS delivery.
+- `prune_old_activity()` exists but is **not scheduled** (needs pg_cron).
 - `SpaceDetail.tsx` is still a 9-line placeholder.
 - `YouScreen` / `SpaceListItem` still carry `any` casts (2 lint warnings left).
 
@@ -259,7 +264,8 @@ Privacy, and the whole Activity feed).
 | `src/features/people/PeopleScreen.tsx` | Who's Around |
 | `src/components/ui/Avatar.tsx` | avatar + presence dot |
 | `src/lib/__tests__/conversations.test.ts` | the chainable query-builder mock pattern to copy |
-| `supabase/migrations/` | 001 initial, 002 tranche-1, 003 search, 004 activity, 005 branches |
+| `supabase/migrations/` | 001 initial, 002 tranche-1, 003 search, 004 activity, 005 branches, 006 activity producers |
+| `scripts/verify-activity-triggers.sh` | end-to-end check that activity triggers fire, then cleans up |
 | `supabase/README.md` | backend setup docs |
 
 ### Routes
@@ -298,12 +304,31 @@ Stack routes: `/chat/[id]`, `/chat/[id]/branch/[branchId]`, `/new-chat`,
 5. **Friendships table** not created — Who's Around lists conversation peers.
 6. **PR #2** (`fix/validate-secrets-api`) was superseded by `77157ef` and has
    been closed.
-7. **Activity has no producers** — the fan-out trigger works, but nothing calls
-   `recordActivity()`, so replies/reactions do not yet create activity rows.
-   Until that is wired the Activity screen stays empty in practice.
-8. **Authorized-path search and activity unverified** — anon correctly gets `[]`
-   on both, and the code and RLS are right, but no end-to-end check has run as a
-   signed-in member with real rows. Needs a session.
+7. **Activity producers landed and were verified** — migration 006 hangs
+   triggers on `messages`, `message_reactions` and `space_members`, so replies,
+   @mentions, reactions and space joins write activity rows on every path. This
+   was put in the database rather than the client deliberately: a client-side
+   `recordActivity()` only fires when the client remembers to make it, so a
+   background send, a second client, or a process dying mid-request silently
+   loses the event — and the client is the party we least want asserting who did
+   what. The triggers read the actor from the row itself.
+
+8. **How the authorized path was finally verified** —
+   `scripts/verify-activity-triggers.sh` writes a reply, a mention and a
+   reaction with the service-role key, asserts the expected activity and
+   notification rows appear, then deletes everything it made. Result:
+   `reply, mention` then `reaction, reply, mention`, notifications fanned out to
+   the right users, database back to its prior contents. Re-run it any time.
+   Still unverified: message **search** with real rows as a member, and realtime
+   delivery on a second device.
+
+9. **Two gotchas from writing that script:**
+   - PostgREST returns **no body** for an INSERT unless you send
+     `Prefer: return=representation`. A successful insert is indistinguishable
+     from a silent failure if you read the id straight out of the response.
+     This cost three orphan rows before it was spotted.
+   - A `curl | jq` that returns `[]` can print nothing at all under
+     `set -euo pipefail`, which reads like a crash. Check the HTTP status.
 
 ## 10. How to verify / continue
 

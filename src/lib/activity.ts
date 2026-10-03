@@ -14,7 +14,9 @@ import type { Presence } from './presence';
  *      not have to re-derive a destination from target ids.
  *
  * The fan-out that populates these rows is the `activity_fan_out` trigger in
- * migration 004, so activity appears here the moment it happens.
+ * migration 004, and the events themselves are written by the producer triggers
+ * in migration 006 (messages, message_reactions, space_members). So activity
+ * appears here the moment it happens, from any client.
  */
 
 export type ActivityType = 'reply' | 'mention' | 'reaction' | 'join' | 'invite' | 'follow';
@@ -189,8 +191,16 @@ export async function markAllActivityRead(): Promise<void> {
 }
 
 /**
- * Record an activity event. The fan-out trigger turns this into notifications
- * for the right people, so callers only describe what happened.
+ * Record an activity event that the database cannot derive on its own.
+ *
+ * Replies, @mentions, reactions and space joins are NOT recorded through here:
+ * migration 006 installs triggers on `messages`, `message_reactions` and
+ * `space_members` that derive them, so they fire on every path — a second
+ * client, a background send, a process that dies mid-request. Recording them
+ * from the client would silently lose events.
+ *
+ * This exists for `invite` and `follow`, which have no table of their own to
+ * hang a trigger off yet. If those ever get one, drop this too.
  *
  * The actor is always taken from the session, never from the argument.
  */

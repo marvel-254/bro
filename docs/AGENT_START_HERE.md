@@ -11,7 +11,8 @@ Stack locked: Expo SDK 53 + RN 0.79.6 + expo-router 5.1.11 + TypeScript + Supaba
 
 Branch: `feat/supabase-chat` (working, pushed, PR #3 open → main, all checks green). Package `app.bro`, scheme `bro://`.
 
-Current state: 216/216 tests, typecheck clean, lint 0 errors.
+Current state: 216/216 tests, typecheck clean, lint 0 errors. All 5 PR checks
+green as of `bdf7f60`.
 
 ## 2. Frozen decisions — do not re-debate
 
@@ -42,7 +43,8 @@ Voice core: `yoh, tsup bruv, uko wapi msee, cuz, pull up, tap in, run it back`.
   `activity.ts`, `activity-badge-context.tsx`, `presence.ts`,
   `presence-context.tsx`, `people-context.tsx`, `database.types.ts`.
 - `supabase/migrations/` — 001 initial (11 tables+RLS), 002 tranche-1,
-  003 search, 004 activity, 005 branches.
+  003 search, 004 activity, 005 branches, 006 activity producers.
+- `scripts/verify-activity-triggers.sh` — end-to-end trigger check, self-cleaning.
 - `.github/workflows/` — ci, android-build (debug APK `BRO-debug`), release, validate-secrets, fdroid-check.
 
 ## 4. Where to start — in order
@@ -60,12 +62,11 @@ Then the feature order actually used, all landed and on `feat/supabase-chat`:
 - Global search (+ migration 003) — `e5bd40e`
 - Spaces — `c425027`
 - Activity (+ migration 004, closed a privacy leak) — `862f714`
-
-- Activity (+ migration 004, closed a privacy leak) — `862f714`
 - Conversation branches (+ migration 005) — the signature feature
+- Activity producers (+ migration 006, verified end to end)
 
-Next: wire `recordActivity()` producers so the Activity feed has real events,
-then media (Storage buckets) and push notifications.
+Next: media (Storage buckets) and push notifications. `prune_old_activity()`
+exists but is not scheduled — wire it to pg_cron.
 
 P1 reliability: `expo-sqlite` + outbox + `client_msg_id` + ack + reconnect refetch + pagination.
 P2 media+push: buckets RLS + compress pipeline + `expo-av` voice + Expo push offline-only fanout + `bro://` deep links.
@@ -94,6 +95,8 @@ Supabase CLI token: `~/.config/supabase/access-token`.
 - In a `SECURITY DEFINER` migration, a second `drop function if exists` after `create function` deletes the function you just made.
 - `AND`ing a tsvector match with an `ilike` fallback makes the fallback unreachable. `OR` them.
 - Some tables are only readable inside a scope you are already in (`space_members` for spaces you joined). Return `null` for unknown counts, never `0`.
+- PostgREST returns NO body for an INSERT unless you send `Prefer: return=representation`. A good insert looks like a silent failure otherwise.
+- Derive activity/events in DB triggers, not client calls — a client call is lost on background sends, second clients, and crashes.
 - `supabase projects api-keys` inside repo creates `supabase/.temp/linked-project.json` → `rm -rf supabase/.temp` (gitignored).
 - Tag pushes may not trigger workflows — use `gh workflow run ... --ref <tag>`.
 - Realtime 500 on plain GET is meaningless. Prove with 2 authed clients.
