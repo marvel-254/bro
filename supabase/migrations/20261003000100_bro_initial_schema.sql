@@ -4,56 +4,6 @@
 -- "sub" claim becomes the Supabase user id, so auth.uid() works unchanged.
 
 -- ---------------------------------------------------------------------------
--- Helpers
--- ---------------------------------------------------------------------------
-
-create or replace function public.is_conversation_member(target_conversation uuid)
-returns boolean
-language sql
-security definer
-set search_path = public
-stable
-as $$
-  select exists (
-    select 1
-    from public.conversation_members cm
-    where cm.conversation_id = target_conversation
-      and cm.user_id = auth.uid()
-  );
-$$;
-
-create or replace function public.is_space_member(target_space uuid)
-returns boolean
-language sql
-security definer
-set search_path = public
-stable
-as $$
-  select exists (
-    select 1
-    from public.space_members sm
-    where sm.space_id = target_space
-      and sm.user_id = auth.uid()
-  );
-$$;
-
-create or replace function public.is_conversation_admin(target_conversation uuid)
-returns boolean
-language sql
-security definer
-set search_path = public
-stable
-as $$
-  select exists (
-    select 1
-    from public.conversation_members cm
-    where cm.conversation_id = target_conversation
-      and cm.user_id = auth.uid()
-      and cm.role = 'admin'
-  );
-$$;
-
--- ---------------------------------------------------------------------------
 -- profiles
 -- ---------------------------------------------------------------------------
 
@@ -249,6 +199,60 @@ create table if not exists public.notifications (
 
 create index if not exists notifications_user_unread_idx
   on public.notifications (user_id, is_read, created_at desc);
+
+-- ---------------------------------------------------------------------------
+-- Helpers
+--
+-- Defined after the tables: Postgres validates sql function bodies at creation
+-- time, so these cannot reference conversation_members / space_members before
+-- those relations exist.
+-- ---------------------------------------------------------------------------
+
+create or replace function public.is_conversation_member(target_conversation uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1
+    from public.conversation_members cm
+    where cm.conversation_id = target_conversation
+      and cm.user_id = auth.uid()
+  );
+$$;
+
+create or replace function public.is_space_member(target_space uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1
+    from public.space_members sm
+    where sm.space_id = target_space
+      and sm.user_id = auth.uid()
+  );
+$$;
+
+create or replace function public.is_conversation_admin(target_conversation uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1
+    from public.conversation_members cm
+    where cm.conversation_id = target_conversation
+      and cm.user_id = auth.uid()
+      and cm.role = 'admin'
+  );
+$$;
 
 -- ---------------------------------------------------------------------------
 -- Row level security
