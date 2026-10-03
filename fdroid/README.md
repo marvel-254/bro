@@ -28,7 +28,7 @@ All dependencies are open-source. See `package.json` for the full list:
 | react-native-reanimated (~3.13.0) | MIT |
 | react-native-safe-area-context (4.12.0) | MIT |
 | react-native-svg (15.2.0) | MIT |
-| @clerk/clerk-expo (^2.20.0) | MIT |
+| @supabase/supabase-js (^2.117.0) | MIT |
 
 ## Third-Party Services
 
@@ -36,8 +36,7 @@ BRO uses the following third-party services. These are **not** bundled into the 
 
 | Service | Purpose | Privacy Policy |
 |---|---|---|
-| Clerk (https://clerk.com) | Authentication and user management | https://clerk.com/legal/privacy |
-| Convex (https://convex.dev) | Database, real-time sync, and hosting | https://convex.dev/legal/privacy |
+| Supabase (https://supabase.co) | Authentication, database, real-time sync, storage | https://supabase.co/privacy |
 
 ## Required Permissions
 
