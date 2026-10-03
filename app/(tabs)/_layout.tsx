@@ -51,6 +51,11 @@ export default function TabsLayout() {
           ),
         }}
       />
+      {/* v1 nav is frozen at Home / Chats / Bros / Me. Spaces and Create stay
+          routable (search results and the Create action point at them) but are
+          hidden from the tab bar with `href: null`. */}
+      <Tabs.Screen name="spaces" options={{ href: null }} />
+      <Tabs.Screen name="create" options={{ href: null }} />
     </Tabs>
   );
 }

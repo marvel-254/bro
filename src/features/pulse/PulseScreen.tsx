@@ -124,11 +124,11 @@ export default function PulseScreen() {
         </View>
         <TouchableOpacity
           style={styles.iconCircle}
-          onPress={() => router.push('/new-chat')}
+          onPress={() => router.push('/search')}
           accessibilityRole="button"
-          accessibilityLabel="Start a chat"
+          accessibilityLabel="Search BRO"
         >
-          <Ionicons name="add" size={22} color={COLORS.primaryContainer} />
+          <Ionicons name="search" size={20} color={COLORS.primaryContainer} />
         </TouchableOpacity>
       </View>
 
