@@ -213,7 +213,7 @@ export default function SearchScreen() {
                 <TouchableOpacity
                   key={space.id}
                   style={styles.row}
-                  onPress={() => router.push('/spaces')}
+                  onPress={() => router.push(`/spaces/${space.id}`)}
                   accessibilityRole="button"
                   accessibilityLabel={`Open space ${space.name}`}
                 >

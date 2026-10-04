@@ -1,4 +1,5 @@
 import { getSupabase } from './supabase';
+import type { Presence } from './presence';
 
 /**
  * Data access for Spaces — communities that organise conversations.
@@ -96,6 +97,150 @@ function toSummary(space: RawSpace, selfId: string | undefined): SpaceSummary {
 
 const SPACE_SELECT =
   'id, name, slug, description, avatar_url, is_public, owner_id, space_members(user_id, role, joined_at)';
+
+export interface SpaceMember {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  presence: Presence | null;
+  role: 'owner' | 'admin' | 'member';
+  joinedAt: string;
+}
+
+export interface SpaceConversation {
+  id: string;
+  type: 'direct' | 'group' | 'space' | 'live';
+  name: string | null;
+  lastMessageAt: string | null;
+  lastMessagePreview: string | null;
+  unreadCount: number;
+}
+
+/** One space by id. Null when it does not exist or RLS hides it. */
+export async function fetchSpace(spaceId: string): Promise<SpaceSummary | null> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return null;
+  }
+
+  const selfId = await currentUserId();
+
+  const { data, error } = await supabase
+    .from('spaces')
+    .select(SPACE_SELECT)
+    .eq('id', spaceId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+  if (!data) {
+    return null;
+  }
+
+  return toSummary(data as unknown as RawSpace, selfId);
+}
+
+/**
+ * Members with their profiles. Only callable for spaces you belong to — RLS
+ * hides space_members otherwise, so a non-member gets an empty list rather
+ * than someone else's roster.
+ */
+export async function fetchSpaceMembers(spaceId: string): Promise<SpaceMember[]> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from('space_members')
+    .select(
+      'user_id, role, joined_at, profile:profiles!space_members_user_id_fkey (display_name, avatar_url, presence)',
+    )
+    .eq('space_id', spaceId)
+    .order('joined_at', { ascending: true });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return ((data ?? []) as unknown as Array<{
+    user_id: string;
+    role: SpaceMember['role'];
+    joined_at: string;
+    profile: { display_name: string; avatar_url: string | null; presence: Presence | null } | null;
+  }>).map((row) => ({
+    userId: row.user_id,
+    displayName: row.profile?.display_name ?? 'Someone',
+    avatarUrl: row.profile?.avatar_url ?? null,
+    presence: row.profile?.presence ?? null,
+    role: row.role,
+    joinedAt: row.joined_at,
+  }));
+}
+
+/**
+ * Conversations that live inside a space, newest activity first. Reuses the
+ * caller's own summaries logic but scoped to one space_id, because
+ * fetchConversationSummaries does not return space membership.
+ */
+export async function fetchSpaceConversations(spaceId: string): Promise<SpaceConversation[]> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return [];
+  }
+
+  const selfId = await currentUserId();
+  if (!selfId) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from('conversations')
+    .select(
+      'id, type, name, created_at, conversation_members!inner (user_id, last_read_at), messages (id, content, sender_id, created_at)',
+    )
+    .eq('space_id', spaceId)
+    .order('created_at', { ascending: false })
+    .limit(50);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const rows = (data ?? []) as unknown as Array<{
+    id: string;
+    type: SpaceConversation['type'];
+    name: string | null;
+    created_at: string;
+    conversation_members?: Array<{ user_id: string; last_read_at: string | null }>;
+    messages?: Array<{ id: string; content: string; sender_id: string; created_at: string }>;
+  }>;
+
+  return rows.map((row) => {
+    const members = row.conversation_members ?? [];
+    const messages = (row.messages ?? [])
+      .slice()
+      .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+    const latest = messages[0] ?? null;
+
+    const myMembership = members.find((member) => member.user_id === selfId);
+    const readAt = myMembership?.last_read_at ? Date.parse(myMembership.last_read_at) : 0;
+    const unread = messages.filter((message) => {
+      if (message.sender_id === selfId) return false;
+      return Date.parse(message.created_at) > readAt;
+    }).length;
+
+    return {
+      id: row.id,
+      type: row.type,
+      name: row.name,
+      lastMessageAt: latest?.created_at ?? row.created_at,
+      lastMessagePreview: latest?.content ?? null,
+      unreadCount: unread,
+    };
+  });
+}
 
 async function currentUserId(): Promise<string | undefined> {
   const supabase = getSupabase();

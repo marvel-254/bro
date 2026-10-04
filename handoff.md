@@ -5,7 +5,7 @@ Project root: `/home/marvel/Projects/bro/`
 Branch: `feat/supabase-chat` (working branch, pushed, PR #3 open → main)
 App name: **bro** (NOT "BROS" — sir confirmed the name stays `bro`, package `app.bro`)
 
-Current state: typecheck clean, lint 0 errors (2 `any` warnings), 256/256 tests
+Current state: typecheck clean, lint 0 errors (2 `any` warnings), 265/265 tests
 pass. All 5 PR checks green as of `bdf7f60`.
 
 **Read section 5 before trusting any screen.** Three of them were hardcoded mock
@@ -182,6 +182,8 @@ global search, Spaces, Supabase backend + RLS.
     rather than creating a second one for the same message.
   - `branchFromReplies` **moves** existing replies in rather than copying them,
     and rolls the branch back if the move fails.
+  - The context header (who said what it started from) is permanent, and back
+    is Branch → parent conversation, explicitly.
 - **Chat photos end to end** — `src/lib/media.ts`: pick (expo-image-picker),
   compress to 1920px JPEG + 400px thumb in parallel, upload both to chat-media,
   insert the attachments row, send the message with `type: 'image'`, link the
@@ -191,8 +193,13 @@ global search, Spaces, Supabase backend + RLS.
   (verified). Uploads raw bytes (base64-decoded in-app) because a bare `{uri}`
   object is not in supabase-js's FileBody type and behaves differently across
   storage-js versions.
-  - The context header (who said what it started from) is permanent, and back
-    is Branch → parent conversation, explicitly.
+- **SpaceDetail** — was a 9-line placeholder. Now a real screen: hero with
+  description and join button, the space's conversations with unread pills, and
+  its member roster. Adds `fetchSpace`, `fetchSpaceMembers` and
+  `fetchSpaceConversations` to `src/lib/spaces.ts`, plus route `/spaces/[id]`.
+  Search results point at it instead of the list. Members are only readable for
+  spaces you belong to (RLS), so a non-member sees "join to see who is in here"
+  rather than someone else's roster.
 
 **Two branch bugs found and fixed while wiring it up** — both would have shipped
 silently, duplicating every threaded message:
@@ -209,7 +216,6 @@ silently, duplicating every threaded message:
 - Push notifications: no `push_tokens` table, no fanout, no OS delivery.
 - Voice notes: `attachments.kind` accepts `voice` and the bucket allows m4a/opus,
   but there is no recorder, no player, no UI.
-- `SpaceDetail.tsx` is still a 9-line placeholder.
 - `YouScreen` / `SpaceListItem` still carry `any` casts (2 lint warnings left).
 
 **Nav note:** `app/(tabs)/spaces.tsx` and `create.tsx` existed but were
@@ -277,6 +283,7 @@ Privacy, and the whole Activity feed).
 | `src/features/conversations/BranchDetail.tsx` | branch thread with permanent context header |
 | `src/features/pulse/PulseScreen.tsx` | Pulse: Live now / Tap-in / Around |
 | `src/features/search/SearchScreen.tsx` | grouped global search |
+| `src/features/spaces/SpaceDetail.tsx` | one space: hero, conversations, members |
 | `src/features/spaces/SpacesScreen.tsx` | Your spaces / Discover + create sheet |
 | `src/features/activity/ActivityScreen.tsx` | activity feed |
 | `src/features/people/PeopleScreen.tsx` | Who's Around |
@@ -290,8 +297,8 @@ Privacy, and the whole Activity feed).
 ### Routes
 `app/(tabs)/` — `index` (Pulse), `chats`, `people` (Bros), `you` (Me);
 `spaces` and `create` registered with `href: null` (routable, hidden).
-Stack routes: `/chat/[id]`, `/chat/[id]/branch/[branchId]`, `/new-chat`,
-`/search`, `/activity`.
+Stack routes: `/chat/[id]`, `/chat/[id]/branch/[branchId]`, `/spaces/[id]`,
+`/new-chat`, `/search`, `/activity`.
 
 ## 8. CI / Build
 

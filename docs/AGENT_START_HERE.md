@@ -11,7 +11,7 @@ Stack locked: Expo SDK 53 + RN 0.79.6 + expo-router 5.1.11 + TypeScript + Supaba
 
 Branch: `feat/supabase-chat` (working, pushed, PR #3 open → main, all checks green). Package `app.bro`, scheme `bro://`.
 
-Current state: 256/256 tests, typecheck clean, lint 0 errors.
+Current state: 265/265 tests, typecheck clean, lint 0 errors.
 
 ## 2. Frozen decisions — do not re-debate
 

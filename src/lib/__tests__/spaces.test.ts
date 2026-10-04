@@ -3,6 +3,9 @@ import {
   slugify,
   fetchMySpaces,
   fetchDiscoverableSpaces,
+  fetchSpace,
+  fetchSpaceMembers,
+  fetchSpaceConversations,
   joinSpace,
   leaveSpace,
   createSpace,
@@ -269,6 +272,149 @@ describe('fetchDiscoverableSpaces', () => {
 
     await fetchDiscoverableSpaces();
     expect(spaceChain.eq.mock.results[0].value.not).not.toHaveBeenCalled();
+  });
+});
+
+describe('fetchSpace', () => {
+  it('returns null without a backend', async () => {
+    mockedGetSupabase.mockReturnValue(null);
+    expect(await fetchSpace('s1')).toBeNull();
+  });
+
+  it('returns null when RLS hides the space', async () => {
+    const chain = createChain();
+    chain.eq.mockReturnValue({
+      maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+    });
+    const supabase = makeByTable({ spaces: chain });
+    mockedGetSupabase.mockReturnValue(supabase);
+
+    expect(await fetchSpace('s1')).toBeNull();
+  });
+
+  it('maps a visible space with your role', async () => {
+    const chain = createChain();
+    chain.eq.mockReturnValue({
+      maybeSingle: jest.fn().mockResolvedValue({
+        data: {
+          id: 's1',
+          name: 'Crew',
+          slug: 'crew',
+          description: null,
+          avatar_url: null,
+          is_public: false,
+          owner_id: 'owner-1',
+          space_members: [{ user_id: 'self', role: 'admin', joined_at: '2026-10-01T00:00:00Z' }],
+        },
+        error: null,
+      }),
+    });
+    const supabase = makeByTable({ spaces: chain });
+    mockedGetSupabase.mockReturnValue(supabase);
+
+    const result = await fetchSpace('s1');
+    expect(result).toMatchObject({ id: 's1', name: 'Crew', myRole: 'admin', memberCount: 1 });
+  });
+});
+
+describe('fetchSpaceMembers', () => {
+  it('returns an empty array without a backend', async () => {
+    mockedGetSupabase.mockReturnValue(null);
+    expect(await fetchSpaceMembers('s1')).toEqual([]);
+  });
+
+  it('maps members with profiles, oldest join first', async () => {
+    const chain = createChain();
+    chain.eq.mockReturnValue({
+      order: jest.fn().mockResolvedValue({
+        data: [
+          {
+            user_id: 'u1',
+            role: 'owner',
+            joined_at: '2026-10-01T00:00:00Z',
+            profile: { display_name: 'Nia', avatar_url: null, presence: 'online' },
+          },
+          {
+            user_id: 'u2',
+            role: 'member',
+            joined_at: '2026-10-02T00:00:00Z',
+            profile: null,
+          },
+        ],
+        error: null,
+      }),
+    });
+    const supabase = makeByTable({ space_members: chain });
+    mockedGetSupabase.mockReturnValue(supabase);
+
+    const result = await fetchSpaceMembers('s1');
+    expect(result).toHaveLength(2);
+    expect(result[0].displayName).toBe('Nia');
+    // A deleted profile never renders a blank name.
+    expect(result[1].displayName).toBe('Someone');
+  });
+
+  it('throws when the query fails', async () => {
+    const chain = createChain();
+    chain.eq.mockReturnValue({
+      order: jest.fn().mockResolvedValue({ data: null, error: { message: 'members boom' } }),
+    });
+    const supabase = makeByTable({ space_members: chain });
+    mockedGetSupabase.mockReturnValue(supabase);
+
+    await expect(fetchSpaceMembers('s1')).rejects.toThrow('members boom');
+  });
+});
+
+describe('fetchSpaceConversations', () => {
+  it('returns an empty array without a backend', async () => {
+    mockedGetSupabase.mockReturnValue(null);
+    expect(await fetchSpaceConversations('s1')).toEqual([]);
+  });
+
+  it('returns an empty array when signed out', async () => {
+    const supabase = makeByTable({}, null);
+    mockedGetSupabase.mockReturnValue(supabase);
+    expect(await fetchSpaceConversations('s1')).toEqual([]);
+  });
+
+  it('computes unread counts scoped to the space', async () => {
+    const chain = createChain();
+    chain.eq.mockReturnValue({
+      order: jest.fn().mockReturnValue({
+        limit: jest.fn().mockResolvedValue({
+          data: [
+            {
+              id: 'c1',
+              type: 'space',
+              name: 'general',
+              created_at: '2026-10-01T00:00:00Z',
+              conversation_members: [
+                { user_id: 'self', last_read_at: '2026-10-03T11:00:00Z' },
+                { user_id: 'peer', last_read_at: null },
+              ],
+              messages: [
+                { id: 'm1', content: 'hi', sender_id: 'peer', created_at: '2026-10-03T12:00:00Z' },
+                { id: 'm2', content: 'mine', sender_id: 'self', created_at: '2026-10-03T12:01:00Z' },
+              ],
+            },
+          ],
+          error: null,
+        }),
+      }),
+    });
+    const supabase = makeByTable({ conversations: chain });
+    mockedGetSupabase.mockReturnValue(supabase);
+
+    const result = await fetchSpaceConversations('s1');
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      id: 'c1',
+      name: 'general',
+      // Only the peer message after the read cursor counts; own messages never do.
+      unreadCount: 1,
+      lastMessagePreview: 'mine',
+    });
   });
 });
 
