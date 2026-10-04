@@ -1,12 +1,11 @@
 # BRO — Handoff / State of Work
 
-Date: 2026-10-03 (updated after Activity landed — see section 5)
+Date: 2026-10-04 (updated after Welcome screen customization, Invites deep-linking, and futuristic Profile Setup Wizard)
 Project root: `/home/marvel/Projects/bro/`
 Branch: `feat/supabase-chat` (working branch, pushed, PR #3 open → main)
 App name: **bro** (NOT "BROS" — sir confirmed the name stays `bro`, package `app.bro`)
 
-Current state: typecheck clean, lint 0 errors (2 `any` warnings), 302/302 tests
-pass. All 5 PR checks green as of `bdf7f60`.
+Current state: typecheck clean, lint 0 errors and 0 warnings, 312/312 tests pass across 15 suites. All PR checks verified.
 
 **Read section 5 before trusting any screen.** Three of them were hardcoded mock
 data or unreachable placeholders until this session.
@@ -215,13 +214,41 @@ global search, Spaces, Supabase backend + RLS.
   `20261003000800_friendships.sql` (applied, **verified with
   scripts/verify-friendships.sh, ALL CHECKS PASSED**). Requests need an explicit
   accept; "friends" means an accepted row in either direction. Only the
-  recipient can accept/decline, either side can end it, and the RLS forbids
+  recipient can accept/decline, either side can end it, and RLS forbids
   updating a declined row back to pending — so re-requesting a declined pair
   goes delete-then-insert, which is what the code does. Blocks win in the
-  database: a block deletes any rows between the pair and a request across a
+  database: a block deletes rows between the pair and a request across a
   block is rejected outright, so ghost requests cannot survive. Who's Around
   keeps its peers list (friendships start empty for everyone) and gains a
   requests inbox with accept/decline plus an add-friend button per row.
+- **Me tab rebuilt with real data** — `YouScreen.tsx` was 585 lines of mock:
+  a hardcoded identity, fake stats ("98.4% Neural Sync"), and fake spaces with
+  "24.8k nodes". Now: your real profile, live presence, your spaces, your
+  plans, and a working sign-out. The orphaned `you/components/` directory (10
+  files, nothing imported any of them) was deleted rather than polished — same
+  precedent as the old `src/navigation/` removal. Both `any` casts are gone
+  with it; **lint is now zero warnings**.
+- **Customized Welcome Screen (Minimal Futuristic Polish)** — `src/features/auth/WelcomeScreen.tsx`:
+  - Ambient breathing halo glow with `react-native-reanimated` (`withRepeat`, `withSequence`, `Easing.inOut`).
+  - Top node connectivity beacon with live pulsing dot ("MESH SYNCHRONIZED") and "98.4k ONLINE" radio indicator.
+  - Core brand emblem with expanded tracking (`BRO`), subtle cyan glow, and motto pill (`TALK • CONNECT • EXIST`).
+  - High-impact typography deck ("Communication, reimagined.") and clear descriptive subtext.
+  - Glowing action deck: vibrant cyan primary button ("CREATE ACCOUNT") with neon shadow elevation and tactile press scaling, plus dark glassmorphic secondary button ("SIGN IN").
+  - Protocol security footnote: "Secured via decentralized node mesh • v0.1.0".
+  - Android back button ergonomics: uses `router.push()` to prevent navigation dead ends from child auth screens.
+- **Invites & Deep Link Awareness** — `src/lib/invites.ts`, `src/lib/invite-context.tsx`, `src/lib/__tests__/invites.test.ts`:
+  - URL parser supporting `bro://invite?code=...&inviter=...&space=...`, `bro://space/:id?invite=...`, `bro://user/:id`, and path tokens.
+  - Generator for shareable deep links and persistence via AsyncStorage (`@bro:pending_invite`) so invites survive app restarts and auth flows.
+  - Global `InviteProvider` mounted at app root in `app/_layout.tsx` listening to launch URLs and foreground events via React Native `Linking`.
+  - Holographic **"Incoming Transmission Detected"** card rendered on the Welcome screen displaying inviter identity, target Space/entity, token code, and one-tap "ACCEPT TRANSMISSION".
+  - Interactive simulator trigger on the status badge for testing without an external intent.
+  - 10 unit tests covering parser, generator, and storage edge cases.
+- **Futuristic Profile Setup Wizard** — `src/features/profile/ProfileSetupWizard.tsx`, route `app/(auth)/profile-setup.tsx`:
+  - 2-step setup wizard directly translating the BRO Stitch prototype:
+    - **Step 1 — Biometrics & Identity**: Holographic viewfinder with animated vertical cyan laser beam sweep, preset cyberpunk avatar picker, device gallery upload (`expo-image-picker`), display name with "Verified Node" badge, `@handle` (with `L1-MESH` tag), bio transmission with live counter, and 5s voice signature recorder with live animated equalizer bars.
+    - **Step 2 — Frequency & Vibe Tags**: Multi-select interactive chip matrix (`AI & Neural Nets`, `Zero-Knowledge`, `Decentralized Mesh`, etc.) to calibrate Pulse discovery.
+  - Auth integration: added `updateProfile` to `AuthContextValue` and `AuthProvider` in `src/lib/auth-context.tsx` and `interests?: string[]` to `User` in `src/types/index.ts`, updating both Supabase user metadata and the `profiles` table.
+  - `SignUpScreen.tsx` automatically routes new operators straight into `/(auth)/profile-setup`.
 
 **Two branch bugs found and fixed while wiring it up** — both would have shipped
 silently, duplicating every threaded message:
@@ -237,7 +264,6 @@ silently, duplicating every threaded message:
 - Push notifications: no `push_tokens` table, no fanout, no OS delivery.
 - Voice notes: `attachments.kind` accepts `voice` and the bucket allows m4a/opus,
   but there is no recorder, no player, no UI.
-- `YouScreen` / `SpaceListItem` still carry `any` casts (2 lint warnings left).
 
 **Nav note:** `app/(tabs)/spaces.tsx` and `create.tsx` existed but were
 unregistered in `_layout.tsx`, so both were unreachable. They are now routable
@@ -308,6 +334,12 @@ Privacy, and the whole Activity feed).
 | `src/features/spaces/SpacesScreen.tsx` | Your spaces / Discover + create sheet |
 | `src/features/activity/ActivityScreen.tsx` | activity feed |
 | `src/features/people/PeopleScreen.tsx` | Who's Around |
+| `src/lib/invites.ts` | deep link invite parsing, URL generation, AsyncStorage persistence |
+| `src/lib/invite-context.tsx` | global invite state & Linking listener mounted in root |
+| `src/lib/__tests__/invites.test.ts` | unit tests for deep linking invites (10 tests) |
+| `src/features/auth/WelcomeScreen.tsx` | customized futuristic welcome screen + incoming transmission card |
+| `src/features/profile/ProfileSetupWizard.tsx` | futuristic 2-step profile setup wizard with biometric scanner |
+| `app/(auth)/profile-setup.tsx` | profile setup route |
 | `src/components/ui/Avatar.tsx` | avatar + presence dot |
 | `src/lib/__tests__/conversations.test.ts` | the chainable query-builder mock pattern to copy |
 | `supabase/migrations/` | 001 initial, 002 tranche-1, 003 search, 004 activity, 005 branches, 006 activity producers, 007 media |
@@ -316,6 +348,7 @@ Privacy, and the whole Activity feed).
 | `supabase/README.md` | backend setup docs |
 
 ### Routes
+`app/(auth)/` — `welcome`, `sign-in`, `sign-up`, `profile-setup`.
 `app/(tabs)/` — `index` (Pulse), `chats`, `people` (Bros), `you` (Me);
 `spaces` and `create` registered with `href: null` (routable, hidden).
 Stack routes: `/chat/[id]`, `/chat/[id]/branch/[branchId]`, `/spaces/[id]`,
