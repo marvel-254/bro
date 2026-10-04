@@ -5,7 +5,7 @@ Project root: `/home/marvel/Projects/bro/`
 Branch: `feat/supabase-chat` (working branch, pushed, PR #3 open → main)
 App name: **bro** (NOT "BROS" — sir confirmed the name stays `bro`, package `app.bro`)
 
-Current state: typecheck clean, lint 0 errors (2 `any` warnings), 265/265 tests
+Current state: typecheck clean, lint 0 errors (2 `any` warnings), 302/302 tests
 pass. All 5 PR checks green as of `bdf7f60`.
 
 **Read section 5 before trusting any screen.** Three of them were hardcoded mock
@@ -75,6 +75,10 @@ and MIME allowlists) plus Storage RLS. Chat-media/voice-notes resolve membership
 from the conversation id in the path; statuses fall back to "shares a
 conversation with the owner". Relaxes `attachments.message_id` to nullable and
 adds uploader/bucket/thumb/dimensions, with RLS mirroring the buckets.
+
+Migration `20261003000800_friendships.sql` (applied, **verified with
+scripts/verify-friendships.sh, ALL CHECKS PASSED**): request/accept/decline rows
+with recipient-only transitions, plus block-wins triggers in both directions.
 
 **GOTCHA (critical):** Postgres validates `language sql` function bodies at
 creation time, so RLS helper functions (is_conversation_member, is_space_member,
@@ -200,6 +204,24 @@ global search, Spaces, Supabase backend + RLS.
   Search results point at it instead of the list. Members are only readable for
   spaces you belong to (RLS), so a non-member sees "join to see who is in here"
   rather than someone else's roster.
+- **Plan creation through the Create sheet** — `src/lib/plans.ts`. Pulse's
+  Tap-in strip could only read plans; nothing could make one, and CreateScreen
+  was an 8-line placeholder with no visible entry point. Now: title, kind chips,
+  three time presets instead of a datetime wheel, optional place, two taps to a
+  posted plan. Answers upsert so changing your mind replaces the old row. The
+  tab bar gains the frozen-design center `+`: a raised action button, not a
+  fifth tab.
+- **Friendships** — `src/lib/friends.ts` + migration
+  `20261003000800_friendships.sql` (applied, **verified with
+  scripts/verify-friendships.sh, ALL CHECKS PASSED**). Requests need an explicit
+  accept; "friends" means an accepted row in either direction. Only the
+  recipient can accept/decline, either side can end it, and the RLS forbids
+  updating a declined row back to pending — so re-requesting a declined pair
+  goes delete-then-insert, which is what the code does. Blocks win in the
+  database: a block deletes any rows between the pair and a request across a
+  block is rejected outright, so ghost requests cannot survive. Who's Around
+  keeps its peers list (friendships start empty for everyone) and gains a
+  requests inbox with accept/decline plus an add-friend button per row.
 
 **Two branch bugs found and fixed while wiring it up** — both would have shipped
 silently, duplicating every threaded message:
@@ -210,9 +232,8 @@ silently, duplicating every threaded message:
     chat live. Now skipped when `branch_id` is set.
 
 **Still not built:**
-- Drops / Plans creation UI / Squads / Statuses: tables exist, read-only in Pulse.
-  `invite` and `follow` activity have no table to hang a trigger off, so they
-  still go through the client `recordActivity()` — and neither has UI yet.
+- Drops / Statuses / Squads creation UI: tables exist, read-only in Pulse.
+  `invite` activity still goes through the client `recordActivity()` — no UI.
 - Push notifications: no `push_tokens` table, no fanout, no OS delivery.
 - Voice notes: `attachments.kind` accepts `voice` and the bucket allows m4a/opus,
   but there is no recorder, no player, no UI.
@@ -327,7 +348,8 @@ Stack routes: `/chat/[id]`, `/chat/[id]/branch/[branchId]`, `/spaces/[id]`,
 3. **One test user** (`broprobe2026@gmail.com`) + one "Smoke Test" conversation
    + one message exist in the DB (created during verification). Offer to delete.
 4. **Storage buckets** not created (avatars, chat-media, voice-notes, statuses).
-5. **Friendships table** not created — Who's Around lists conversation peers.
+5. **Friendships table** — created in migration 008; Who's Around now shows a
+   requests inbox alongside the peers list.
 6. **PR #2** (`fix/validate-secrets-api`) was superseded by `77157ef` and has
    been closed.
 7. **Activity producers landed and were verified** — migration 006 hangs

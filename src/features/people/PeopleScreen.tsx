@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Modal,
   TextInput,
   Pressable,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, TYPOGRAPHY } from '../../theme';
@@ -15,6 +16,17 @@ import { Avatar } from '../../components/ui/Avatar';
 import { usePeople } from '../../lib/people-context';
 import { usePresence } from '../../lib/presence-context';
 import { PRESENCE_LABELS, PRESENCE_COLORS, type Presence } from '../../lib/presence';
+import { isSupabaseConfigured } from '../../lib/supabase';
+import {
+  fetchFriends,
+  fetchFriendRequests,
+  sendFriendRequest,
+  acceptFriendRequest,
+  declineFriendRequest,
+  subscribeToFriendships,
+  type Friend,
+  type FriendRequest,
+} from '../../lib/friends';
 import { LoadingState, ErrorState, EmptyState } from '../../components/feedback/States';
 
 /**
@@ -46,6 +58,38 @@ const QUICK_ACTIVITIES = [
 export default function PeopleScreen() {
   const { people, loading, error, refresh } = usePeople();
   const { presence, statusText, emoji, setPresence, isBusy } = usePresence();
+
+  // Friendships replace "conversation peers" as the circle once they exist.
+  // Until then both lists are shown: requests first, then the peers you talk to.
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [requests, setRequests] = useState<FriendRequest[]>([]);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const loadFriends = useCallback(async () => {
+    if (!isSupabaseConfigured) return;
+    try {
+      const [friendRows, requestRows] = await Promise.all([
+        fetchFriends(),
+        fetchFriendRequests(),
+      ]);
+      setFriends(friendRows);
+      setRequests(requestRows);
+    } catch {
+      // Friends are additive to the peers list, so a failure here degrades to
+      // the old behaviour rather than blanking the screen.
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadFriends();
+    return subscribeToFriendships({ onChange: () => void loadFriends() });
+  }, [loadFriends]);
+
+  const friendIds = useMemo(() => new Set(friends.map((friend) => friend.userId)), [friends]);
+  const incoming = useMemo(
+    () => requests.filter((request) => request.direction === 'incoming'),
+    [requests],
+  );
   const [pickerOpen, setPickerOpen] = useState(false);
   const [draftText, setDraftText] = useState('');
 
@@ -63,6 +107,8 @@ export default function PeopleScreen() {
 
   const renderPerson = ({ item }: { item: (typeof people)[number] }) => {
     const activity = item.emoji || item.statusText;
+    const isFriend = friendIds.has(item.userId);
+    const busy = busyId === item.userId;
     return (
       <View style={styles.personRow}>
         <Avatar
@@ -83,6 +129,26 @@ export default function PeopleScreen() {
           )}
         </View>
         <View style={styles.personActions}>
+          {!isFriend ? (
+            <TouchableOpacity
+              style={styles.iconBtn}
+              disabled={busy}
+              onPress={() => void (async () => {
+                setBusyId(item.userId);
+                const result = await sendFriendRequest(item.userId);
+                setBusyId(null);
+                if (!result.ok) {
+                  Alert.alert('Could not send request', result.error ?? 'Try again in a bit.');
+                  return;
+                }
+                Alert.alert('Request sent', `${item.displayName} can tap in when ready.`);
+              })()}
+              accessibilityRole="button"
+              accessibilityLabel={`Add ${item.displayName} as a friend`}
+            >
+              <Ionicons name="person-add-outline" size={18} color={COLORS.onSurface} />
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity style={styles.iconBtn}>
             <Ionicons name="chatbubble-outline" size={18} color={COLORS.onSurface} />
           </TouchableOpacity>
@@ -127,6 +193,59 @@ export default function PeopleScreen() {
       </TouchableOpacity>
 
       {/* List */}
+      {incoming.length > 0 ? (
+        <View style={styles.inbox}>
+          <Text style={styles.inboxTitle}>Friend requests</Text>
+          {incoming.map((request) => (
+            <View key={request.userId} style={styles.inboxRow}>
+              <Avatar name={request.displayName} uri={request.avatarUrl} size={38} />
+              <View style={styles.inboxBody}>
+                <Text style={styles.inboxName} numberOfLines={1}>
+                  {request.displayName}
+                </Text>
+                <Text style={styles.inboxMeta}>wants to be bros</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.acceptBtn}
+                disabled={busyId === request.userId}
+                onPress={() => void (async () => {
+                  setBusyId(request.userId);
+                  const result = await acceptFriendRequest(request.userId);
+                  setBusyId(null);
+                  if (!result.ok) {
+                    Alert.alert('Could not accept', result.error ?? 'Try again in a bit.');
+                    return;
+                  }
+                  setRequests((rows) => rows.filter((row) => row.userId !== request.userId));
+                })()}
+                accessibilityRole="button"
+                accessibilityLabel={`Accept ${request.displayName}`}
+              >
+                <Text style={styles.acceptText}>Tap in</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.declineBtn}
+                disabled={busyId === request.userId}
+                onPress={() => void (async () => {
+                  setBusyId(request.userId);
+                  const result = await declineFriendRequest(request.userId);
+                  setBusyId(null);
+                  if (!result.ok) {
+                    Alert.alert('Could not decline', result.error ?? 'Try again in a bit.');
+                    return;
+                  }
+                  setRequests((rows) => rows.filter((row) => row.userId !== request.userId));
+                })()}
+                accessibilityRole="button"
+                accessibilityLabel={`Decline ${request.displayName}`}
+              >
+                <Ionicons name="close" size={18} color={COLORS.onSurfaceVariant} />
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
       {loading ? (
         <LoadingState message="Finding who's around..." />
       ) : error ? (
@@ -314,6 +433,52 @@ const styles = StyleSheet.create({
   },
   iconBtn: {
     padding: SPACING.spaceSm,
+  },
+  inbox: {
+    marginHorizontal: SPACING.margin,
+    marginTop: SPACING.spaceSm,
+    padding: SPACING.spaceSm,
+    borderRadius: RADIUS.sm,
+    backgroundColor: COLORS.surfaceContainer,
+    borderWidth: 1,
+    borderColor: COLORS.outlineVariant,
+    gap: SPACING.spaceXs,
+  },
+  inboxTitle: {
+    ...TYPOGRAPHY.labelLG,
+    fontWeight: '700',
+    color: COLORS.onSurface,
+  },
+  inboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.spaceSm,
+  },
+  inboxBody: {
+    flex: 1,
+  },
+  inboxName: {
+    ...TYPOGRAPHY.bodyMD,
+    fontWeight: '600',
+    color: COLORS.onSurface,
+  },
+  inboxMeta: {
+    ...TYPOGRAPHY.labelSM,
+    color: COLORS.onSurfaceVariant,
+  },
+  acceptBtn: {
+    paddingHorizontal: SPACING.spaceSm,
+    paddingVertical: 6,
+    borderRadius: RADIUS.sm,
+    backgroundColor: COLORS.primaryContainer,
+  },
+  acceptText: {
+    ...TYPOGRAPHY.labelMD,
+    fontWeight: '700',
+    color: COLORS.onPrimary,
+  },
+  declineBtn: {
+    padding: SPACING.spaceXs,
   },
   modalBackdrop: {
     flex: 1,
