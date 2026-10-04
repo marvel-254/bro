@@ -1,11 +1,11 @@
-import { getSupabase } from './supabase';
+import { getSupabase } from "./supabase";
 import type {
   ConversationRow,
   ConversationSummary,
   MessageReactionRow,
   MessageRow,
   MessageWithSender,
-} from './database.types';
+} from "./database.types";
 
 /**
  * Data access for conversations and messages.
@@ -39,17 +39,17 @@ export async function fetchMessages(
   }
 
   let query = supabase
-    .from('messages')
+    .from("messages")
     .select(
-      'id, conversation_id, sender_id, content, type, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone, sender:profiles!messages_sender_id_fkey (id, username, display_name, avatar_url, status, presence, presence_text, presence_emoji)',
+      "id, conversation_id, sender_id, content, type, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone, sender:profiles!messages_sender_id_fkey (id, username, display_name, avatar_url, status, presence, presence_text, presence_emoji)",
     )
-    .eq('conversation_id', conversationId)
-    .is('branch_id', null)
-    .order('created_at', { ascending: false })
+    .eq("conversation_id", conversationId)
+    .is("branch_id", null)
+    .order("created_at", { ascending: false })
     .limit(limit);
 
   if (before) {
-    query = query.lt('created_at', before);
+    query = query.lt("created_at", before);
   }
 
   const { data, error } = await query;
@@ -77,41 +77,45 @@ export async function sendMessage(
      * the attachments table and may have an empty caption, so the empty-content
      * check is skipped for them.
      */
-    messageType?: 'text' | 'image' | 'file' | 'voice';
+    messageType?: "text" | "image" | "file" | "voice";
   } = {},
 ): Promise<SendResult> {
   const supabase = getSupabase();
   if (!supabase) {
-    return { ok: false, error: 'Backend not configured' };
+    return { ok: false, error: "Backend not configured" };
   }
 
   const trimmed = content.trim();
-  const messageType = options.messageType ?? 'text';
-  if (!trimmed && messageType === 'text') {
-    return { ok: false, error: 'Message cannot be empty' };
+  const messageType = options.messageType ?? "text";
+  if (!trimmed && messageType === "text") {
+    return { ok: false, error: "Message cannot be empty" };
   }
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData.user) {
-    return { ok: false, error: 'Not signed in' };
+    return { ok: false, error: "Not signed in" };
   }
 
   const { data, error } = await supabase
-    .from('messages')
+    .from("messages")
     .insert({
       conversation_id: conversationId,
       sender_id: userData.user.id,
       content: trimmed,
       type: messageType,
-      status: 'sent',
+      status: "sent",
       reply_to_message_id: options.replyToMessageId ?? null,
       branch_id: options.branchId ?? null,
       expires_at:
         options.expiresInSeconds == null
           ? null
-          : new Date(Date.now() + options.expiresInSeconds * 1000).toISOString(),
+          : new Date(
+              Date.now() + options.expiresInSeconds * 1000,
+            ).toISOString(),
     })
-    .select('id, conversation_id, sender_id, content, type, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone')
+    .select(
+      "id, conversation_id, sender_id, content, type, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone",
+    )
     .single();
 
   if (error) {
@@ -122,7 +126,9 @@ export async function sendMessage(
 }
 
 /** Move the caller's read cursor forward for a conversation. */
-export async function markConversationRead(conversationId: string): Promise<void> {
+export async function markConversationRead(
+  conversationId: string,
+): Promise<void> {
   const supabase = getSupabase();
   if (!supabase) {
     return;
@@ -134,14 +140,16 @@ export async function markConversationRead(conversationId: string): Promise<void
   }
 
   await supabase
-    .from('conversation_members')
+    .from("conversation_members")
     .update({ last_read_at: new Date().toISOString() })
-    .eq('conversation_id', conversationId)
-    .eq('user_id', userData.user.id);
+    .eq("conversation_id", conversationId)
+    .eq("user_id", userData.user.id);
 }
 
 /** Conversations the caller belongs to, most recent activity first. */
-export async function fetchConversationSummaries(): Promise<ConversationSummary[]> {
+export async function fetchConversationSummaries(): Promise<
+  ConversationSummary[]
+> {
   const supabase = getSupabase();
   if (!supabase) {
     return [];
@@ -151,11 +159,11 @@ export async function fetchConversationSummaries(): Promise<ConversationSummary[
   const selfId = userData.user?.id;
 
   const { data, error } = await supabase
-    .from('conversations')
+    .from("conversations")
     .select(
-      'id, type, name, avatar_url, created_at, conversation_members!inner (user_id, last_read_at), messages (id, content, sender_id, created_at)',
+      "id, type, name, avatar_url, created_at, conversation_members!inner (user_id, last_read_at), messages (id, content, sender_id, created_at)",
     )
-    .order('created_at', { ascending: false })
+    .order("created_at", { ascending: false })
     .limit(50);
 
   if (error) {
@@ -164,8 +172,16 @@ export async function fetchConversationSummaries(): Promise<ConversationSummary[
 
   const rows = data as unknown as Array<
     ConversationRow & {
-      conversation_members?: Array<{ user_id: string; last_read_at: string | null }>;
-      messages?: Array<{ id: string; content: string; sender_id: string; created_at: string }>;
+      conversation_members?: Array<{
+        user_id: string;
+        last_read_at: string | null;
+      }>;
+      messages?: Array<{
+        id: string;
+        content: string;
+        sender_id: string;
+        created_at: string;
+      }>;
     }
   >;
 
@@ -176,14 +192,18 @@ export async function fetchConversationSummaries(): Promise<ConversationSummary[
     const messages = (row.messages ?? [])
       .slice()
       .sort(
-        (a: { content: string; created_at: string }, b: { content: string; created_at: string }) =>
-          Date.parse(b.created_at) - Date.parse(a.created_at),
+        (
+          a: { content: string; created_at: string },
+          b: { content: string; created_at: string },
+        ) => Date.parse(b.created_at) - Date.parse(a.created_at),
       );
     const latest = messages[0] ?? null;
 
     // Unread = messages newer than the caller's read cursor.
     const myMembership = members.find((member) => member.user_id === selfId);
-    const readAt = myMembership?.last_read_at ? Date.parse(myMembership.last_read_at) : 0;
+    const readAt = myMembership?.last_read_at
+      ? Date.parse(myMembership.last_read_at)
+      : 0;
     const unread = messages.filter((message) => {
       if (!selfId || message.sender_id === selfId) return false;
       return Date.parse(message.created_at) > readAt;
@@ -206,15 +226,15 @@ export async function fetchConversationSummaries(): Promise<ConversationSummary[
   const conversationIds = summaries.map((summary) => summary.id);
   if (conversationIds.length > 0) {
     const { data: peerRows, error: peerError } = await supabase
-      .from('conversation_members')
+      .from("conversation_members")
       .select(
-        'conversation_id, user_id, profile:profiles!conversation_members_user_id_fkey (id, display_name, avatar_url, presence, presence_text, presence_emoji)',
+        "conversation_id, user_id, profile:profiles!conversation_members_user_id_fkey (id, display_name, avatar_url, presence, presence_text, presence_emoji)",
       )
-      .in('conversation_id', conversationIds)
-      .neq('user_id', selfId ?? '');
+      .in("conversation_id", conversationIds)
+      .neq("user_id", selfId ?? "");
 
     if (!peerError) {
-      const byConversation = new Map<string, ConversationSummary['peers']>();
+      const byConversation = new Map<string, ConversationSummary["peers"]>();
       for (const peer of (peerRows ?? []) as unknown as Array<{
         conversation_id: string;
         user_id: string;
@@ -266,28 +286,28 @@ export function subscribeToConversation(
   const channel = supabase
     .channel(`conversation:${conversationId}`)
     .on(
-      'postgres_changes',
+      "postgres_changes",
       {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'messages',
+        event: "INSERT",
+        schema: "public",
+        table: "messages",
         filter: `conversation_id=eq.${conversationId}`,
       },
       (payload: { new: MessageRow }) => handlers.onInsert(payload.new),
     )
     .on(
-      'postgres_changes',
+      "postgres_changes",
       {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'messages',
+        event: "UPDATE",
+        schema: "public",
+        table: "messages",
         filter: `conversation_id=eq.${conversationId}`,
       },
       (payload: { new: MessageRow }) => handlers.onUpdate(payload.new),
     )
     .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'message_reactions' },
+      "postgres_changes",
+      { event: "*", schema: "public", table: "message_reactions" },
       () => handlers.onReactionChange(),
     )
     .subscribe();
@@ -307,9 +327,9 @@ export async function fetchReactions(
   }
 
   const { data, error } = await supabase
-    .from('message_reactions')
-    .select('id, message_id, user_id, emoji, created_at')
-    .in('message_id', messageIds);
+    .from("message_reactions")
+    .select("id, message_id, user_id, emoji, created_at")
+    .in("message_id", messageIds);
 
   if (error) {
     throw new Error(error.message);
@@ -323,7 +343,10 @@ export async function fetchReactions(
 }
 
 /** Toggle a reaction. Adds when absent, removes when the caller already reacted. */
-export async function toggleReaction(messageId: string, emoji: string): Promise<void> {
+export async function toggleReaction(
+  messageId: string,
+  emoji: string,
+): Promise<void> {
   const supabase = getSupabase();
   if (!supabase) {
     return;
@@ -335,39 +358,44 @@ export async function toggleReaction(messageId: string, emoji: string): Promise<
   }
 
   const { data: existing } = await supabase
-    .from('message_reactions')
-    .select('id')
-    .eq('message_id', messageId)
-    .eq('user_id', userData.user.id)
-    .eq('emoji', emoji)
+    .from("message_reactions")
+    .select("id")
+    .eq("message_id", messageId)
+    .eq("user_id", userData.user.id)
+    .eq("emoji", emoji)
     .maybeSingle();
 
   if (existing) {
-    await supabase.from('message_reactions').delete().eq('id', existing.id);
+    await supabase.from("message_reactions").delete().eq("id", existing.id);
     return;
   }
 
   await supabase
-    .from('message_reactions')
+    .from("message_reactions")
     .insert({ message_id: messageId, user_id: userData.user.id, emoji });
 }
 /** Edit the content of a message the caller sent. RLS restricts this to the sender. */
-export async function editMessage(messageId: string, content: string): Promise<SendResult> {
+export async function editMessage(
+  messageId: string,
+  content: string,
+): Promise<SendResult> {
   const supabase = getSupabase();
   if (!supabase) {
-    return { ok: false, error: 'Backend not configured' };
+    return { ok: false, error: "Backend not configured" };
   }
 
   const trimmed = content.trim();
   if (!trimmed) {
-    return { ok: false, error: 'Message cannot be empty' };
+    return { ok: false, error: "Message cannot be empty" };
   }
 
   const { data, error } = await supabase
-    .from('messages')
+    .from("messages")
     .update({ content: trimmed, edited_at: new Date().toISOString() })
-    .eq('id', messageId)
-    .select('id, conversation_id, sender_id, content, type, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone')
+    .eq("id", messageId)
+    .select(
+      "id, conversation_id, sender_id, content, type, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone",
+    )
     .single();
 
   if (error) {
@@ -384,14 +412,20 @@ export async function editMessage(messageId: string, content: string): Promise<S
 export async function deleteMessage(messageId: string): Promise<SendResult> {
   const supabase = getSupabase();
   if (!supabase) {
-    return { ok: false, error: 'Backend not configured' };
+    return { ok: false, error: "Backend not configured" };
   }
 
   const { data, error } = await supabase
-    .from('messages')
-    .update({ deleted_for_everyone: true, content: '', deleted_at: new Date().toISOString() })
-    .eq('id', messageId)
-    .select('id, conversation_id, sender_id, content, type, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone')
+    .from("messages")
+    .update({
+      deleted_for_everyone: true,
+      content: "",
+      deleted_at: new Date().toISOString(),
+    })
+    .eq("id", messageId)
+    .select(
+      "id, conversation_id, sender_id, content, type, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone",
+    )
     .single();
 
   if (error) {
@@ -402,7 +436,9 @@ export async function deleteMessage(messageId: string): Promise<SendResult> {
 }
 
 /** How far a caller has read into a conversation. */
-export async function fetchReadCursor(conversationId: string): Promise<string | null> {
+export async function fetchReadCursor(
+  conversationId: string,
+): Promise<string | null> {
   const supabase = getSupabase();
   if (!supabase) {
     return null;
@@ -414,10 +450,10 @@ export async function fetchReadCursor(conversationId: string): Promise<string | 
   }
 
   const { data } = await supabase
-    .from('conversation_members')
-    .select('last_read_at')
-    .eq('conversation_id', conversationId)
-    .eq('user_id', userData.user.id)
+    .from("conversation_members")
+    .select("last_read_at")
+    .eq("conversation_id", conversationId)
+    .eq("user_id", userData.user.id)
     .maybeSingle<{ last_read_at: string | null }>();
 
   return data?.last_read_at ?? null;
@@ -433,12 +469,15 @@ export async function fetchReadCursors(
   }
 
   const { data } = await supabase
-    .from('conversation_members')
-    .select('user_id, last_read_at')
-    .eq('conversation_id', conversationId);
+    .from("conversation_members")
+    .select("user_id, last_read_at")
+    .eq("conversation_id", conversationId);
 
   const cursors: Record<string, string | null> = {};
-  for (const row of (data ?? []) as Array<{ user_id: string; last_read_at: string | null }>) {
+  for (const row of (data ?? []) as Array<{
+    user_id: string;
+    last_read_at: string | null;
+  }>) {
     cursors[row.user_id] = row.last_read_at;
   }
   return cursors;
@@ -448,57 +487,130 @@ export type CreateConversationResult =
   | { ok: true; conversationId: string }
   | { ok: false; error: string };
 
+export interface ConversationPeer {
+  type: string;
+  /** The other member of a direct conversation, if there is exactly one. */
+  peerId: string | null;
+  peerName: string | null;
+}
+
 /**
- * Create a direct conversation with one peer, or return the existing one if a
- * direct conversation between the two already exists.
+ * The header facts a chat screen needs: what kind of conversation this is,
+ * and who the other person is when it is a direct one. Calls are 1:1, so the
+ * call buttons render only when a single peer resolves.
  */
-export async function createDirectConversation(peerId: string): Promise<CreateConversationResult> {
+export async function fetchConversationPeer(conversationId: string): Promise<ConversationPeer | null> {
   const supabase = getSupabase();
   if (!supabase) {
-    return { ok: false, error: 'Backend not configured' };
+    return null;
   }
 
   const { data: userData } = await supabase.auth.getUser();
   const selfId = userData.user?.id;
   if (!selfId) {
-    return { ok: false, error: 'Not signed in' };
+    return null;
+  }
+
+  const { data: conversation, error: conversationError } = await supabase
+    .from("conversations")
+    .select("id, type")
+    .eq("id", conversationId)
+    .maybeSingle();
+
+  if (conversationError || !conversation) {
+    return null;
+  }
+
+  const row = conversation as { id: string; type: string };
+  if (row.type !== "direct") {
+    return { type: row.type, peerId: null, peerName: null };
+  }
+
+  const { data: members } = await supabase
+    .from("conversation_members")
+    .select("user_id, profile:profiles!conversation_members_user_id_fkey (display_name)")
+    .eq("conversation_id", conversationId)
+    .neq("user_id", selfId);
+
+  const peers = (members ?? []) as unknown as Array<{
+    user_id: string;
+    profile: { display_name: string } | null;
+  }>;
+  if (peers.length !== 1) {
+    return { type: row.type, peerId: null, peerName: null };
+  }
+
+  return {
+    type: row.type,
+    peerId: peers[0].user_id,
+    peerName: peers[0].profile?.display_name ?? "Someone",
+  };
+}
+
+/**
+ * Create a direct conversation with one peer, or return the existing one if a
+ * direct conversation between the two already exists.
+ */
+export async function createDirectConversation(
+  peerId: string,
+): Promise<CreateConversationResult> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return { ok: false, error: "Backend not configured" };
+  }
+
+  const { data: userData } = await supabase.auth.getUser();
+  const selfId = userData.user?.id;
+  if (!selfId) {
+    return { ok: false, error: "Not signed in" };
   }
 
   // Look for an existing direct conversation shared by both users.
   const { data: mine } = await supabase
-    .from('conversation_members')
-    .select('conversation_id')
-    .eq('user_id', selfId);
+    .from("conversation_members")
+    .select("conversation_id")
+    .eq("user_id", selfId);
 
-  const myIds = (mine ?? []).map((row: { conversation_id: string }) => row.conversation_id);
+  const myIds = (mine ?? []).map(
+    (row: { conversation_id: string }) => row.conversation_id,
+  );
   if (myIds.length > 0) {
     const { data: shared } = await supabase
-      .from('conversation_members')
-      .select('conversation_id')
-      .in('conversation_id', myIds)
-      .eq('user_id', peerId);
+      .from("conversation_members")
+      .select("conversation_id")
+      .in("conversation_id", myIds)
+      .eq("user_id", peerId);
 
     if (shared && shared.length > 0) {
-      return { ok: true, conversationId: (shared[0] as { conversation_id: string }).conversation_id };
+      return {
+        ok: true,
+        conversationId: (shared[0] as { conversation_id: string })
+          .conversation_id,
+      };
     }
   }
 
   // Create the conversation and both membership rows.
   const { data: conv, error: convError } = await supabase
-    .from('conversations')
-    .insert({ type: 'direct', created_by: selfId })
-    .select('id')
+    .from("conversations")
+    .insert({ type: "direct", created_by: selfId })
+    .select("id")
     .single();
 
   if (convError || !conv) {
-    return { ok: false, error: convError?.message ?? 'Could not create conversation' };
+    return {
+      ok: false,
+      error: convError?.message ?? "Could not create conversation",
+    };
   }
 
   const conversationId = (conv as { id: string }).id;
-  const { error: memberError } = await supabase.from('conversation_members').insert([
-    { conversation_id: conversationId, user_id: selfId, role: 'admin' },
-    { conversation_id: conversationId, user_id: peerId, role: 'member' },
-  ]);
+  const { error: memberError } = await supabase
+    .from("conversation_members")
+    .insert([
+      { conversation_id: conversationId, user_id: selfId, role: "admin" },
+      { conversation_id: conversationId, user_id: peerId, role: "member" },
+    ]);
 
   if (memberError) {
     return { ok: false, error: memberError.message };
@@ -511,24 +623,24 @@ export async function createDirectConversation(peerId: string): Promise<CreateCo
  * Subscribe to any new message in any conversation the caller belongs to, so
  * the conversation list can reorder and update unread counts live.
  */
-export function subscribeToConversationList(
-  handlers: { onChange: () => void },
-): () => void {
+export function subscribeToConversationList(handlers: {
+  onChange: () => void;
+}): () => void {
   const supabase = getSupabase();
   if (!supabase) {
     return () => {};
   }
 
   const channel = supabase
-    .channel('conversation-list')
+    .channel("conversation-list")
     .on(
-      'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'messages' },
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "messages" },
       () => handlers.onChange(),
     )
     .on(
-      'postgres_changes',
-      { event: 'UPDATE', schema: 'public', table: 'messages' },
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "messages" },
       () => handlers.onChange(),
     )
     .subscribe();

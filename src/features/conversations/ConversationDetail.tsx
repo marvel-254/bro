@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -12,11 +12,17 @@ import {
   Text,
   TextInput,
   View,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { COLORS, RADIUS, SEMANTIC_COLORS, SPACING, TYPOGRAPHY } from '../../theme';
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import {
+  COLORS,
+  RADIUS,
+  SEMANTIC_COLORS,
+  SPACING,
+  TYPOGRAPHY,
+} from "../../theme";
 import {
   deleteMessage,
   editMessage,
@@ -28,24 +34,29 @@ import {
   subscribeToConversation,
   toggleReaction,
   MESSAGES_PAGE_SIZE,
-} from '../../lib/conversations';
-import { sendTyping, watchTyping } from '../../lib/presence';
-import { isSupabaseConfigured } from '../../lib/supabase';
-import { useAuth } from '../../lib/auth-context';
+} from "../../lib/conversations";
+import { sendTyping, watchTyping } from "../../lib/presence";
+import { isSupabaseConfigured } from "../../lib/supabase";
+import { useAuth } from "../../lib/auth-context";
+import { useCall } from "../../lib/call-context";
+import { fetchConversationPeer } from "../../lib/conversations";
 import {
   fetchBranchesByRoot,
   fetchReplyCounts,
   branchFromReplies,
   subscribeToBranches,
   BRANCH_SUGGEST_AT,
-} from '../../lib/branches';
+} from "../../lib/branches";
 import {
   fetchMessageAttachments,
   sendImageMessage,
   signedChatUrl,
   type AttachmentRef,
-} from '../../lib/media';
-import type { MessageReactionRow, MessageWithSender } from '../../lib/database.types';
+} from "../../lib/media";
+import type {
+  MessageReactionRow,
+  MessageWithSender,
+} from "../../lib/database.types";
 
 /**
  * Conversation screen: message history, realtime updates, and the composer.
@@ -81,9 +92,11 @@ function ChatImage({
       setUrl(null);
       return;
     }
-    void signedChatUrl(attachment.thumbPath ?? attachment.storagePath).then((resolved) => {
-      if (live) setUrl(resolved);
-    });
+    void signedChatUrl(attachment.thumbPath ?? attachment.storagePath).then(
+      (resolved) => {
+        if (live) setUrl(resolved);
+      },
+    );
     return () => {
       live = false;
     };
@@ -106,9 +119,74 @@ function ChatImage({
   }
 
   return (
-    <Pressable onPress={() => onOpen(attachment.storagePath)} accessibilityRole="button" accessibilityLabel="Open photo">
+    <Pressable
+      onPress={() => onOpen(attachment.storagePath)}
+      accessibilityRole="button"
+      accessibilityLabel="Open photo"
+    >
       <Image source={{ uri: url }} style={styles.photo} resizeMode="cover" />
     </Pressable>
+  );
+}
+
+/**
+ * Voice/video buttons. Rendered only for direct conversations with exactly one
+ * resolvable peer, because calls are 1:1 in v1 — a group header with a call
+ * button that fails would be a dead button, which the docs forbid.
+ */
+function CallButtons({ conversationId }: { conversationId: string }) {
+  const router = useRouter();
+  const { phase, start } = useCall();
+  const [peer, setPeer] = useState<{ peerName: string | null } | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    void fetchConversationPeer(conversationId).then((resolved) => {
+      if (!live) return;
+      setPeer(resolved && resolved.peerId ? { peerName: resolved.peerName } : null);
+    });
+    return () => {
+      live = false;
+    };
+  }, [conversationId]);
+
+  if (!peer) return null;
+
+  const busy = phase !== "idle";
+  const begin = async (kind: "voice" | "video") => {
+    const callId = await start(conversationId, kind, peer.peerName);
+    if (callId) {
+      router.push(`/call/${callId}`);
+    }
+  };
+
+  return (
+    <View style={styles.callButtons}>
+      <Pressable
+        onPress={() => void begin("voice")}
+        disabled={busy}
+        accessibilityRole="button"
+        accessibilityLabel="Voice call"
+      >
+        <Ionicons
+          name="call-outline"
+          size={20}
+          color={busy ? SEMANTIC_COLORS.textDim : COLORS.surfaceTint}
+        />
+      </Pressable>
+      <Pressable
+        onPress={() => void begin("video")}
+        disabled={busy}
+        accessibilityRole="button"
+        accessibilityLabel="Video call"
+      >
+        <Ionicons
+          name="videocam-outline"
+          size={22}
+          color={busy ? SEMANTIC_COLORS.textDim : COLORS.surfaceTint}
+        />
+      </Pressable>
+    </View>
   );
 }
 
@@ -116,20 +194,26 @@ export default function ConversationDetail({ conversationId, title }: Props) {
   const router = useRouter();
   const { user: currentUser } = useAuth();
   const [messages, setMessages] = useState<MessageWithSender[]>([]);
-  const [draft, setDraft] = useState('');
+  const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [reactions, setReactions] = useState<Record<string, MessageReactionRow[]>>({});
+  const [reactions, setReactions] = useState<
+    Record<string, MessageReactionRow[]>
+  >({});
   const [replyCounts, setReplyCounts] = useState<Record<string, number>>({});
   const [branchByRoot, setBranchByRoot] = useState<Record<string, string>>({});
   const [branching, setBranching] = useState<string | null>(null);
-  const [attachments, setAttachments] = useState<Record<string, AttachmentRef>>({});
+  const [attachments, setAttachments] = useState<Record<string, AttachmentRef>>(
+    {},
+  );
   const [sendingImage, setSendingImage] = useState(false);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [viewerLoading, setViewerLoading] = useState(false);
-  const [readCursors, setReadCursors] = useState<Record<string, string | null>>({});
+  const [readCursors, setReadCursors] = useState<Record<string, string | null>>(
+    {},
+  );
   const [typists, setTypists] = useState<Map<string, string>>(new Map());
   const [replyingTo, setReplyingTo] = useState<MessageWithSender | null>(null);
   const [editing, setEditing] = useState<MessageWithSender | null>(null);
@@ -167,7 +251,7 @@ export default function ConversationDetail({ conversationId, title }: Props) {
       }
       setReadCursors(await fetchReadCursors(conversationId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load messages');
+      setError(err instanceof Error ? err.message : "Could not load messages");
     } finally {
       setLoading(false);
     }
@@ -178,7 +262,11 @@ export default function ConversationDetail({ conversationId, title }: Props) {
     setLoadingOlder(true);
     try {
       const oldest = messages[0];
-      const older = await fetchMessages(conversationId, MESSAGES_PAGE_SIZE, oldest.created_at);
+      const older = await fetchMessages(
+        conversationId,
+        MESSAGES_PAGE_SIZE,
+        oldest.created_at,
+      );
       if (older.length > 0) {
         setMessages((current) => [...older, ...current]);
         setHasMore(older.length >= MESSAGES_PAGE_SIZE);
@@ -215,7 +303,7 @@ export default function ConversationDetail({ conversationId, title }: Props) {
           return [...current, { ...incoming, sender: null }];
         });
         // An arriving image needs its attachment row for the thumbnail.
-        if (incoming.type === 'image') {
+        if (incoming.type === "image") {
           void fetchMessageAttachments([incoming.id]).then((attached) => {
             setAttachments((current) => ({ ...current, ...attached }));
           });
@@ -255,7 +343,12 @@ export default function ConversationDetail({ conversationId, title }: Props) {
   const onDraftChange = (text: string) => {
     setDraft(text);
     if (selfId) {
-      sendTyping(conversationId, selfId, currentUser?.displayName ?? 'Someone', text.length > 0);
+      sendTyping(
+        conversationId,
+        selfId,
+        currentUser?.displayName ?? "Someone",
+        text.length > 0,
+      );
     }
   };
 
@@ -269,10 +362,11 @@ export default function ConversationDetail({ conversationId, title }: Props) {
     });
 
     if (result.ok) {
-      setDraft('');
+      setDraft("");
       setReplyingTo(null);
       setMessages((current) => {
-        if (current.some((message) => message.id === result.message.id)) return current;
+        if (current.some((message) => message.id === result.message.id))
+          return current;
         return [
           ...current,
           {
@@ -283,7 +377,7 @@ export default function ConversationDetail({ conversationId, title }: Props) {
                   username: currentUser.username,
                   display_name: currentUser.displayName,
                   avatar_url: currentUser.avatar ?? null,
-                  status: currentUser.status ?? 'online',
+                  status: currentUser.status ?? "online",
                 }
               : null,
           },
@@ -301,35 +395,29 @@ export default function ConversationDetail({ conversationId, title }: Props) {
     if (!content) return;
     const result = await editMessage(editing.id, content);
     if (result.ok) {
-      setDraft('');
+      setDraft("");
       setEditing(null);
     } else {
       setError(result.error);
     }
   }, [editing, draft]);
 
-  const onDelete = useCallback(
-    (message: MessageWithSender) => {
-      Alert.alert('Delete message', 'Delete for everyone?', [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            void deleteMessage(message.id);
-          },
+  const onDelete = useCallback((message: MessageWithSender) => {
+    Alert.alert("Delete message", "Delete for everyone?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          void deleteMessage(message.id);
         },
-      ]);
-    },
-    [],
-  );
+      },
+    ]);
+  }, []);
 
-  const onReact = useCallback(
-    (messageId: string, emoji: string) => {
-      void toggleReaction(messageId, emoji);
-    },
-    [],
-  );
+  const onReact = useCallback((messageId: string, emoji: string) => {
+    void toggleReaction(messageId, emoji);
+  }, []);
 
   const startReply = (message: MessageWithSender) => {
     setEditing(null);
@@ -355,25 +443,26 @@ export default function ConversationDetail({ conversationId, title }: Props) {
     setSendingImage(false);
 
     if (!result.ok) {
-      if (result.error !== 'cancelled') {
+      if (result.error !== "cancelled") {
         setError(result.error);
       }
       return;
     }
 
     const now = new Date().toISOString();
-    setDraft('');
+    setDraft("");
     setMessages((current) => {
-      if (current.some((message) => message.id === result.messageId)) return current;
+      if (current.some((message) => message.id === result.messageId))
+        return current;
       return [
         ...current,
         {
           id: result.messageId,
           conversation_id: conversationId,
-          sender_id: currentUser?.id ?? '',
+          sender_id: currentUser?.id ?? "",
           content: draft.trim(),
-          type: 'image',
-          status: 'sent',
+          type: "image",
+          status: "sent",
           reply_to_message_id: null,
           branch_id: null,
           created_at: now,
@@ -384,7 +473,7 @@ export default function ConversationDetail({ conversationId, title }: Props) {
                 username: currentUser.username,
                 display_name: currentUser.displayName,
                 avatar_url: currentUser.avatar ?? null,
-                status: currentUser.status ?? 'online',
+                status: currentUser.status ?? "online",
               }
             : null,
         },
@@ -402,7 +491,7 @@ export default function ConversationDetail({ conversationId, title }: Props) {
     if (url) {
       setViewerUrl(url);
     } else {
-      setError('Could not open that photo.');
+      setError("Could not open that photo.");
     }
   }, []);
 
@@ -424,10 +513,13 @@ export default function ConversationDetail({ conversationId, title }: Props) {
       setBranching(null);
 
       if (!result.ok) {
-        Alert.alert('Could not open a branch', result.error);
+        Alert.alert("Could not open a branch", result.error);
         return;
       }
-      setBranchByRoot((current) => ({ ...current, [message.id]: result.branch.id }));
+      setBranchByRoot((current) => ({
+        ...current,
+        [message.id]: result.branch.id,
+      }));
       router.push(`/chat/${conversationId}/branch/${result.branch.id}`);
     },
     [branchByRoot, conversationId, router],
@@ -439,7 +531,8 @@ export default function ConversationDetail({ conversationId, title }: Props) {
       const startsGroup =
         !previous ||
         previous.sender_id !== item.sender_id ||
-        Date.parse(item.created_at) - Date.parse(previous.created_at) > 5 * 60 * 1000;
+        Date.parse(item.created_at) - Date.parse(previous.created_at) >
+          5 * 60 * 1000;
       const isMine = item.sender_id === selfId;
       const messageReactions = reactions[item.id] ?? [];
       const isDeleted = item.deleted_for_everyone;
@@ -447,24 +540,33 @@ export default function ConversationDetail({ conversationId, title }: Props) {
       // Read receipt: show a check when the peer has read past this message.
       const peerRead = Object.entries(readCursors).some(
         ([userId, cursor]) =>
-          userId !== selfId && cursor && Date.parse(cursor) >= Date.parse(item.created_at),
+          userId !== selfId &&
+          cursor &&
+          Date.parse(cursor) >= Date.parse(item.created_at),
       );
 
       return (
         <Pressable
-          style={[styles.bubbleRow, isMine ? styles.bubbleRowMine : styles.bubbleRowTheirs]}
+          style={[
+            styles.bubbleRow,
+            isMine ? styles.bubbleRowMine : styles.bubbleRowTheirs,
+          ]}
           onLongPress={() => {
             if (isMine) {
-              Alert.alert('Message', undefined, [
-                { text: 'Reply', onPress: () => startReply(item) },
-                { text: 'Edit', onPress: () => startEdit(item) },
-                { text: 'Delete', style: 'destructive', onPress: () => onDelete(item) },
-                { text: 'Cancel', style: 'cancel' },
+              Alert.alert("Message", undefined, [
+                { text: "Reply", onPress: () => startReply(item) },
+                { text: "Edit", onPress: () => startEdit(item) },
+                {
+                  text: "Delete",
+                  style: "destructive",
+                  onPress: () => onDelete(item),
+                },
+                { text: "Cancel", style: "cancel" },
               ]);
             } else {
-              Alert.alert('Message', undefined, [
-                { text: 'Reply', onPress: () => startReply(item) },
-                { text: 'Cancel', style: 'cancel' },
+              Alert.alert("Message", undefined, [
+                { text: "Reply", onPress: () => startReply(item) },
+                { text: "Cancel", style: "cancel" },
               ]);
             }
           }}
@@ -485,7 +587,7 @@ export default function ConversationDetail({ conversationId, title }: Props) {
               <Text style={styles.replyHint}>↳ replying to a message</Text>
             ) : null}
 
-            {item.type === 'image' && !isDeleted ? (
+            {item.type === "image" && !isDeleted ? (
               <ChatImage
                 attachment={attachments[item.id]}
                 onOpen={(fullPath) => void openViewer(fullPath)}
@@ -493,18 +595,22 @@ export default function ConversationDetail({ conversationId, title }: Props) {
             ) : null}
 
             {isDeleted ? (
-              <Text style={[styles.messageText, styles.deletedText]}>Message deleted</Text>
+              <Text style={[styles.messageText, styles.deletedText]}>
+                Message deleted
+              </Text>
             ) : item.content ? (
               <Text style={styles.messageText}>{item.content}</Text>
             ) : null}
 
-            {item.edited_at ? <Text style={styles.editedHint}>edited</Text> : null}
+            {item.edited_at ? (
+              <Text style={styles.editedHint}>edited</Text>
+            ) : null}
 
             <View style={styles.metaRow}>
               <Text style={styles.timestamp}>
                 {new Date(item.created_at).toLocaleTimeString([], {
-                  hour: '2-digit',
-                  minute: '2-digit',
+                  hour: "2-digit",
+                  minute: "2-digit",
                 })}
               </Text>
               {isMine && peerRead ? (
@@ -543,7 +649,7 @@ export default function ConversationDetail({ conversationId, title }: Props) {
                   accessibilityRole="button"
                   accessibilityLabel={
                     existingBranchId
-                      ? `Open branch, ${count} ${count === 1 ? 'reply' : 'replies'}`
+                      ? `Open branch, ${count} ${count === 1 ? "reply" : "replies"}`
                       : `Move ${count} replies into a branch`
                   }
                 >
@@ -554,9 +660,11 @@ export default function ConversationDetail({ conversationId, title }: Props) {
                   />
                   <Text style={styles.branchPillText}>
                     {busy
-                      ? 'opening...'
-                      : `${count} ${count === 1 ? 'reply' : 'replies'}${
-                          existingBranchId ? ' — open branch' : ' — make a branch'
+                      ? "opening..."
+                      : `${count} ${count === 1 ? "reply" : "replies"}${
+                          existingBranchId
+                            ? " — open branch"
+                            : " — make a branch"
                         }`}
                   </Text>
                 </Pressable>
@@ -587,25 +695,29 @@ export default function ConversationDetail({ conversationId, title }: Props) {
       <View style={styles.centered}>
         <Text style={styles.emptyTitle}>Backend not configured</Text>
         <Text style={styles.emptyBody}>
-          Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY, then rebuild.
+          Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY, then
+          rebuild.
         </Text>
       </View>
     );
   }
 
   const typistText =
-    typists.size > 0 ? `${[...typists.values()].join(', ')} ${typists.size > 1 ? 'are' : 'is'} typing…` : null;
+    typists.size > 0
+      ? `${[...typists.values()].join(", ")} ${typists.size > 1 ? "are" : "is"} typing…`
+      : null;
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={insets.top}
     >
       <View style={styles.header}>
         <Text style={styles.headerTitle} numberOfLines={1}>
-          {title ?? 'Conversation'}
+          {title ?? "Conversation"}
         </Text>
+        <CallButtons conversationId={conversationId} />
       </View>
 
       {loading ? (
@@ -619,12 +731,17 @@ export default function ConversationDetail({ conversationId, title }: Props) {
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+          onContentSizeChange={() =>
+            listRef.current?.scrollToEnd({ animated: false })
+          }
           onEndReached={() => void loadOlder()}
           onEndReachedThreshold={0.3}
           ListHeaderComponent={
             loadingOlder ? (
-              <ActivityIndicator color={COLORS.surfaceTint} style={styles.olderLoader} />
+              <ActivityIndicator
+                color={COLORS.surfaceTint}
+                style={styles.olderLoader}
+              />
             ) : null
           }
           ListEmptyComponent={
@@ -644,7 +761,7 @@ export default function ConversationDetail({ conversationId, title }: Props) {
       {replyingTo ? (
         <View style={styles.replyBar}>
           <Text style={styles.replyBarText} numberOfLines={1}>
-            Replying to {replyingTo.sender?.display_name ?? 'message'}
+            Replying to {replyingTo.sender?.display_name ?? "message"}
           </Text>
           <Pressable onPress={() => setReplyingTo(null)}>
             <Text style={styles.replyBarClose}>✕</Text>
@@ -657,15 +774,28 @@ export default function ConversationDetail({ conversationId, title }: Props) {
           <Text style={styles.replyBarText} numberOfLines={1}>
             Editing message
           </Text>
-          <Pressable onPress={() => { setEditing(null); setDraft(''); }}>
+          <Pressable
+            onPress={() => {
+              setEditing(null);
+              setDraft("");
+            }}
+          >
             <Text style={styles.replyBarClose}>✕</Text>
           </Pressable>
         </View>
       ) : null}
 
-      <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, SPACING.spaceMd) }]}>
+      <View
+        style={[
+          styles.composer,
+          { paddingBottom: Math.max(insets.bottom, SPACING.spaceMd) },
+        ]}
+      >
         <Pressable
-          style={[styles.imageButton, sendingImage && styles.imageButtonDisabled]}
+          style={[
+            styles.imageButton,
+            sendingImage && styles.imageButtonDisabled,
+          ]}
           onPress={() => void sendImage()}
           disabled={sendingImage || sending}
           accessibilityRole="button"
@@ -674,7 +804,11 @@ export default function ConversationDetail({ conversationId, title }: Props) {
           {sendingImage ? (
             <ActivityIndicator size="small" color={SEMANTIC_COLORS.textDim} />
           ) : (
-            <Ionicons name="image-outline" size={22} color={SEMANTIC_COLORS.textDim} />
+            <Ionicons
+              name="image-outline"
+              size={22}
+              color={SEMANTIC_COLORS.textDim}
+            />
           )}
         </Pressable>
         <TextInput
@@ -687,14 +821,17 @@ export default function ConversationDetail({ conversationId, title }: Props) {
           accessibilityLabel="Message input"
         />
         <Pressable
-          style={[styles.sendButton, (!draft.trim() || sending) && styles.sendButtonDisabled]}
+          style={[
+            styles.sendButton,
+            (!draft.trim() || sending) && styles.sendButtonDisabled,
+          ]}
           onPress={() => (editing ? void onEdit() : void send())}
           disabled={!draft.trim() || sending}
           accessibilityRole="button"
-          accessibilityLabel={editing ? 'Save edit' : 'Send message'}
+          accessibilityLabel={editing ? "Save edit" : "Send message"}
         >
           <Text style={styles.sendButtonText}>
-            {sending ? '…' : editing ? 'Save' : 'Send'}
+            {sending ? "…" : editing ? "Save" : "Send"}
           </Text>
         </Pressable>
       </View>
@@ -718,12 +855,20 @@ export default function ConversationDetail({ conversationId, title }: Props) {
             accessibilityRole="button"
             accessibilityLabel="Close photo"
           >
-            <Ionicons name="close" size={26} color={SEMANTIC_COLORS.textPrimary} />
+            <Ionicons
+              name="close"
+              size={26}
+              color={SEMANTIC_COLORS.textPrimary}
+            />
           </Pressable>
           {viewerLoading || !viewerUrl ? (
             <ActivityIndicator size="large" color={SEMANTIC_COLORS.textDim} />
           ) : (
-            <Image source={{ uri: viewerUrl }} style={styles.viewerImage} resizeMode="contain" />
+            <Image
+              source={{ uri: viewerUrl }}
+              style={styles.viewerImage}
+              resizeMode="contain"
+            />
           )}
         </View>
       </Modal>
@@ -737,6 +882,8 @@ const styles = StyleSheet.create({
     backgroundColor: SEMANTIC_COLORS.canvasRoot,
   },
   header: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: SPACING.gutter,
     paddingVertical: SPACING.spaceMd,
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -745,6 +892,13 @@ const styles = StyleSheet.create({
   headerTitle: {
     ...TYPOGRAPHY.headlineSM,
     color: SEMANTIC_COLORS.textPrimary,
+    flex: 1,
+  },
+  callButtons: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.spaceMd,
+    paddingHorizontal: SPACING.spaceXs,
   },
   listContent: {
     padding: SPACING.gutter,
@@ -754,17 +908,17 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.spaceMd,
   },
   bubbleRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     marginBottom: SPACING.spaceXs,
   },
   bubbleRowMine: {
-    justifyContent: 'flex-end',
+    justifyContent: "flex-end",
   },
   bubbleRowTheirs: {
-    justifyContent: 'flex-start',
+    justifyContent: "flex-start",
   },
   bubble: {
-    maxWidth: '80%',
+    maxWidth: "80%",
     borderRadius: RADIUS.DEFAULT,
     paddingHorizontal: SPACING.spaceMd,
     paddingVertical: SPACING.spaceSm,
@@ -775,7 +929,7 @@ const styles = StyleSheet.create({
   },
   bubbleMine: {
     backgroundColor: COLORS.secondaryContainer,
-    borderColor: 'transparent',
+    borderColor: "transparent",
     borderBottomRightRadius: RADIUS.sm,
   },
   bubbleTheirs: {
@@ -791,7 +945,7 @@ const styles = StyleSheet.create({
   replyHint: {
     ...TYPOGRAPHY.labelSM,
     color: SEMANTIC_COLORS.textDim,
-    fontStyle: 'italic',
+    fontStyle: "italic",
     marginBottom: 2,
   },
   messageText: {
@@ -800,17 +954,17 @@ const styles = StyleSheet.create({
   },
   deletedText: {
     color: SEMANTIC_COLORS.textDim,
-    fontStyle: 'italic',
+    fontStyle: "italic",
   },
   editedHint: {
     ...TYPOGRAPHY.labelSM,
     color: SEMANTIC_COLORS.textDim,
-    alignSelf: 'flex-end',
+    alignSelf: "flex-end",
   },
   metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
     gap: SPACING.spaceXs,
     marginTop: 2,
   },
@@ -823,8 +977,8 @@ const styles = StyleSheet.create({
     color: COLORS.surfaceTint,
   },
   reactionRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: SPACING.spaceXs,
     marginTop: SPACING.spaceXs,
   },
@@ -848,8 +1002,8 @@ const styles = StyleSheet.create({
     width: 220,
     height: 120,
     borderRadius: RADIUS.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: SEMANTIC_COLORS.surfaceLevel2,
   },
   photoPlaceholderText: {
@@ -864,24 +1018,24 @@ const styles = StyleSheet.create({
   },
   viewerBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.92)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(0,0,0,0.92)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   viewerClose: {
-    position: 'absolute',
+    position: "absolute",
     top: 48,
     right: SPACING.gutter,
     padding: SPACING.spaceSm,
     zIndex: 1,
   },
   viewerImage: {
-    width: '92%',
-    height: '72%',
+    width: "92%",
+    height: "72%",
   },
   branchPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
     marginTop: SPACING.spaceXs,
     paddingVertical: 4,
@@ -889,17 +1043,17 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.sm,
     borderWidth: 1,
     borderColor: COLORS.primaryContainer,
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
   },
   branchPillText: {
     ...TYPOGRAPHY.labelSM,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.primaryContainer,
   },
   centered: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     padding: SPACING.margin,
     gap: SPACING.spaceSm,
   },
@@ -910,12 +1064,12 @@ const styles = StyleSheet.create({
   emptyBody: {
     ...TYPOGRAPHY.bodyMD,
     color: SEMANTIC_COLORS.textSecondary,
-    textAlign: 'center',
+    textAlign: "center",
   },
   typingText: {
     ...TYPOGRAPHY.labelSM,
     color: SEMANTIC_COLORS.textSecondary,
-    fontStyle: 'italic',
+    fontStyle: "italic",
     paddingHorizontal: SPACING.gutter,
     paddingBottom: SPACING.spaceXs,
   },
@@ -926,9 +1080,9 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.spaceXs,
   },
   replyBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: SPACING.gutter,
     paddingVertical: SPACING.spaceSm,
     backgroundColor: SEMANTIC_COLORS.surfaceLevel1,
@@ -946,8 +1100,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.spaceSm,
   },
   composer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
+    flexDirection: "row",
+    alignItems: "flex-end",
     gap: SPACING.spaceSm,
     paddingHorizontal: SPACING.gutter,
     paddingTop: SPACING.spaceMd,
