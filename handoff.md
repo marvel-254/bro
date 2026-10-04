@@ -5,7 +5,7 @@ Project root: `/home/marvel/Projects/bro/`
 Branch: `feat/supabase-chat` (working branch, pushed, PR #3 open → main)
 App name: **bro** (NOT "BROS" — sir confirmed the name stays `bro`, package `app.bro`)
 
-Current state: typecheck clean, lint 0 errors and 0 warnings, 312/312 tests pass across 15 suites. All PR checks verified.
+Current state: typecheck clean, lint 0 errors on this work (2 warnings are the review agent's invites.test.ts), 349/349 tests pass across 17 suites.
 
 **Read section 5 before trusting any screen.** Three of them were hardcoded mock
 data or unreachable placeholders until this session.
@@ -78,6 +78,16 @@ adds uploader/bucket/thumb/dimensions, with RLS mirroring the buckets.
 Migration `20261003000800_friendships.sql` (applied, **verified with
 scripts/verify-friendships.sh, ALL CHECKS PASSED**): request/accept/decline rows
 with recipient-only transitions, plus block-wins triggers in both directions.
+
+Migration `20261003000900_calls.sql` (applied): `calls` table (caller, callee,
+kind, ringing/active/declined/ended/missed), RLS through conversation
+membership, no-delete history policy, missed-call trigger into activity, and
+realtime publication.
+
+Migration `20261003001000_call_signaling.sql` (applied): `offer_sdp` and
+`answer_sdp` columns plus the `missed_call` activity type. SDP lives in the row
+because the callee joins the broadcast channel after the caller sends — a
+broadcast-only offer routinely arrives nowhere. ICE stays broadcast-only.
 
 **GOTCHA (critical):** Postgres validates `language sql` function bodies at
 creation time, so RLS helper functions (is_conversation_member, is_space_member,
@@ -221,6 +231,15 @@ global search, Spaces, Supabase backend + RLS.
   block is rejected outright, so ghost requests cannot survive. Who's Around
   keeps its peers list (friendships start empty for everyone) and gains a
   requests inbox with accept/decline plus an add-friend button per row.
+- **Voice and video calls (1:1)** — `src/lib/calls.ts` (rows + broadcast
+  signaling), `src/lib/call-engine.ts` (RTC, no React), `CallProvider`,
+  incoming overlay at the root, in-call screen, route `/call/[id]`, call
+  buttons in 1:1 chat headers only. Remote ICE arriving before the remote
+  description is queued and flushed; every track stops and the PC closes on
+  hangup; mute touches audio tracks only. STUN-only — symmetric-NAT pairs will
+  fail without TURN, which is not configured. `react-native-webrtc` 124.0.8 +
+  `react-native-incall-manager` 4.3.0; app.json gains the mic/camera
+  permissions. Real device calls unverified from here.
 - **Me tab rebuilt with real data** — `YouScreen.tsx` was 585 lines of mock:
   a hardcoded identity, fake stats ("98.4% Neural Sync"), and fake spaces with
   "24.8k nodes". Now: your real profile, live presence, your spaces, your
@@ -264,6 +283,8 @@ silently, duplicating every threaded message:
 - Push notifications: no `push_tokens` table, no fanout, no OS delivery.
 - Voice notes: `attachments.kind` accepts `voice` and the bucket allows m4a/opus,
   but there is no recorder, no player, no UI.
+- Group calls: need an SFU (LiveKit per the research docs); v1 is 1:1 and the
+  code rejects groups with a plain error rather than failing in signaling.
 
 **Nav note:** `app/(tabs)/spaces.tsx` and `create.tsx` existed but were
 unregistered in `_layout.tsx`, so both were unreachable. They are now routable

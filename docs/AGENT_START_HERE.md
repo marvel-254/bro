@@ -11,7 +11,7 @@ Stack locked: Expo SDK 53 + RN 0.79.6 + expo-router 5.1.11 + TypeScript + Supaba
 
 Branch: `feat/supabase-chat` (working, pushed, PR #3 open → main, all checks green). Package `app.bro`, scheme `bro://`.
 
-Current state: 312/312 tests, typecheck clean, lint 0 errors and 0 warnings.
+Current state: 349/349 tests across 17 suites, typecheck clean, lint 0 errors. (The 2 warnings in output are the review agent's invites.test.ts, not this work.)
 
 ## 2. Frozen decisions — do not re-debate
 
@@ -68,7 +68,7 @@ Then the feature order actually used, all landed and on `feat/supabase-chat`:
   (`src/lib/media.ts`), chat photo send + thumbnails + viewer
 - SpaceDetail, plan creation (+ center `+` action), friendships (+ migration 008, verified)
 
-Next: drops/statuses/squads creation UI, push notifications, voice notes. `prune_old_activity()`
+Next: drops/statuses/squads creation UI, push notifications, voice notes, group calls via LiveKit. `prune_old_activity()`
 exists but is not scheduled — wire it to pg_cron.
 
 P1 reliability: `expo-sqlite` + outbox + `client_msg_id` + ack + reconnect refetch + pagination.
