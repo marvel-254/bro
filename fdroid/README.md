@@ -29,6 +29,8 @@ All dependencies are open-source. See `package.json` for the full list:
 | react-native-safe-area-context (4.12.0) | MIT |
 | react-native-svg (15.2.0) | MIT |
 | @supabase/supabase-js (^2.117.0) | MIT |
+| expo-image-picker (~16.1.4) | MIT |
+| expo-image-manipulator (~13.1.7) | MIT |
 
 ## Third-Party Services
 

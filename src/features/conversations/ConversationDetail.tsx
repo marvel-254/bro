@@ -3,7 +3,9 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -37,6 +39,12 @@ import {
   subscribeToBranches,
   BRANCH_SUGGEST_AT,
 } from '../../lib/branches';
+import {
+  fetchMessageAttachments,
+  sendImageMessage,
+  signedChatUrl,
+  type AttachmentRef,
+} from '../../lib/media';
 import type { MessageReactionRow, MessageWithSender } from '../../lib/database.types';
 
 /**
@@ -52,6 +60,58 @@ interface Props {
   title?: string;
 }
 
+/**
+ * Inline photo for an image message. Resolves the fast thumbnail first; the
+ * full image loads on demand in the viewer. A message whose attachment row is
+ * missing (deleted, or the link step failed) renders a plain placeholder
+ * instead of a broken box.
+ */
+function ChatImage({
+  attachment,
+  onOpen,
+}: {
+  attachment: AttachmentRef | undefined;
+  onOpen: (fullPath: string) => void;
+}) {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    if (!attachment) {
+      setUrl(null);
+      return;
+    }
+    void signedChatUrl(attachment.thumbPath ?? attachment.storagePath).then((resolved) => {
+      if (live) setUrl(resolved);
+    });
+    return () => {
+      live = false;
+    };
+  }, [attachment]);
+
+  if (!attachment) {
+    return (
+      <View style={styles.photoPlaceholder}>
+        <Text style={styles.photoPlaceholderText}>Photo unavailable</Text>
+      </View>
+    );
+  }
+
+  if (!url) {
+    return (
+      <View style={styles.photoPlaceholder}>
+        <ActivityIndicator size="small" color={SEMANTIC_COLORS.textDim} />
+      </View>
+    );
+  }
+
+  return (
+    <Pressable onPress={() => onOpen(attachment.storagePath)} accessibilityRole="button" accessibilityLabel="Open photo">
+      <Image source={{ uri: url }} style={styles.photo} resizeMode="cover" />
+    </Pressable>
+  );
+}
+
 export default function ConversationDetail({ conversationId, title }: Props) {
   const router = useRouter();
   const { user: currentUser } = useAuth();
@@ -65,6 +125,10 @@ export default function ConversationDetail({ conversationId, title }: Props) {
   const [replyCounts, setReplyCounts] = useState<Record<string, number>>({});
   const [branchByRoot, setBranchByRoot] = useState<Record<string, string>>({});
   const [branching, setBranching] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<Record<string, AttachmentRef>>({});
+  const [sendingImage, setSendingImage] = useState(false);
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [viewerLoading, setViewerLoading] = useState(false);
   const [readCursors, setReadCursors] = useState<Record<string, string | null>>({});
   const [typists, setTypists] = useState<Map<string, string>>(new Map());
   const [replyingTo, setReplyingTo] = useState<MessageWithSender | null>(null);
@@ -92,12 +156,14 @@ export default function ConversationDetail({ conversationId, title }: Props) {
         setReactions(await fetchReactions(ids));
         // Branch pills: one reply-count query and one branch lookup for the whole
         // page, never one per message.
-        const [counts, branches] = await Promise.all([
+        const [counts, branches, attached] = await Promise.all([
           fetchReplyCounts(ids),
           fetchBranchesByRoot(ids),
+          fetchMessageAttachments(ids),
         ]);
         setReplyCounts(counts);
         setBranchByRoot(branches);
+        setAttachments(attached);
       }
       setReadCursors(await fetchReadCursors(conversationId));
     } catch (err) {
@@ -148,6 +214,12 @@ export default function ConversationDetail({ conversationId, title }: Props) {
           }
           return [...current, { ...incoming, sender: null }];
         });
+        // An arriving image needs its attachment row for the thumbnail.
+        if (incoming.type === 'image') {
+          void fetchMessageAttachments([incoming.id]).then((attached) => {
+            setAttachments((current) => ({ ...current, ...attached }));
+          });
+        }
         void markConversationRead(conversationId);
       },
       onUpdate: (updated) => {
@@ -271,6 +343,70 @@ export default function ConversationDetail({ conversationId, title }: Props) {
   };
 
   /**
+   * Send a photo with the composer text as the caption. Cancellation is silent
+   * (the user changed their mind); every other failure names its stage so the
+   * error says what actually went wrong.
+   */
+  const sendImage = useCallback(async () => {
+    if (sendingImage) return;
+    setSendingImage(true);
+
+    const result = await sendImageMessage(conversationId, draft);
+    setSendingImage(false);
+
+    if (!result.ok) {
+      if (result.error !== 'cancelled') {
+        setError(result.error);
+      }
+      return;
+    }
+
+    const now = new Date().toISOString();
+    setDraft('');
+    setMessages((current) => {
+      if (current.some((message) => message.id === result.messageId)) return current;
+      return [
+        ...current,
+        {
+          id: result.messageId,
+          conversation_id: conversationId,
+          sender_id: currentUser?.id ?? '',
+          content: draft.trim(),
+          type: 'image',
+          status: 'sent',
+          reply_to_message_id: null,
+          branch_id: null,
+          created_at: now,
+          updated_at: now,
+          sender: currentUser
+            ? {
+                id: currentUser.id,
+                username: currentUser.username,
+                display_name: currentUser.displayName,
+                avatar_url: currentUser.avatar ?? null,
+                status: currentUser.status ?? 'online',
+              }
+            : null,
+        },
+      ];
+    });
+    // The attachment row exists by now; pull it in for the thumbnail.
+    const attached = await fetchMessageAttachments([result.messageId]);
+    setAttachments((current) => ({ ...current, ...attached }));
+  }, [conversationId, currentUser, draft, sendingImage]);
+
+  const openViewer = useCallback(async (fullPath: string) => {
+    setViewerLoading(true);
+    const url = await signedChatUrl(fullPath, 300);
+    setViewerLoading(false);
+    if (url) {
+      setViewerUrl(url);
+    } else {
+      setError('Could not open that photo.');
+    }
+  }, []);
+
+  /**
    * Spin a reply thread off into a branch. Existing replies are moved across
    * rather than copied, so nobody retypes anything and the parent chat stops
    * carrying a thread that has outgrown it.
@@ -349,9 +485,18 @@ export default function ConversationDetail({ conversationId, title }: Props) {
               <Text style={styles.replyHint}>↳ replying to a message</Text>
             ) : null}
 
-            <Text style={[styles.messageText, isDeleted && styles.deletedText]}>
-              {isDeleted ? 'Message deleted' : item.content}
-            </Text>
+            {item.type === 'image' && !isDeleted ? (
+              <ChatImage
+                attachment={attachments[item.id]}
+                onOpen={(fullPath) => void openViewer(fullPath)}
+              />
+            ) : null}
+
+            {isDeleted ? (
+              <Text style={[styles.messageText, styles.deletedText]}>Message deleted</Text>
+            ) : item.content ? (
+              <Text style={styles.messageText}>{item.content}</Text>
+            ) : null}
 
             {item.edited_at ? <Text style={styles.editedHint}>edited</Text> : null}
 
@@ -432,6 +577,8 @@ export default function ConversationDetail({ conversationId, title }: Props) {
       branchByRoot,
       branching,
       openBranch,
+      attachments,
+      openViewer,
     ],
   );
 
@@ -517,6 +664,19 @@ export default function ConversationDetail({ conversationId, title }: Props) {
       ) : null}
 
       <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, SPACING.spaceMd) }]}>
+        <Pressable
+          style={[styles.imageButton, sendingImage && styles.imageButtonDisabled]}
+          onPress={() => void sendImage()}
+          disabled={sendingImage || sending}
+          accessibilityRole="button"
+          accessibilityLabel="Send a photo"
+        >
+          {sendingImage ? (
+            <ActivityIndicator size="small" color={SEMANTIC_COLORS.textDim} />
+          ) : (
+            <Ionicons name="image-outline" size={22} color={SEMANTIC_COLORS.textDim} />
+          )}
+        </Pressable>
         <TextInput
           style={styles.input}
           placeholder="Message"
@@ -538,6 +698,35 @@ export default function ConversationDetail({ conversationId, title }: Props) {
           </Text>
         </Pressable>
       </View>
+
+      <Modal
+        visible={viewerUrl !== null || viewerLoading}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setViewerUrl(null);
+          setViewerLoading(false);
+        }}
+      >
+        <View style={styles.viewerBackdrop}>
+          <Pressable
+            style={styles.viewerClose}
+            onPress={() => {
+              setViewerUrl(null);
+              setViewerLoading(false);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Close photo"
+          >
+            <Ionicons name="close" size={26} color={SEMANTIC_COLORS.textPrimary} />
+          </Pressable>
+          {viewerLoading || !viewerUrl ? (
+            <ActivityIndicator size="large" color={SEMANTIC_COLORS.textDim} />
+          ) : (
+            <Image source={{ uri: viewerUrl }} style={styles.viewerImage} resizeMode="contain" />
+          )}
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -649,6 +838,46 @@ const styles = StyleSheet.create({
   },
   reactionText: {
     fontSize: 14,
+  },
+  photo: {
+    width: 220,
+    height: 180,
+    borderRadius: RADIUS.sm,
+  },
+  photoPlaceholder: {
+    width: 220,
+    height: 120,
+    borderRadius: RADIUS.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: SEMANTIC_COLORS.surfaceLevel2,
+  },
+  photoPlaceholderText: {
+    ...TYPOGRAPHY.labelSM,
+    color: SEMANTIC_COLORS.textDim,
+  },
+  imageButton: {
+    padding: SPACING.spaceSm,
+  },
+  imageButtonDisabled: {
+    opacity: 0.5,
+  },
+  viewerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewerClose: {
+    position: 'absolute',
+    top: 48,
+    right: SPACING.gutter,
+    padding: SPACING.spaceSm,
+    zIndex: 1,
+  },
+  viewerImage: {
+    width: '92%',
+    height: '72%',
   },
   branchPill: {
     flexDirection: 'row',

@@ -72,6 +72,12 @@ export async function sendMessage(
     branchId?: string | null;
     /** Seconds until the message disappears. null or undefined means never. */
     expiresInSeconds?: number | null;
+    /**
+     * Message type. Non-text messages (images, files) carry their payload in
+     * the attachments table and may have an empty caption, so the empty-content
+     * check is skipped for them.
+     */
+    messageType?: 'text' | 'image' | 'file' | 'voice';
   } = {},
 ): Promise<SendResult> {
   const supabase = getSupabase();
@@ -80,7 +86,8 @@ export async function sendMessage(
   }
 
   const trimmed = content.trim();
-  if (!trimmed) {
+  const messageType = options.messageType ?? 'text';
+  if (!trimmed && messageType === 'text') {
     return { ok: false, error: 'Message cannot be empty' };
   }
 
@@ -95,7 +102,7 @@ export async function sendMessage(
       conversation_id: conversationId,
       sender_id: userData.user.id,
       content: trimmed,
-      type: 'text',
+      type: messageType,
       status: 'sent',
       reply_to_message_id: options.replyToMessageId ?? null,
       branch_id: options.branchId ?? null,

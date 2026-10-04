@@ -5,7 +5,7 @@ Project root: `/home/marvel/Projects/bro/`
 Branch: `feat/supabase-chat` (working branch, pushed, PR #3 open → main)
 App name: **bro** (NOT "BROS" — sir confirmed the name stays `bro`, package `app.bro`)
 
-Current state: typecheck clean, lint 0 errors (2 `any` warnings), 216/216 tests
+Current state: typecheck clean, lint 0 errors (2 `any` warnings), 256/256 tests
 pass. All 5 PR checks green as of `bdf7f60`.
 
 **Read section 5 before trusting any screen.** Three of them were hardcoded mock
@@ -67,6 +67,14 @@ Migration `20261003000600_activity_producers.sql` (applied, **verified working
 end to end**): triggers that derive replies, @mentions, reactions and space joins
 from the rows themselves. Deliberately in the database rather than the client —
 see the note below. Adds `prune_old_activity()` for a 30-day retention sweep.
+
+Migration `20261003000700_media_storage.sql` (applied, **verified with
+scripts/verify-media-storage.sh, ALL CHECKS PASSED**): creates the four buckets
+(avatars public 2MB; chat-media, voice-notes, statuses private with size limits
+and MIME allowlists) plus Storage RLS. Chat-media/voice-notes resolve membership
+from the conversation id in the path; statuses fall back to "shares a
+conversation with the owner". Relaxes `attachments.message_id` to nullable and
+adds uploader/bucket/thumb/dimensions, with RLS mirroring the buckets.
 
 **GOTCHA (critical):** Postgres validates `language sql` function bodies at
 creation time, so RLS helper functions (is_conversation_member, is_space_member,
@@ -174,6 +182,15 @@ global search, Spaces, Supabase backend + RLS.
     rather than creating a second one for the same message.
   - `branchFromReplies` **moves** existing replies in rather than copying them,
     and rolls the branch back if the move fails.
+- **Chat photos end to end** — `src/lib/media.ts`: pick (expo-image-picker),
+  compress to 1920px JPEG + 400px thumb in parallel, upload both to chat-media,
+  insert the attachments row, send the message with `type: 'image'`, link the
+  attachment. The chat screen shows thumbnails with a fullscreen viewer, and the
+  composer has a photo button using the caption as the message text. Client
+  size/mime checks are UX only; enforcement is the bucket allowlist + RLS
+  (verified). Uploads raw bytes (base64-decoded in-app) because a bare `{uri}`
+  object is not in supabase-js's FileBody type and behaves differently across
+  storage-js versions.
   - The context header (who said what it started from) is permanent, and back
     is Branch → parent conversation, explicitly.
 
@@ -189,9 +206,9 @@ silently, duplicating every threaded message:
 - Drops / Plans creation UI / Squads / Statuses: tables exist, read-only in Pulse.
   `invite` and `follow` activity have no table to hang a trigger off, so they
   still go through the client `recordActivity()` — and neither has UI yet.
-- Media: no `expo-image-picker`/`expo-av`, no Storage buckets created.
 - Push notifications: no `push_tokens` table, no fanout, no OS delivery.
-- `prune_old_activity()` exists but is **not scheduled** (needs pg_cron).
+- Voice notes: `attachments.kind` accepts `voice` and the bucket allows m4a/opus,
+  but there is no recorder, no player, no UI.
 - `SpaceDetail.tsx` is still a 9-line placeholder.
 - `YouScreen` / `SpaceListItem` still carry `any` casts (2 lint warnings left).
 
@@ -253,6 +270,7 @@ Privacy, and the whole Activity feed).
 | `src/lib/activity.ts` | activity feed + unread count + mark read + `recordActivity` |
 | `src/lib/activity-badge-context.tsx` | shared unread-activity badge, mounted in `app/_layout.tsx` |
 | `src/lib/branches.ts` | branch CRUD, reply counts, move-replies-into-a-branch |
+| `src/lib/media.ts` | photo pipeline: pick, compress, upload, attach, send |
 | `src/lib/database.types.ts` | row types |
 | `src/features/conversations/ConversationDetail.tsx` | chat screen (real, working) |
 | `src/features/conversations/ConversationListScreen.tsx` | Chats tab + activity badge |
@@ -264,8 +282,9 @@ Privacy, and the whole Activity feed).
 | `src/features/people/PeopleScreen.tsx` | Who's Around |
 | `src/components/ui/Avatar.tsx` | avatar + presence dot |
 | `src/lib/__tests__/conversations.test.ts` | the chainable query-builder mock pattern to copy |
-| `supabase/migrations/` | 001 initial, 002 tranche-1, 003 search, 004 activity, 005 branches, 006 activity producers |
+| `supabase/migrations/` | 001 initial, 002 tranche-1, 003 search, 004 activity, 005 branches, 006 activity producers, 007 media |
 | `scripts/verify-activity-triggers.sh` | end-to-end check that activity triggers fire, then cleans up |
+| `scripts/verify-media-storage.sh` | checks buckets, RLS, MIME allowlist, self-cleaning |
 | `supabase/README.md` | backend setup docs |
 
 ### Routes
