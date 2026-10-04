@@ -21,7 +21,7 @@ import { sendMessage } from './conversations';
  *     an Edge Function validator, which does not exist yet.
  *
  * Storage layout: `chat-media/<conversationId>/<sender>-<timestamp>.jpg` plus
- * a `.thumb.jpg` sibling. The first path segment is the conversation id so the
+ * a `.thumb.jpg` sibling. The first path portion is the conversation id so the
  * Storage RLS can resolve membership straight from the path.
  *
  * Failure semantics: pick -> compress -> upload -> insert attachment
