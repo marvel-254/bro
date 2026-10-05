@@ -496,3 +496,40 @@ production DB — always `rm -rf supabase/.temp` and it's gitignored now.
 - Be honest about what's not actually working; never claim completion on
   compilation alone.
 - App name is `bro`, not BROS.
+
+## 12. Session handoff — 2026-10-05 (calls through PWA, security review closed)
+
+14 commits on `feat/supabase-chat`, all 5 PR checks green, 351/351 tests,
+14 migrations applied to the live DB. APK builds and serves from the stable
+blob URL; sir confirmed it installs and runs, and flipped email
+confirmation OFF in the dashboard.
+
+**Landed, in order:**
+- Plans creation (`7df3ce0`) + friendships/social (`1deaf82`): plan sheet with
+  presets, friend requests with accept/decline, blocks-win triggers.
+- Me tab rebuilt with real data; dead `you/components/` deleted (`eb72d0b`).
+- WebRTC 1:1 voice/video (`53a92e2`): engine, context, incoming overlay,
+  in-call screen, `/call/[id]`, chat header buttons, migrations 009+010.
+  STUN-only; TURN not configured; never tested on devices.
+- Security review closed (`98ee4d4`, migrations 011/012/013): DM creation RPC,
+  function EXECUTE revoked from PUBLIC (live-verified anon gets 42501),
+  activity dedup key, `is_verified` dropped, WITH CHECKs, private-space join
+  gate, expired messages out of search, branch composite FK, realtime gaps
+  filled, `(created_at, id)` keyset pagination, bounded preview RPC.
+- Review-agent overlap: committed their invite modules (startup crash fix,
+  `cda84f5`), landed invites + profile wizard with fixes (`2a6c842`).
+  Their 39-file reformat + `.openclaude/` remain UNCOMMITTED in the tree.
+- Vercel Blob APK hosting (`999850f`): `scripts/upload-apk-blob.mjs`,
+  stable `/apk/app-debug.apk` URL, download page leads with it.
+- Site PWA (`09ffbb2`): manifest wired, SW registered, icon purposes fixed,
+  verified live on bro.omixsystems.store.
+- Website download page now on `main` (`10ed8b8`) and deployed.
+
+**Still open, in suggested order:**
+1. Drops/statuses/squads creation UI (DB layer exists, no UI).
+2. Push notifications (needs FCM/APNs console setup + `push_tokens` table).
+3. Voice notes (bucket allows m4a/opus; no recorder/player).
+4. Group calls via LiveKit.
+5. Two-device realtime + calls test (never done; most important unverified item).
+6. Service-role key rotation (pasted in chat + local `.env`).
+7. Decide the review agent's uncommitted reformat: commit separately or drop.
