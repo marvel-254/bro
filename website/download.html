@@ -42,19 +42,30 @@ footer a{border-bottom:1px solid rgba(255,255,255,0.15);padding-bottom:1px}
 <header>
 <div class="tag">Download</div>
 <h1>BRO for Android<br><span class="accent">Download via GitHub Releases</span></h1>
-<p class="subtitle">The APK is built automatically by GitHub Actions. Grab the latest release, read the changelog, and install.</p>
+<p class="subtitle">The APK is built automatically by GitHub Actions. Grab the latest build, read the changelog, and install.</p>
 </header>
 
 <section class="section" aria-label="Releases">
 <h2>Releases</h2>
 <p style="color:var(--text-dim);font-size:14px;margin-bottom:12px">Every tag triggers a release build. The APK is attached automatically.</p>
 
+<div class="card" style="border-color:rgba(0,229,255,0.25)">
+<div class="release">
+<div class="release-info">
+<h3>Latest debug build</h3>
+<p class="date">Continuous — updates on every merge to main</p>
+<p class="note">Hosted on Vercel Blob, rebuilt on every merge to the main branch. Always the freshest build.</p>
+</div>
+<a href="https://x3zj3ht2vzg6otli.public.blob.vercel-storage.com/apk/app-debug.apk" class="btn">Download APK</a>
+</div>
+</div>
+
 <div class="card">
 <div class="release">
 <div class="release-info">
 <h3><a href="https://github.com/marvel-254/bro/releases/tag/v0.1.1">v0.1.1 — Build Fix</a></h3>
 <p class="date">2026-10-03</p>
-<p class="note">Upgraded to Expo SDK 53 — fixes the Android build so the APK now builds via GitHub Actions. Includes Pulse, People, Conversations, Branches, Spaces, Clerk auth, and F-Droid-compliant build.</p>
+<p class="note">Upgraded to Expo SDK 53 — fixes the Android build so the APK now builds via GitHub Actions. Includes Pulse, People, Conversations, Branches, Spaces, Supabase auth, and F-Droid-compliant build.</p>
 </div>
 <a href="https://github.com/marvel-254/bro/releases/tag/v0.1.1" class="btn">Download APK</a>
 </div>
@@ -62,7 +73,7 @@ footer a{border-bottom:1px solid rgba(255,255,255,0.15);padding-bottom:1px}
 <div class="release-info">
 <h3><a href="https://github.com/marvel-254/bro/releases/tag/v0.1.0">v0.1.0 — Initial Release</a></h3>
 <p class="date">2026-10-02</p>
-<p class="note">First public APK. Includes Pulse, People, Conversations, Branches, Spaces, Clerk auth, and F-Droid-compliant build.</p>
+<p class="note">First public APK. Includes Pulse, People, Conversations, Branches, Spaces, Supabase auth, and F-Droid-compliant build.</p>
 </div>
 <a href="https://github.com/marvel-254/bro/releases/tag/v0.1.0" class="btn btn-secondary">View Release</a>
 </div>
@@ -92,7 +103,7 @@ footer a{border-bottom:1px solid rgba(255,255,255,0.15);padding-bottom:1px}
 <ul style="padding-left:18px;color:var(--text-dim);font-size:14px">
 <li>Initial Android APK build via GitHub Actions</li>
 <li>Pulse, People, Conversations, Branches, Spaces, Activity screens</li>
-<li>Clerk authentication</li>
+<li>Supabase authentication</li>
 <li>F-Droid metadata and privacy-hosting ready</li>
 <li>TypeScript / lint / test verification passing</li>
 </ul>
@@ -107,7 +118,7 @@ footer a{border-bottom:1px solid rgba(255,255,255,0.15);padding-bottom:1px}
 <li><strong>Download</strong> the APK from the release above.</li>
 <li><strong>Enable</strong> "Install unknown apps" for your browser/file manager in Android Settings.</li>
 <li><strong>Install</strong> the APK. BRO runs on Android 7+.</li>
-<li><strong>Join</strong> — create an account with Clerk inside the app.</li>
+<li>Join — create an account with Supabase inside the app.</li>
 </ol>
 <p class="note">No tracking, no ads, only <code>INTERNET</code> permission. Source code is GPL-3.0-or-later at <a href="https://github.com/marvel-254/bro">github.com/marvel-254/bro</a>.</p>
 </div>
