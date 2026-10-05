@@ -3,6 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#090A0F">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <title>BRO — Communication, Reimagined</title>
 
 <meta property="og:title" content="BRO — Communication, Reimagined">
@@ -239,6 +245,13 @@ a:hover{border-bottom-color:var(--accent)}
 <script>
 function toggleTheme(){const html=document.documentElement;const t=html.getAttribute('data-theme');if(t==='dark'){html.removeAttribute('data-theme');localStorage.setItem('broTheme','light');}else{html.setAttribute('data-theme','dark');localStorage.setItem('broTheme','dark');}}
 (function(){const s=localStorage.getItem('broTheme');if(s==='dark')document.documentElement.setAttribute('data-theme','dark');})();
+</script>
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}
 </script>
 </body>
 </html>
