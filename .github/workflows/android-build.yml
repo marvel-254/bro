@@ -118,3 +118,10 @@ jobs:
           name: BRO-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
+
+      - name: Push APK to Vercel Blob
+        env:
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          node scripts/upload-apk-blob.mjs android/app/build/outputs/apk/debug/app-debug.apk
