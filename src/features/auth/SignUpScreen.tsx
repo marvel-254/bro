@@ -20,6 +20,7 @@ export default function SignUpScreen() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSignUp = async () => {
@@ -101,13 +102,17 @@ export default function SignUpScreen() {
               style={styles.inputText}
               placeholder="Min 8 characters"
               placeholderTextColor={COLORS.semantic.textDim}
-              secureTextEntry
+              secureTextEntry={!showPassword}
               value={password}
               onChangeText={setPassword}
             />
-            <TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setShowPassword((visible) => !visible)}
+              accessibilityRole="button"
+              accessibilityLabel={showPassword ? "Hide password" : "Show password"}
+            >
               <Ionicons
-                name="eye-off"
+                name={showPassword ? "eye" : "eye-off"}
                 size={18}
                 color={COLORS.semantic.textDim}
               />

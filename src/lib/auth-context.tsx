@@ -247,6 +247,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               username: profileData.username,
               avatar_url: profileData.avatar,
               bio: profileData.bio,
+              // interests live here, not just in auth metadata, so a profiles
+              // read sees what the wizard saved.
+              ...(profileData.interests !== undefined
+                ? { interests: profileData.interests }
+                : {}),
             })
             .eq("id", uid);
           if (profileError) {

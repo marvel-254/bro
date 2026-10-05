@@ -11,8 +11,8 @@ export interface ProfileRow {
   display_name: string;
   avatar_url: string | null;
   bio: string | null;
-  status: 'online' | 'offline' | 'away';
-  is_verified: boolean;
+  interests: string[];
+  status: "online" | "offline" | "away";
   last_seen_at: string | null;
   created_at: string;
 }
@@ -31,13 +31,13 @@ export interface SpaceRow {
 export interface SpaceMemberRow {
   space_id: string;
   user_id: string;
-  role: 'owner' | 'admin' | 'member';
+  role: "owner" | "admin" | "member";
   joined_at: string;
 }
 
 export interface ConversationRow {
   id: string;
-  type: 'direct' | 'group' | 'space' | 'live';
+  type: "direct" | "group" | "space" | "live";
   name: string | null;
   avatar_url: string | null;
   space_id: string | null;
@@ -49,7 +49,7 @@ export interface ConversationRow {
 export interface ConversationMemberRow {
   conversation_id: string;
   user_id: string;
-  role: 'admin' | 'member';
+  role: "admin" | "member";
   is_muted: boolean;
   joined_at: string;
   last_read_at: string | null;
@@ -60,8 +60,8 @@ export interface MessageRow {
   conversation_id: string;
   sender_id: string;
   content: string;
-  type: 'text' | 'image' | 'file' | 'voice';
-  status: 'pending' | 'sending' | 'sent' | 'delivered' | 'seen' | 'failed';
+  type: "text" | "image" | "file" | "voice";
+  status: "pending" | "sending" | "sent" | "delivered" | "seen" | "failed";
   reply_to_message_id: string | null;
   branch_id: string | null;
   created_at: string;
@@ -90,7 +90,10 @@ export interface MessageReactionRow {
 
 /** A message joined with the sender's public profile, as returned by the app. */
 export interface MessageWithSender extends MessageRow {
-  sender: Pick<ProfileRow, 'id' | 'username' | 'display_name' | 'avatar_url' | 'status'> | null;
+  sender: Pick<
+    ProfileRow,
+    "id" | "username" | "display_name" | "avatar_url" | "status"
+  > | null;
   expires_at?: string | null;
   edited_at?: string | null;
   deleted_at?: string | null;
@@ -99,7 +102,7 @@ export interface MessageWithSender extends MessageRow {
 
 export interface ConversationSummary {
   id: string;
-  type: ConversationRow['type'];
+  type: ConversationRow["type"];
   name: string | null;
   avatar_url: string | null;
   last_message_at: string | null;

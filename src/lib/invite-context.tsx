@@ -19,9 +19,7 @@ interface InviteContextValue {
   pendingInvite: InvitePayload | null;
   setPendingInvite: (invite: InvitePayload | null) => void;
   clearInvite: () => Promise<void>;
-  consumeInvite: (
-    userId: string,
-  ) => Promise<{ success: boolean; destination?: string }>;
+  consumeInvite: () => Promise<{ success: boolean; destination?: string }>;
 }
 
 const InviteContext = createContext<InviteContextValue | null>(null);
@@ -86,10 +84,10 @@ export function InviteProvider({ children }: { children: ReactNode }) {
     await clearPendingInvite();
   }, []);
 
-  const consumeInvite = useCallback(
-    async (
-      _userId: string,
-    ): Promise<{ success: boolean; destination?: string }> => {
+  const consumeInvite = useCallback(async (): Promise<{
+    success: boolean;
+    destination?: string;
+  }> => {
       if (!pendingInvite) {
         return { success: false };
       }
