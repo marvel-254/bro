@@ -1,31 +1,45 @@
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, KeyboardAvoidingView, Platform, Alert } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING, RADIUS } from '../../theme';
-import { useAuth } from '../../lib/auth-context';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { COLORS, SPACING, RADIUS } from "../../theme";
+import { useAuth } from "../../lib/auth-context";
+import { useRouter } from "expo-router";
+import { useState } from "react";
 
 export default function SignUpScreen() {
-  const { signUp, error, clearError } = useAuth();
+  const { signUp, error, clearError, awaitingEmailConfirmation } = useAuth();
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSignUp = async () => {
     if (!email || !password) {
-      Alert.alert('Error', 'Please enter email and password');
+      Alert.alert("Error", "Please enter email and password");
       return;
     }
     if (password.length < 8) {
-      Alert.alert('Error', 'Password must be at least 8 characters');
+      Alert.alert("Error", "Password must be at least 8 characters");
       return;
     }
     setIsLoading(true);
     clearError();
     try {
-      await signUp(email, password);
-      router.replace('/(tabs)');
+      const needsConfirmation = await signUp(email, password);
+      // With email confirmation on, there is no session yet — profile-setup
+      // would deadlock against a session-less user. Stay here and say so.
+      if (!needsConfirmation) {
+        router.replace("/(auth)/profile-setup");
+      }
     } catch {
       // Error is set in auth context
     } finally {
@@ -34,7 +48,10 @@ export default function SignUpScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.select({ ios: 'padding', android: undefined })}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.select({ ios: "padding", android: undefined })}
+    >
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={20} color={COLORS.onSurface} />
@@ -46,6 +63,15 @@ export default function SignUpScreen() {
         {error ? (
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : null}
+
+        {awaitingEmailConfirmation ? (
+          <View style={styles.noticeContainer}>
+            <Text style={styles.noticeText}>
+              Account created. Check your email for the confirmation link, then
+              slide in from the sign-in screen.
+            </Text>
           </View>
         ) : null}
 
@@ -66,7 +92,11 @@ export default function SignUpScreen() {
 
           <Text style={styles.label}>Password</Text>
           <View style={styles.input}>
-            <Ionicons name="lock-closed" size={18} color={COLORS.semantic.textDim} />
+            <Ionicons
+              name="lock-closed"
+              size={18}
+              color={COLORS.semantic.textDim}
+            />
             <TextInput
               style={styles.inputText}
               placeholder="Min 8 characters"
@@ -76,21 +106,32 @@ export default function SignUpScreen() {
               onChangeText={setPassword}
             />
             <TouchableOpacity>
-              <Ionicons name="eye-off" size={18} color={COLORS.semantic.textDim} />
+              <Ionicons
+                name="eye-off"
+                size={18}
+                color={COLORS.semantic.textDim}
+              />
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={styles.continueBtn} onPress={handleSignUp} disabled={isLoading}>
-            <Text style={styles.continueText}>{isLoading ? 'Creating...' : 'Continue'}</Text>
+          <TouchableOpacity
+            style={styles.continueBtn}
+            onPress={handleSignUp}
+            disabled={isLoading}
+          >
+            <Text style={styles.continueText}>
+              {isLoading ? "Creating..." : "Continue"}
+            </Text>
           </TouchableOpacity>
 
           <Text style={styles.terms}>
-            By continuing, you agree to BRO Protocol Terms & Telepathic Privacy Standards.
+            By continuing, you agree to BRO Protocol Terms & Telepathic Privacy
+            Standards.
           </Text>
         </View>
 
         <Text style={styles.footer}>Already have an account?</Text>
-        <TouchableOpacity onPress={() => router.replace('/(auth)/sign-in')}>
+        <TouchableOpacity onPress={() => router.replace("/(auth)/sign-in")}>
           <Text style={styles.footerLink}>Sign in</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -108,7 +149,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flexGrow: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
     paddingHorizontal: SPACING.margin,
     paddingBottom: SPACING.spaceLg,
   },
@@ -118,19 +159,19 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
     backgroundColor: COLORS.surfaceContainerHigh,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   logo: {
     fontSize: 24,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.primaryContainer,
     letterSpacing: 2,
     marginBottom: SPACING.spaceLg,
   },
   title: {
     fontSize: 28,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.onSurface,
     marginBottom: SPACING.spaceXl,
   },
@@ -141,7 +182,19 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.spaceMd,
   },
   errorText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
+    fontSize: 14,
+  },
+  noticeContainer: {
+    backgroundColor: COLORS.surfaceContainerHigh,
+    padding: SPACING.spaceMd,
+    borderRadius: RADIUS.md,
+    marginBottom: SPACING.spaceMd,
+    borderWidth: 1,
+    borderColor: COLORS.primaryContainer,
+  },
+  noticeText: {
+    color: COLORS.onSurface,
     fontSize: 14,
   },
   form: {
@@ -149,22 +202,22 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.onSurfaceVariant,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
     letterSpacing: 1,
     marginBottom: 4,
   },
   input: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: SPACING.spaceSm,
     paddingHorizontal: SPACING.spaceMd,
     paddingVertical: 14,
     backgroundColor: COLORS.surfaceContainer,
     borderRadius: RADIUS.full,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: "rgba(255,255,255,0.06)",
   },
   inputText: {
     flex: 1,
@@ -175,7 +228,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: RADIUS.full,
     backgroundColor: COLORS.primaryContainer,
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: SPACING.spaceSm,
     shadowColor: COLORS.primaryContainer,
     shadowRadius: 16,
@@ -183,28 +236,28 @@ const styles = StyleSheet.create({
   },
   continueText: {
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.onPrimary,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
     letterSpacing: 2,
   },
   terms: {
     fontSize: 12,
     color: COLORS.onSurfaceVariant,
-    textAlign: 'center',
+    textAlign: "center",
     marginTop: SPACING.spaceMd,
     lineHeight: 18,
   },
   footer: {
-    textAlign: 'center',
+    textAlign: "center",
     fontSize: 14,
     color: COLORS.onSurfaceVariant,
     marginTop: SPACING.spaceLg,
   },
   footerLink: {
-    textAlign: 'center',
+    textAlign: "center",
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.primaryContainer,
     marginTop: 4,
     paddingVertical: SPACING.spaceSm,

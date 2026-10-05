@@ -28,10 +28,31 @@ export type SendResult =
  * screen, and showing them here too would duplicate the thread and double-count
  * it in the reply pill.
  */
+/**
+ * Keyset cursor for message pagination. Two columns, not one: Postgres now()
+ * is per-transaction, so batched inserts share a created_at and a bare
+ * `.lt("created_at")` cursor re-fetches the tied page forever. (created_at,
+ * id) is a total order — ids are unique — so every page boundary is exact.
+ */
+export interface MessageCursor {
+  createdAt: string;
+  id: string;
+}
+
+/** Newest-first comparison on (created_at, id). Exported for client-side inserts. */
+export function compareMessagesNewestFirst(
+  a: { created_at: string; id: string },
+  b: { created_at: string; id: string },
+): number {
+  const time = Date.parse(b.created_at) - Date.parse(a.created_at);
+  if (time !== 0) return time;
+  return b.id < a.id ? -1 : b.id > a.id ? 1 : 0;
+}
+
 export async function fetchMessages(
   conversationId: string,
   limit: number = MESSAGES_PAGE_SIZE,
-  before?: string,
+  before?: MessageCursor,
 ): Promise<MessageWithSender[]> {
   const supabase = getSupabase();
   if (!supabase) {
@@ -46,10 +67,16 @@ export async function fetchMessages(
     .eq("conversation_id", conversationId)
     .is("branch_id", null)
     .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
     .limit(limit);
 
   if (before) {
-    query = query.lt("created_at", before);
+    // Rows strictly older than (createdAt, id) in the (desc, desc) order.
+    // Neither an ISO timestamp nor a uuid contains a comma, so the or() list
+    // cannot split.
+    query = query.or(
+      `created_at.lt.${before.createdAt},and(created_at.eq.${before.createdAt},id.lt.${before.id})`,
+    );
   }
 
   const { data, error } = await query;
@@ -146,6 +173,60 @@ export async function markConversationRead(
     .eq("user_id", userData.user.id);
 }
 
+export interface ConversationPreview {
+  conversationId: string;
+  messageId: string;
+  content: string;
+  senderId: string;
+  createdAt: string;
+  unreadCount: number;
+}
+
+/**
+ * Latest message + unread count per conversation, one bounded row each, via
+ * the conversation_previews RPC. Output size is O(conversations), never
+ * O(messages) — the embedded-select approach this replaces returned every
+ * message of every listed conversation on each render.
+ */
+export async function fetchConversationPreviews(
+  conversationIds: string[],
+): Promise<Map<string, ConversationPreview>> {
+  const supabase = getSupabase();
+  if (!supabase || conversationIds.length === 0) {
+    return new Map();
+  }
+
+  const { data, error } = await supabase.rpc("conversation_previews", {
+    ids: conversationIds,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const previews = new Map<string, ConversationPreview>();
+  for (const row of (data ?? []) as Array<{
+    conversation_id: string;
+    message_id: string;
+    content: string;
+    sender_id: string;
+    created_at: string;
+    // PostgREST serializes bigint counts as strings.
+    unread_count: number | string;
+  }>) {
+    const unread = Number(row.unread_count);
+    previews.set(row.conversation_id, {
+      conversationId: row.conversation_id,
+      messageId: row.message_id,
+      content: row.content,
+      senderId: row.sender_id,
+      createdAt: row.created_at,
+      unreadCount: Number.isFinite(unread) ? unread : 0,
+    });
+  }
+  return previews;
+}
+
 /** Conversations the caller belongs to, most recent activity first. */
 export async function fetchConversationSummaries(): Promise<
   ConversationSummary[]
@@ -161,7 +242,7 @@ export async function fetchConversationSummaries(): Promise<
   const { data, error } = await supabase
     .from("conversations")
     .select(
-      "id, type, name, avatar_url, created_at, conversation_members!inner (user_id, last_read_at), messages (id, content, sender_id, created_at)",
+      "id, type, name, avatar_url, created_at, conversation_members!inner (user_id, last_read_at)",
     )
     .order("created_at", { ascending: false })
     .limit(50);
@@ -176,48 +257,30 @@ export async function fetchConversationSummaries(): Promise<
         user_id: string;
         last_read_at: string | null;
       }>;
-      messages?: Array<{
-        id: string;
-        content: string;
-        sender_id: string;
-        created_at: string;
-      }>;
     }
   >;
+
+  // Latest message + unread per conversation, one bounded row each. The old
+  // code embedded the full messages relation here, so a 10k-message group
+  // returned its entire history on every list render.
+  const ids = rows.map((row) => row.id);
+  const previews = await fetchConversationPreviews(ids);
 
   const summaries: ConversationSummary[] = [];
 
   for (const row of rows) {
-    const members = row.conversation_members ?? [];
-    const messages = (row.messages ?? [])
-      .slice()
-      .sort(
-        (
-          a: { content: string; created_at: string },
-          b: { content: string; created_at: string },
-        ) => Date.parse(b.created_at) - Date.parse(a.created_at),
-      );
-    const latest = messages[0] ?? null;
-
-    // Unread = messages newer than the caller's read cursor.
-    const myMembership = members.find((member) => member.user_id === selfId);
-    const readAt = myMembership?.last_read_at
-      ? Date.parse(myMembership.last_read_at)
-      : 0;
-    const unread = messages.filter((message) => {
-      if (!selfId || message.sender_id === selfId) return false;
-      return Date.parse(message.created_at) > readAt;
-    }).length;
+    const preview = previews.get(row.id);
+    const latest = preview ?? null;
 
     summaries.push({
       id: row.id,
       type: row.type,
       name: row.name,
       avatar_url: row.avatar_url,
-      last_message_at: latest?.created_at ?? row.created_at,
+      last_message_at: latest?.createdAt ?? row.created_at,
       last_message_preview: latest?.content ?? null,
-      last_message_sender: latest?.sender_id ?? null,
-      unread_count: unread,
+      last_message_sender: latest?.senderId ?? null,
+      unread_count: latest?.unreadCount ?? 0,
       peers: [],
     });
   }
@@ -550,6 +613,13 @@ export async function fetchConversationPeer(conversationId: string): Promise<Con
 /**
  * Create a direct conversation with one peer, or return the existing one if a
  * direct conversation between the two already exists.
+ *
+ * This goes through the `create_direct_conversation` RPC rather than inserting
+ * membership rows directly. The old client-side path needed a policy branch
+ * that let a conversation creator insert ANY user_id — which is also a
+ * primitive for adding a victim to a conversation they never agreed to join.
+ * The RPC resolves both parties server-side and only ever creates direct
+ * conversations, so opening a shared group by mistake cannot happen either.
  */
 export async function createDirectConversation(
   peerId: string,
@@ -560,63 +630,22 @@ export async function createDirectConversation(
   }
 
   const { data: userData } = await supabase.auth.getUser();
-  const selfId = userData.user?.id;
-  if (!selfId) {
+  if (!userData.user) {
     return { ok: false, error: "Not signed in" };
   }
 
-  // Look for an existing direct conversation shared by both users.
-  const { data: mine } = await supabase
-    .from("conversation_members")
-    .select("conversation_id")
-    .eq("user_id", selfId);
+  const { data, error } = await supabase.rpc("create_direct_conversation", {
+    peer_id: peerId,
+  });
 
-  const myIds = (mine ?? []).map(
-    (row: { conversation_id: string }) => row.conversation_id,
-  );
-  if (myIds.length > 0) {
-    const { data: shared } = await supabase
-      .from("conversation_members")
-      .select("conversation_id")
-      .in("conversation_id", myIds)
-      .eq("user_id", peerId);
-
-    if (shared && shared.length > 0) {
-      return {
-        ok: true,
-        conversationId: (shared[0] as { conversation_id: string })
-          .conversation_id,
-      };
-    }
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+  if (typeof data !== "string" || data.length === 0) {
+    return { ok: false, error: "Could not create conversation" };
   }
 
-  // Create the conversation and both membership rows.
-  const { data: conv, error: convError } = await supabase
-    .from("conversations")
-    .insert({ type: "direct", created_by: selfId })
-    .select("id")
-    .single();
-
-  if (convError || !conv) {
-    return {
-      ok: false,
-      error: convError?.message ?? "Could not create conversation",
-    };
-  }
-
-  const conversationId = (conv as { id: string }).id;
-  const { error: memberError } = await supabase
-    .from("conversation_members")
-    .insert([
-      { conversation_id: conversationId, user_id: selfId, role: "admin" },
-      { conversation_id: conversationId, user_id: peerId, role: "member" },
-    ]);
-
-  if (memberError) {
-    return { ok: false, error: memberError.message };
-  }
-
-  return { ok: true, conversationId };
+  return { ok: true, conversationId: data };
 }
 
 /**

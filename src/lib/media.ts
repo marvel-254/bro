@@ -1,8 +1,8 @@
-import * as ImagePicker from 'expo-image-picker';
-import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
-import * as FileSystem from 'expo-file-system';
-import { getSupabase } from './supabase';
-import { sendMessage } from './conversations';
+import * as ImagePicker from "expo-image-picker";
+import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
+import * as FileSystem from "expo-file-system";
+import { getSupabase } from "./supabase";
+import { sendMessage } from "./conversations";
 
 /**
  * Media pipeline: pick -> compress -> upload -> attach -> send.
@@ -65,32 +65,44 @@ export interface AttachmentRef {
 
 export type SendImageResult =
   | { ok: true; messageId: string; attachmentId: string }
-  | { ok: false; error: string; stage: 'pick' | 'compress' | 'upload' | 'send' | 'link' };
+  | {
+      ok: false;
+      error: string;
+      stage: "pick" | "compress" | "upload" | "send" | "link";
+    };
 
 /** Long-edge resize that preserves the aspect ratio. */
-export function fitWithin(width: number, height: number, maxEdge: number): { width: number; height: number } {
+export function fitWithin(
+  width: number,
+  height: number,
+  maxEdge: number,
+): { width: number; height: number } {
   const longEdge = Math.max(width, height);
   if (longEdge <= maxEdge || longEdge <= 0) {
     return { width, height };
   }
   const scale = maxEdge / longEdge;
-  return { width: Math.round(width * scale), height: Math.round(height * scale) };
+  return {
+    width: Math.round(width * scale),
+    height: Math.round(height * scale),
+  };
 }
 
 export function extensionOf(fileName: string | null | undefined): string {
-  if (!fileName) return '';
-  const dot = fileName.lastIndexOf('.');
-  return dot < 0 ? '' : fileName.slice(dot + 1).toLowerCase();
+  if (!fileName) return "";
+  const dot = fileName.lastIndexOf(".");
+  return dot < 0 ? "" : fileName.slice(dot + 1).toLowerCase();
 }
 
 /** Pure base64 -> bytes, no dependency. Covered by unit tests. */
 export function base64ToBytes(base64: string): Uint8Array {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-  const clean = base64.replace(/[^A-Za-z0-9+/=]/g, '');
+  const alphabet =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const clean = base64.replace(/[^A-Za-z0-9+/=]/g, "");
   const lookup = new Map<string, number>();
   for (let i = 0; i < alphabet.length; i++) lookup.set(alphabet[i], i);
 
-  const padding = clean.endsWith('==') ? 2 : clean.endsWith('=') ? 1 : 0;
+  const padding = clean.endsWith("==") ? 2 : clean.endsWith("=") ? 1 : 0;
   const out = new Uint8Array(((clean.length / 4) | 0) * 3 - padding);
   let o = 0;
   for (let i = 0; i < clean.length; i += 4) {
@@ -108,9 +120,10 @@ export function base64ToBytes(base64: string): Uint8Array {
 
 /** Pick one image from the library. Null means the user cancelled. */
 export async function pickImage(): Promise<PickedImage | null> {
-  const permission = await ImagePicker.requestMediaLibraryPermissionsAsync(false);
+  const permission =
+    await ImagePicker.requestMediaLibraryPermissionsAsync(false);
   if (!permission.granted) {
-    throw new Error('Photo access is off. Turn it on to send a picture.');
+    throw new Error("Photo access is off. Turn it on to send a picture.");
   }
 
   const result = await ImagePicker.launchImageLibraryAsync({
@@ -125,26 +138,33 @@ export async function pickImage(): Promise<PickedImage | null> {
 
   const asset = result.assets[0];
   const ext = extensionOf(asset.fileName);
-  const mime = asset.mimeType ?? (ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : 'image/jpeg');
-  return { uri: asset.uri, width: asset.width, height: asset.height, mimeType: mime };
+  const mime =
+    asset.mimeType ??
+    (ext === "png" ? "image/png" : ext === "gif" ? "image/gif" : "image/jpeg");
+  return {
+    uri: asset.uri,
+    width: asset.width,
+    height: asset.height,
+    mimeType: mime,
+  };
 }
 
 /** Compress to a 1920px JPEG plus a 400px thumb, in parallel. */
-export async function compressImage(source: PickedImage): Promise<CompressedPair> {
+export async function compressImage(
+  source: PickedImage,
+): Promise<CompressedPair> {
   const fullTarget = fitWithin(source.width, source.height, FULL_MAX_EDGE);
   const thumbTarget = fitWithin(source.width, source.height, THUMB_EDGE);
 
   const [full, thumb] = await Promise.all([
-    manipulateAsync(
-      source.uri,
-      [{ resize: { width: fullTarget.width } }],
-      { compress: FULL_QUALITY, format: SaveFormat.JPEG },
-    ),
-    manipulateAsync(
-      source.uri,
-      [{ resize: { width: thumbTarget.width } }],
-      { compress: THUMB_QUALITY, format: SaveFormat.JPEG },
-    ),
+    manipulateAsync(source.uri, [{ resize: { width: fullTarget.width } }], {
+      compress: FULL_QUALITY,
+      format: SaveFormat.JPEG,
+    }),
+    manipulateAsync(source.uri, [{ resize: { width: thumbTarget.width } }], {
+      compress: THUMB_QUALITY,
+      format: SaveFormat.JPEG,
+    }),
   ]);
 
   return {
@@ -153,7 +173,11 @@ export async function compressImage(source: PickedImage): Promise<CompressedPair
   };
 }
 
-function storageName(conversationId: string, senderId: string, suffix: string): string {
+function storageName(
+  conversationId: string,
+  senderId: string,
+  suffix: string,
+): string {
   return `${conversationId}/${senderId}-${Date.now()}${suffix}.jpg`;
 }
 
@@ -171,16 +195,16 @@ export async function uploadChatFile(
 ): Promise<{ path: string; bytes: number }> {
   const supabase = getSupabase();
   if (!supabase) {
-    throw new Error('Backend not configured');
+    throw new Error("Backend not configured");
   }
 
   const info = await FileSystem.getInfoAsync(localUri);
   if (!info.exists) {
-    throw new Error('That photo is gone. Pick it again.');
+    throw new Error("That photo is gone. Pick it again.");
   }
   const size = info.size ?? 0;
   if (size > MAX_IMAGE_BYTES) {
-    throw new Error('That photo is over 10MB. Pick a smaller one.');
+    throw new Error("That photo is over 10MB. Pick a smaller one.");
   }
 
   const base64 = await FileSystem.readAsStringAsync(localUri, {
@@ -190,8 +214,8 @@ export async function uploadChatFile(
   const path = storageName(conversationId, senderId, suffix);
 
   const { error } = await supabase.storage
-    .from('chat-media')
-    .upload(path, bytes, { contentType: 'image/jpeg', upsert: false });
+    .from("chat-media")
+    .upload(path, bytes, { contentType: "image/jpeg", upsert: false });
 
   if (error) {
     throw new Error(error.message);
@@ -207,35 +231,35 @@ async function currentUserId(): Promise<string | undefined> {
 }
 
 export async function insertAttachment(
-  input: Omit<AttachmentRef, 'id'> & { messageId: string | null },
+  input: Omit<AttachmentRef, "id"> & { messageId: string | null },
 ): Promise<string> {
   const supabase = getSupabase();
   if (!supabase) {
-    throw new Error('Backend not configured');
+    throw new Error("Backend not configured");
   }
 
   const selfId = await currentUserId();
   if (!selfId) {
-    throw new Error('Not signed in');
+    throw new Error("Not signed in");
   }
 
   const { data, error } = await supabase
-    .from('attachments')
+    .from("attachments")
     .insert({
       message_id: input.messageId,
       uploader: selfId,
-      bucket: 'chat-media',
+      bucket: "chat-media",
       storage_path: input.storagePath,
       thumb_path: input.thumbPath,
       mime_type: input.mime,
       size_bytes: input.bytes,
-      kind: 'image',
+      kind: "image",
     })
-    .select('id')
+    .select("id")
     .single();
 
   if (error || !data) {
-    throw new Error(error?.message ?? 'Could not save the photo');
+    throw new Error(error?.message ?? "Could not save the photo");
   }
   return (data as { id: string }).id;
 }
@@ -250,9 +274,9 @@ export async function fetchMessageAttachments(
   }
 
   const { data, error } = await supabase
-    .from('attachments')
-    .select('id, message_id, storage_path, thumb_path, mime_type, size_bytes')
-    .in('message_id', messageIds);
+    .from("attachments")
+    .select("id, message_id, storage_path, thumb_path, mime_type, size_bytes")
+    .in("message_id", messageIds);
 
   if (error) {
     // A missing thumbnail must not break the chat screen.
@@ -283,8 +307,27 @@ export async function fetchMessageAttachments(
 
 const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
 
+/** Bounded so a long session cannot grow it without limit. Oldest out first. */
+const SIGNED_URL_CACHE_MAX = 200;
+
+function cacheSignedUrl(path: string, url: string, expiresInSeconds: number): void {
+  if (signedUrlCache.size >= SIGNED_URL_CACHE_MAX) {
+    const oldest = signedUrlCache.keys().next();
+    if (!oldest.done) {
+      signedUrlCache.delete(oldest.value);
+    }
+  }
+  signedUrlCache.set(path, {
+    url,
+    expiresAt: Date.now() + expiresInSeconds * 1000,
+  });
+}
+
 /** Signed URL for a private object, cached until just before expiry. */
-export async function signedChatUrl(storagePath: string, expiresIn = 3600): Promise<string | null> {
+export async function signedChatUrl(
+  storagePath: string,
+  expiresIn = 3600,
+): Promise<string | null> {
   if (!storagePath) return null;
 
   const cached = signedUrlCache.get(storagePath);
@@ -298,17 +341,14 @@ export async function signedChatUrl(storagePath: string, expiresIn = 3600): Prom
   }
 
   const { data, error } = await supabase.storage
-    .from('chat-media')
+    .from("chat-media")
     .createSignedUrl(storagePath, expiresIn);
 
   if (error || !data?.signedUrl) {
     return null;
   }
 
-  signedUrlCache.set(storagePath, {
-    url: data.signedUrl,
-    expiresAt: Date.now() + expiresIn * 1000,
-  });
+  cacheSignedUrl(storagePath, data.signedUrl, expiresIn);
   return data.signedUrl;
 }
 
@@ -322,29 +362,37 @@ export async function sendImageMessage(
 ): Promise<SendImageResult> {
   const supabase = getSupabase();
   if (!supabase) {
-    return { ok: false, error: 'Backend not configured', stage: 'pick' };
+    return { ok: false, error: "Backend not configured", stage: "pick" };
   }
 
   const selfId = await currentUserId();
   if (!selfId) {
-    return { ok: false, error: 'Not signed in', stage: 'pick' };
+    return { ok: false, error: "Not signed in", stage: "pick" };
   }
 
   let picked: PickedImage | null;
   try {
     picked = await pickImage();
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : 'Could not open photos', stage: 'pick' };
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Could not open photos",
+      stage: "pick",
+    };
   }
   if (!picked) {
-    return { ok: false, error: 'cancelled', stage: 'pick' };
+    return { ok: false, error: "cancelled", stage: "pick" };
   }
 
   let compressed: CompressedPair;
   try {
     compressed = await compressImage(picked);
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : 'Could not prepare the photo', stage: 'compress' };
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Could not prepare the photo",
+      stage: "compress",
+    };
   }
 
   let fullPath: string;
@@ -352,14 +400,18 @@ export async function sendImageMessage(
   let byteCount: number;
   try {
     const [full, thumb] = await Promise.all([
-      uploadChatFile(conversationId, selfId, compressed.full.uri, ''),
-      uploadChatFile(conversationId, selfId, compressed.thumb.uri, '-thumb'),
+      uploadChatFile(conversationId, selfId, compressed.full.uri, ""),
+      uploadChatFile(conversationId, selfId, compressed.thumb.uri, "-thumb"),
     ]);
     fullPath = full.path;
     thumbPath = thumb.path;
     byteCount = full.bytes;
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : 'Upload failed', stage: 'upload' };
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Upload failed",
+      stage: "upload",
+    };
   }
 
   let attachmentId: string;
@@ -367,31 +419,41 @@ export async function sendImageMessage(
     attachmentId = await insertAttachment({
       storagePath: fullPath,
       thumbPath,
-      mime: 'image/jpeg',
+      mime: "image/jpeg",
       bytes: byteCount,
       messageId: null,
     });
   } catch (err) {
     // The objects are now orphans; the 24h sweeper cleans the row, and the
     // bucket holds nothing sensitive beyond an unreachable photo.
-    return { ok: false, error: err instanceof Error ? err.message : 'Could not save the photo', stage: 'upload' };
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Could not save the photo",
+      stage: "upload",
+    };
   }
 
-  const sent = await sendMessage(conversationId, caption, { messageType: 'image' });
+  const sent = await sendMessage(conversationId, caption, {
+    messageType: "image",
+  });
   if (!sent.ok) {
-    return { ok: false, error: sent.error, stage: 'send' };
+    return { ok: false, error: sent.error, stage: "send" };
   }
 
   try {
     const { error } = await supabase
-      .from('attachments')
+      .from("attachments")
       .update({ message_id: sent.message.id })
-      .eq('id', attachmentId);
+      .eq("id", attachmentId);
     if (error) {
       throw new Error(error.message);
     }
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : 'Could not link the photo', stage: 'link' };
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Could not link the photo",
+      stage: "link",
+    };
   }
 
   return { ok: true, messageId: sent.message.id, attachmentId };

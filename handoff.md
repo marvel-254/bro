@@ -279,7 +279,9 @@ silently, duplicating every threaded message:
 
 **Still not built:**
 - Drops / Statuses / Squads creation UI: tables exist, read-only in Pulse.
-  `invite` activity still goes through the client `recordActivity()` — no UI.
+  `invite`/`follow` activity have no UI; client `recordActivity()` was removed
+  in migration 011, so when invite/follow UIs land they should derive activity
+  from a database trigger the same way messages do.
 - Push notifications: no `push_tokens` table, no fanout, no OS delivery.
 - Voice notes: `attachments.kind` accepts `voice` and the bucket allows m4a/opus,
   but there is no recorder, no player, no UI.
@@ -292,7 +294,8 @@ but hidden with `href: null`, keeping the frozen Home/Chats/Bros/Me tab set.
 Stack routes off the tabs: `/chat/[id]`, `/chat/[id]/branch/[branchId]`,
 `/new-chat`, `/search`, `/activity`.
 
-Next: wire `recordActivity()` producers, then media and push.
+Next: drops/statuses/squads creation UI, push notifications, voice notes,
+group calls via LiveKit.
 
 ### Deferred / not started (sir's original order)
 - Friends/friend requests — no `friendships` table yet. Who's Around lists
@@ -416,6 +419,32 @@ Stack routes: `/chat/[id]`, `/chat/[id]/branch/[branchId]`, `/spaces/[id]`,
    what. The triggers read the actor from the row itself.
 
 8. **How the authorized path was finally verified** —
+   `scripts/verify-activity-triggers.sh` writes a reply, a mention and a
+   reaction with the service-role key, asserts the expected activity and
+   notification rows appear, then deletes everything it made. Result:
+   `reply, mention` then `reaction, reply, mention`, notifications fanned out to
+   the right users, database back to its prior contents. Re-run it any time.
+   Still unverified: message **search** with real rows as a member, and realtime
+   delivery on a second device.
+
+9. **Two gotchas from writing that script:**
+   - PostgREST returns **no body** for an INSERT unless you send
+     `Prefer: return=representation`. A successful insert is indistinguishable
+     from a silent failure if you read the id straight out of the response.
+     This cost three orphan rows before it was spotted.
+   - A `curl | jq` that returns `[]` can print nothing at all under
+     `set -euo pipefail`, which reads like a crash. Check the HTTP status.
+
+## 10. How to verify / continue
+
+```bash
+cd /home/marvel/Projects/bro
+git checkout feat/supabase-chat
+npx tsc --noEmit && npx eslint . && npx jest
+
+# apply schema (if new migrations added) — dry-run first:
+supabase db push --password "$(grep '^SUPABASE_DB_PASSWORD=' .env | cut -d= -f2-)" --dry-run
+supabase db push as finally verified** —
    `scripts/verify-activity-triggers.sh` writes a reply, a mention and a
    reaction with the service-role key, asserts the expected activity and
    notification rows appear, then deletes everything it made. Result:

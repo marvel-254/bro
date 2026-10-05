@@ -3,11 +3,12 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
-} from 'react';
-import { fetchUnreadActivityCount, subscribeToActivity } from './activity';
-import { isSupabaseConfigured } from './supabase';
+} from "react";
+import { fetchUnreadActivityCount, subscribeToActivity } from "./activity";
+import { isSupabaseConfigured } from "./supabase";
 
 /**
  * Unread activity count, shared so any entry point (tab, header icon) can show
@@ -27,7 +28,9 @@ const ActivityBadgeContext = createContext<ActivityBadgeState | null>(null);
 export function useActivityBadge(): ActivityBadgeState {
   const ctx = useContext(ActivityBadgeContext);
   if (!ctx) {
-    throw new Error('useActivityBadge must be used within ActivityBadgeProvider');
+    throw new Error(
+      "useActivityBadge must be used within ActivityBadgeProvider",
+    );
   }
   return ctx;
 }
@@ -60,8 +63,13 @@ export function ActivityBadgeProvider({
     return unsubscribe;
   }, [refresh, userId]);
 
+  const value = useMemo(
+    () => ({ unreadCount, refresh }),
+    [unreadCount, refresh],
+  );
+
   return (
-    <ActivityBadgeContext.Provider value={{ unreadCount, refresh }}>
+    <ActivityBadgeContext.Provider value={value}>
       {children}
     </ActivityBadgeContext.Provider>
   );

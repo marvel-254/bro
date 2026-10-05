@@ -24,6 +24,7 @@ import {
   TYPOGRAPHY,
 } from "../../theme";
 import {
+  compareMessagesNewestFirst,
   deleteMessage,
   editMessage,
   fetchMessages,
@@ -35,7 +36,7 @@ import {
   toggleReaction,
   MESSAGES_PAGE_SIZE,
 } from "../../lib/conversations";
-import { sendTyping, watchTyping } from "../../lib/presence";
+import { sendTyping, watchTyping, releaseTypingChannel } from "../../lib/presence";
 import { isSupabaseConfigured } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth-context";
 import { useCall } from "../../lib/call-context";
@@ -220,6 +221,7 @@ export default function ConversationDetail({ conversationId, title }: Props) {
   const [hasMore, setHasMore] = useState(true);
 
   const listRef = useRef<FlatList<MessageWithSender>>(null);
+  const lastIdRef = useRef<string | null>(null);
   const messagesRef = useRef<MessageWithSender[]>([]);
   const insets = useSafeAreaInsets();
   const selfId = currentUser?.id;
@@ -228,6 +230,25 @@ export default function ConversationDetail({ conversationId, title }: Props) {
     messagesRef.current = messages;
   }, [messages]);
 
+  /**
+   * Page enrichment: reactions, reply counts, branch links, attachments.
+   * Every page gets the same treatment — an older page rendering as bare
+   * bubbles is a bug, not a performance win.
+   */
+  const enrich = useCallback(async (ids: string[]) => {
+    if (ids.length === 0) return;
+    const [fetchedReactions, counts, branches, attached] = await Promise.all([
+      fetchReactions(ids),
+      fetchReplyCounts(ids),
+      fetchBranchesByRoot(ids),
+      fetchMessageAttachments(ids),
+    ]);
+    setReactions((current) => ({ ...current, ...fetchedReactions }));
+    setReplyCounts((current) => ({ ...current, ...counts }));
+    setBranchByRoot((current) => ({ ...current, ...branches }));
+    setAttachments((current) => ({ ...current, ...attached }));
+  }, []);
+
   const load = useCallback(async () => {
     try {
       setError(null);
@@ -235,46 +256,28 @@ export default function ConversationDetail({ conversationId, title }: Props) {
       setMessages(rows);
       setHasMore(rows.length >= MESSAGES_PAGE_SIZE);
       void markConversationRead(conversationId);
-      const ids = rows.map((message) => message.id);
-      if (ids.length > 0) {
-        setReactions(await fetchReactions(ids));
-        // Branch pills: one reply-count query and one branch lookup for the whole
-        // page, never one per message.
-        const [counts, branches, attached] = await Promise.all([
-          fetchReplyCounts(ids),
-          fetchBranchesByRoot(ids),
-          fetchMessageAttachments(ids),
-        ]);
-        setReplyCounts(counts);
-        setBranchByRoot(branches);
-        setAttachments(attached);
-      }
+      await enrich(rows.map((message) => message.id));
       setReadCursors(await fetchReadCursors(conversationId));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load messages");
     } finally {
       setLoading(false);
     }
-  }, [conversationId]);
+  }, [conversationId, enrich]);
 
   const loadOlder = useCallback(async () => {
     if (loadingOlder || !hasMore || messages.length === 0) return;
     setLoadingOlder(true);
     try {
       const oldest = messages[0];
-      const older = await fetchMessages(
-        conversationId,
-        MESSAGES_PAGE_SIZE,
-        oldest.created_at,
-      );
+      const older = await fetchMessages(conversationId, MESSAGES_PAGE_SIZE, {
+        createdAt: oldest.created_at,
+        id: oldest.id,
+      });
       if (older.length > 0) {
         setMessages((current) => [...older, ...current]);
         setHasMore(older.length >= MESSAGES_PAGE_SIZE);
-        const ids = older.map((message) => message.id);
-        if (ids.length > 0) {
-          const olderReactions = await fetchReactions(ids);
-          setReactions((current) => ({ ...current, ...olderReactions }));
-        }
+        await enrich(older.map((message) => message.id));
       } else {
         setHasMore(false);
       }
@@ -283,7 +286,7 @@ export default function ConversationDetail({ conversationId, title }: Props) {
     } finally {
       setLoadingOlder(false);
     }
-  }, [conversationId, hasMore, loadingOlder, messages]);
+  }, [conversationId, hasMore, loadingOlder, messages, enrich]);
 
   useEffect(() => {
     setLoading(true);
@@ -300,7 +303,13 @@ export default function ConversationDetail({ conversationId, title }: Props) {
           if (current.some((message) => message.id === incoming.id)) {
             return current;
           }
-          return [...current, { ...incoming, sender: null }];
+          // Insert-then-sort on (created_at, id): a message sent from a device
+          // whose clock runs behind the server can otherwise land after newer
+          // messages and sit there, wrongly ordered, until the next reload.
+          // The list below renders oldest-first, hence the reversed comparator.
+          return [...current, { ...incoming, sender: null }].sort(
+            (a, b) => -compareMessagesNewestFirst(a, b),
+          );
         });
         // An arriving image needs its attachment row for the thumbnail.
         if (incoming.type === "image") {
@@ -337,7 +346,11 @@ export default function ConversationDetail({ conversationId, title }: Props) {
   // Typing indicator.
   useEffect(() => {
     if (!selfId) return;
-    return watchTyping(conversationId, selfId, setTypists);
+    const stopWatching = watchTyping(conversationId, selfId, setTypists);
+    return () => {
+      stopWatching();
+      releaseTypingChannel(conversationId);
+    };
   }, [conversationId, selfId]);
 
   const onDraftChange = (text: string) => {
@@ -731,11 +744,22 @@ export default function ConversationDetail({ conversationId, title }: Props) {
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
-          onContentSizeChange={() =>
-            listRef.current?.scrollToEnd({ animated: false })
-          }
-          onEndReached={() => void loadOlder()}
-          onEndReachedThreshold={0.3}
+          // Scroll to the bottom only when a NEW message lands at the end.
+          // Prepending an older page keeps the same last id, so the view is
+          // never yanked away from where the user is reading. The previous
+          // code scrolled on every content change, which made older history
+          // unreachable: each prepend snapped straight back down.
+          onContentSizeChange={() => {
+            const last = messages[messages.length - 1]?.id ?? null;
+            if (last && last !== lastIdRef.current) {
+              lastIdRef.current = last;
+              listRef.current?.scrollToEnd({ animated: false });
+            }
+          }}
+          // The list runs oldest -> newest, so older history lives at the TOP.
+          // onEndReached fires at the bottom (newest) and could never reach it.
+          onStartReached={() => void loadOlder()}
+          onStartReachedThreshold={0.3}
           ListHeaderComponent={
             loadingOlder ? (
               <ActivityIndicator

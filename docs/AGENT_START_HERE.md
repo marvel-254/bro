@@ -11,7 +11,7 @@ Stack locked: Expo SDK 53 + RN 0.79.6 + expo-router 5.1.11 + TypeScript + Supaba
 
 Branch: `feat/supabase-chat` (working, pushed, PR #3 open → main, all checks green). Package `app.bro`, scheme `bro://`.
 
-Current state: 349/349 tests across 17 suites, typecheck clean, lint 0 errors. (The 2 warnings in output are the review agent's invites.test.ts, not this work.)
+Current state: 351/351 tests across 17 suites, typecheck clean, lint 0 errors. (The 2 warnings in output are the review agent's invites.test.ts, not this work.)
 
 ## 2. Frozen decisions — do not re-debate
 
@@ -42,7 +42,7 @@ Voice core: `yoh, tsup bruv, uko wapi msee, cuz, pull up, tap in, run it back`.
   `activity.ts`, `activity-badge-context.tsx`, `presence.ts`,
   `presence-context.tsx`, `people-context.tsx`, `database.types.ts`.
 - `supabase/migrations/` — 001 initial (11 tables+RLS), 002 tranche-1,
-  003 search, 004 activity, 005 branches, 006 activity producers, 007 media, 008 friendships.
+  003 search, 004 activity, 005 branches, 006 activity producers, 007 media, 008 friendships, 009/010 calls, 011 security review, 012 function grants, 013 conversation previews.
 - `scripts/verify-activity-triggers.sh` — end-to-end trigger check, self-cleaning.
 - `scripts/verify-media-storage.sh` — buckets/RLS/MIME check, self-cleaning.
 - `.github/workflows/` — ci, android-build (debug APK `BRO-debug`), release, validate-secrets, fdroid-check.
@@ -68,7 +68,7 @@ Then the feature order actually used, all landed and on `feat/supabase-chat`:
   (`src/lib/media.ts`), chat photo send + thumbnails + viewer
 - SpaceDetail, plan creation (+ center `+` action), friendships (+ migration 008, verified)
 
-Next: drops/statuses/squads creation UI, push notifications, voice notes, group calls via LiveKit. `prune_old_activity()`
+Security review remediation landed (migrations 011/012/013). Next: drops/statuses/squads creation UI, push notifications, voice notes, group calls via LiveKit. `prune_old_activity()`
 exists but is not scheduled — wire it to pg_cron.
 
 P1 reliability: `expo-sqlite` + outbox + `client_msg_id` + ack + reconnect refetch + pagination.

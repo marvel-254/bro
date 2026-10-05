@@ -49,7 +49,8 @@
         "RECORD_AUDIO",
         "MODIFY_AUDIO_SETTINGS"
       ],
-      "usesCleartextTraffic": false
+      "usesCleartextTraffic": false,
+      "allowBackup": false
     },
     "plugins": [
       "expo-router",

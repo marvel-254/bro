@@ -1,5 +1,5 @@
-import { getSupabase } from './supabase';
-import { fetchConversationSummaries } from './conversations';
+import { getSupabase } from "./supabase";
+import { fetchConversationSummaries } from "./conversations";
 
 /**
  * Global search across people, spaces, conversations and messages.
@@ -69,10 +69,15 @@ export function isSearchable(query: string): boolean {
   return query.trim().length >= SEARCH_MIN_QUERY;
 }
 
-/** Wildcard-free ilike pattern. Commas/brackets are literal here, not patterns. */
+/**
+ * Wildcard-free ilike pattern. Commas are replaced, not escaped: PostgREST
+ * splits `or=(...)` on commas and there is no escape for a literal comma
+ * inside that list, so "a,b" searches as "a b". Brackets need no handling
+ * beyond this since they carry no meaning to PostgREST here.
+ */
 function containsPattern(query: string): string {
   // Escape the LIKE metacharacters so a user typing "100%" does not match everything.
-  const escaped = query.replace(/[\\%_]/g, (char) => `\\${char}`);
+  const escaped = query.replace(/,/g, " ").replace(/[\\%_]/g, (char) => `\\${char}`);
   return `%${escaped}%`;
 }
 
@@ -84,10 +89,10 @@ export async function searchPeople(query: string): Promise<SearchPerson[]> {
 
   const pattern = containsPattern(query.trim());
   const { data, error } = await supabase
-    .from('profiles')
-    .select('id, username, display_name, avatar_url, presence')
+    .from("profiles")
+    .select("id, username, display_name, avatar_url, presence")
     .or(`display_name.ilike.${pattern},username.ilike.${pattern}`)
-    .order('display_name', { ascending: true })
+    .order("display_name", { ascending: true })
     .limit(SEARCH_RESULT_LIMIT);
 
   if (error) {
@@ -97,13 +102,15 @@ export async function searchPeople(query: string): Promise<SearchPerson[]> {
   const { data: userData } = await supabase.auth.getUser();
   const selfId = userData.user?.id;
 
-  return ((data ?? []) as Array<{
-    id: string;
-    username: string | null;
-    display_name: string;
-    avatar_url: string | null;
-    presence: string | null;
-  }>)
+  return (
+    (data ?? []) as Array<{
+      id: string;
+      username: string | null;
+      display_name: string;
+      avatar_url: string | null;
+      presence: string | null;
+    }>
+  )
     .filter((row) => row.id !== selfId)
     .map((row) => ({
       id: row.id,
@@ -122,25 +129,29 @@ export async function searchSpaces(query: string): Promise<SearchSpace[]> {
 
   const pattern = containsPattern(query.trim());
   const { data, error } = await supabase
-    .from('spaces')
-    .select('id, name, slug, description, avatar_url, is_public, space_members(count)')
+    .from("spaces")
+    .select(
+      "id, name, slug, description, avatar_url, is_public, space_members(count)",
+    )
     .or(`name.ilike.${pattern},description.ilike.${pattern}`)
-    .order('name', { ascending: true })
+    .order("name", { ascending: true })
     .limit(SEARCH_RESULT_LIMIT);
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return ((data ?? []) as unknown as Array<{
-    id: string;
-    name: string;
-    slug: string;
-    description: string | null;
-    avatar_url: string | null;
-    is_public: boolean;
-    space_members: Array<{ count: number }> | null;
-  }>).map((row) => ({
+  return (
+    (data ?? []) as unknown as Array<{
+      id: string;
+      name: string;
+      slug: string;
+      description: string | null;
+      avatar_url: string | null;
+      is_public: boolean;
+      space_members: Array<{ count: number }> | null;
+    }>
+  ).map((row) => ({
     id: row.id,
     name: row.name,
     slug: row.slug,
@@ -153,7 +164,7 @@ export async function searchSpaces(query: string): Promise<SearchSpace[]> {
 }
 
 function titleFromPeers(peerNames: string[]): string {
-  if (peerNames.length === 0) return 'Conversation';
+  if (peerNames.length === 0) return "Conversation";
   if (peerNames.length === 1) return peerNames[0];
   return `${peerNames[0]} +${peerNames.length - 1}`;
 }
@@ -163,7 +174,9 @@ function titleFromPeers(peerNames: string[]): string {
  * `name` — its title is derived from its peers, which SQL cannot compute for an
  * arbitrary member set without a lateral join over every candidate.
  */
-export async function searchConversations(query: string): Promise<SearchConversation[]> {
+export async function searchConversations(
+  query: string,
+): Promise<SearchConversation[]> {
   if (!isSearchable(query)) {
     return [];
   }
@@ -180,13 +193,20 @@ export async function searchConversations(query: string): Promise<SearchConversa
         preview: summary.last_message_preview,
         lastMessageAt: summary.last_message_at,
         unreadCount: summary.unread_count,
-        haystack: [summary.name ?? '', summary.last_message_preview ?? '', ...peerNames]
-          .join(' ')
+        haystack: [
+          summary.name ?? "",
+          summary.last_message_preview ?? "",
+          ...peerNames,
+        ]
+          .join(" ")
           .toLowerCase(),
       };
     })
     .filter((row) => row.haystack.includes(needle))
-    .sort((a, b) => Date.parse(b.lastMessageAt ?? '') - Date.parse(a.lastMessageAt ?? ''))
+    .sort(
+      (a, b) =>
+        Date.parse(b.lastMessageAt ?? "") - Date.parse(a.lastMessageAt ?? ""),
+    )
     .slice(0, SEARCH_RESULT_LIMIT)
     .map(({ haystack: _haystack, ...rest }) => rest);
 }
@@ -198,7 +218,7 @@ export async function searchMessages(query: string): Promise<SearchMessage[]> {
     return [];
   }
 
-  const { data, error } = await supabase.rpc('search_messages', {
+  const { data, error } = await supabase.rpc("search_messages", {
     query: query.trim(),
     result_limit: SEARCH_RESULT_LIMIT,
   });
@@ -222,10 +242,13 @@ export async function searchMessages(query: string): Promise<SearchMessage[]> {
   const nameById = new Map<string, string>();
   if (senderIds.length > 0) {
     const { data: profileRows } = await supabase
-      .from('profiles')
-      .select('id, display_name')
-      .in('id', senderIds);
-    for (const row of (profileRows ?? []) as Array<{ id: string; display_name: string }>) {
+      .from("profiles")
+      .select("id, display_name")
+      .in("id", senderIds);
+    for (const row of (profileRows ?? []) as Array<{
+      id: string;
+      display_name: string;
+    }>) {
       nameById.set(row.id, row.display_name);
     }
   }
@@ -257,13 +280,15 @@ export async function searchEverything(query: string): Promise<SearchResults> {
     searchMessages(query),
   ]);
 
-  const failed = settled.filter((result) => result.status === 'rejected');
+  const failed = settled.filter((result) => result.status === "rejected");
   if (failed.length === settled.length) {
-    throw failed[0] instanceof Error ? failed[0].reason : new Error('Search failed');
+    throw failed[0] instanceof Error
+      ? failed[0].reason
+      : new Error("Search failed");
   }
 
-  const [people, spaces, conversations, messages] = settled.map(
-    (result) => (result.status === 'fulfilled' ? result.value : []),
+  const [people, spaces, conversations, messages] = settled.map((result) =>
+    result.status === "fulfilled" ? result.value : [],
   ) as [SearchPerson[], SearchSpace[], SearchConversation[], SearchMessage[]];
 
   return { people, spaces, conversations, messages };

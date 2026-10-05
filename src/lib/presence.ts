@@ -1,4 +1,4 @@
-import { getSupabase, type SupabaseClient } from './supabase';
+import { getSupabase, type SupabaseClient } from "./supabase";
 
 /**
  * Presence and typing.
@@ -10,32 +10,32 @@ import { getSupabase, type SupabaseClient } from './supabase';
  */
 
 export type Presence =
-  | 'online'
-  | 'busy'
-  | 'chilling'
-  | 'gaming'
-  | 'listening'
-  | 'afk'
-  | 'offline';
+  | "online"
+  | "busy"
+  | "chilling"
+  | "gaming"
+  | "listening"
+  | "afk"
+  | "offline";
 
 export const PRESENCE_LABELS: Record<Presence, string> = {
-  online: 'Online',
-  busy: 'Busy',
-  chilling: 'Chilling',
-  gaming: 'Gaming',
-  listening: 'Listening',
-  afk: 'AFK',
-  offline: 'Offline',
+  online: "Online",
+  busy: "Busy",
+  chilling: "Chilling",
+  gaming: "Gaming",
+  listening: "Listening",
+  afk: "AFK",
+  offline: "Offline",
 };
 
 export const PRESENCE_COLORS: Record<Presence, string> = {
-  online: '#3DD68C',
-  busy: '#F0616D',
-  chilling: '#5AC8FA',
-  gaming: '#B388FF',
-  listening: '#FFB020',
-  afk: '#8F9CAE',
-  offline: '#4F5B6E',
+  online: "#3DD68C",
+  busy: "#F0616D",
+  chilling: "#5AC8FA",
+  gaming: "#B388FF",
+  listening: "#FFB020",
+  afk: "#8F9CAE",
+  offline: "#4F5B6E",
 };
 
 export interface PresencePayload {
@@ -83,7 +83,7 @@ export function watchPresence(
   });
 
   channel
-    .on('presence', { event: 'sync' }, () => {
+    .on("presence", { event: "sync" }, () => {
       roster.clear();
       const state = channel.presenceState() as Record<string, unknown[]>;
       for (const [, metas] of Object.entries(state)) {
@@ -94,11 +94,14 @@ export function watchPresence(
       }
       emit();
     })
-    .on('presence', { event: 'join' }, () => emit())
-    .on('presence', { event: 'leave' }, () => emit())
+    .on("presence", { event: "join" }, () => emit())
+    .on("presence", { event: "leave" }, () => emit())
     .subscribe(async (status) => {
-      if (status === 'SUBSCRIBED') {
-        await channel.track({ userId: selfId, presence: 'online' } satisfies PresencePayload);
+      if (status === "SUBSCRIBED") {
+        await channel.track({
+          userId: selfId,
+          presence: "online",
+        } satisfies PresencePayload);
       }
     });
 
@@ -138,26 +141,70 @@ export async function persistPresence(
   }
 
   await supabase
-    .from('profiles')
-    .update({ presence, presence_text: statusText ?? null, presence_emoji: emoji ?? null })
-    .eq('id', userData.user.id);
+    .from("profiles")
+    .update({
+      presence,
+      presence_text: statusText ?? null,
+      presence_emoji: emoji ?? null,
+    })
+    .eq("id", userData.user.id);
 }
 
-/** Broadcast typing state. Nothing is persisted. */
+/**
+ * Broadcast typing state. Nothing is persisted.
+ *
+ * Channels are cached per conversation and subscribed once: sending on a
+ * fresh, unsubscribed channel is dropped by Realtime, and building one per
+ * keystroke leaked a channel object every time.
+ */
+const typingChannels = new Map<string, { channel: TypingChannel; refs: number }>();
+
+interface TypingChannel {
+  send(message: { type: string; event: string; payload: unknown }): void;
+  subscribe(): unknown;
+}
+
+function typingChannelFor(conversationId: string): TypingChannel | null {
+  const supabase = supabaseOrNull();
+  if (!supabase) {
+    return null;
+  }
+  const cached = typingChannels.get(conversationId);
+  if (cached) {
+    cached.refs += 1;
+    return cached.channel;
+  }
+  const channel = supabase.channel(
+    `typing:${conversationId}`,
+  ) as unknown as TypingChannel;
+  void channel.subscribe();
+  typingChannels.set(conversationId, { channel, refs: 1 });
+  return channel;
+}
+
+export function releaseTypingChannel(conversationId: string): void {
+  const cached = typingChannels.get(conversationId);
+  if (!cached) return;
+  cached.refs -= 1;
+  if (cached.refs <= 0) {
+    typingChannels.delete(conversationId);
+  }
+}
+
 export function sendTyping(
   conversationId: string,
   userId: string,
   displayName: string,
   isTyping: boolean,
 ): void {
-  const supabase = supabaseOrNull();
-  if (!supabase) {
+  const channel = typingChannelFor(conversationId);
+  if (!channel) {
     return;
   }
 
-  void supabase.channel(`typing:${conversationId}`).send({
-    type: 'broadcast',
-    event: 'typing',
+  channel.send({
+    type: "broadcast",
+    event: "typing",
     payload: { userId, displayName, isTyping } satisfies TypingPayload,
   });
 }
@@ -177,7 +224,7 @@ export function watchTyping(
 
   const channel = supabase
     .channel(`typing:${conversationId}`)
-    .on('broadcast', { event: 'typing' }, ({ payload }) => {
+    .on("broadcast", { event: "typing" }, ({ payload }) => {
       const data = payload as TypingPayload;
       if (data.userId === selfId) {
         return;
@@ -222,10 +269,10 @@ export function watchTyping(
 
 /** Options accepted when sending. `expiresInSeconds` drives disappearing messages. */
 export const DISAPPEAR_PRESETS = [
-  { label: '10 seconds', seconds: 10 },
-  { label: '1 minute', seconds: 60 },
-  { label: '1 hour', seconds: 3600 },
-  { label: '24 hours', seconds: 86_400 },
-  { label: '7 days', seconds: 604_800 },
-  { label: 'Never', seconds: null },
+  { label: "10 seconds", seconds: 10 },
+  { label: "1 minute", seconds: 60 },
+  { label: "1 hour", seconds: 3600 },
+  { label: "24 hours", seconds: 86_400 },
+  { label: "7 days", seconds: 604_800 },
+  { label: "Never", seconds: null },
 ] as const;

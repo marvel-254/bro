@@ -1,5 +1,6 @@
-import { getSupabase } from './supabase';
-import type { Presence } from './presence';
+import { getSupabase } from "./supabase";
+import { fetchConversationPreviews } from "./conversations";
+import type { Presence } from "./presence";
 
 /**
  * Data access for Spaces — communities that organise conversations.
@@ -26,7 +27,7 @@ export interface SpaceSummary {
   isPublic: boolean;
   ownerId: string;
   /** Your role, or null when you are not a member. */
-  myRole: 'owner' | 'admin' | 'member' | null;
+  myRole: "owner" | "admin" | "member" | null;
   /**
    * Member count. `null` means "not readable" — RLS hides space_members for
    * spaces you have not joined. Never coerce this to 0.
@@ -51,13 +52,13 @@ export const SPACE_DESCRIPTION_MAX = 280;
 export function slugify(name: string): string {
   const base = name
     .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[^\w\s-]/g, '')
+    .normalize("NFKD")
+    .replace(/[^\w\s-]/g, "")
     .trim()
-    .replace(/[\s_]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-  return base || 'space';
+    .replace(/[\s_]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return base || "space";
 }
 
 interface RawSpace {
@@ -70,7 +71,7 @@ interface RawSpace {
   owner_id: string;
   space_members?: Array<{
     user_id: string;
-    role: 'owner' | 'admin' | 'member';
+    role: "owner" | "admin" | "member";
     joined_at: string;
   }> | null;
 }
@@ -79,7 +80,9 @@ function toSummary(space: RawSpace, selfId: string | undefined): SpaceSummary {
   // PostgREST embeds the caller's own membership row here (RLS exposes only
   // that), so a single element is expected when you are a member.
   const memberships = space.space_members ?? [];
-  const mine = selfId ? memberships.find((row) => row.user_id === selfId) : undefined;
+  const mine = selfId
+    ? memberships.find((row) => row.user_id === selfId)
+    : undefined;
 
   return {
     id: space.id,
@@ -96,20 +99,20 @@ function toSummary(space: RawSpace, selfId: string | undefined): SpaceSummary {
 }
 
 const SPACE_SELECT =
-  'id, name, slug, description, avatar_url, is_public, owner_id, space_members(user_id, role, joined_at)';
+  "id, name, slug, description, avatar_url, is_public, owner_id, space_members(user_id, role, joined_at)";
 
 export interface SpaceMember {
   userId: string;
   displayName: string;
   avatarUrl: string | null;
   presence: Presence | null;
-  role: 'owner' | 'admin' | 'member';
+  role: "owner" | "admin" | "member";
   joinedAt: string;
 }
 
 export interface SpaceConversation {
   id: string;
-  type: 'direct' | 'group' | 'space' | 'live';
+  type: "direct" | "group" | "space" | "live";
   name: string | null;
   lastMessageAt: string | null;
   lastMessagePreview: string | null;
@@ -117,7 +120,9 @@ export interface SpaceConversation {
 }
 
 /** One space by id. Null when it does not exist or RLS hides it. */
-export async function fetchSpace(spaceId: string): Promise<SpaceSummary | null> {
+export async function fetchSpace(
+  spaceId: string,
+): Promise<SpaceSummary | null> {
   const supabase = getSupabase();
   if (!supabase) {
     return null;
@@ -126,9 +131,9 @@ export async function fetchSpace(spaceId: string): Promise<SpaceSummary | null> 
   const selfId = await currentUserId();
 
   const { data, error } = await supabase
-    .from('spaces')
+    .from("spaces")
     .select(SPACE_SELECT)
-    .eq('id', spaceId)
+    .eq("id", spaceId)
     .maybeSingle();
 
   if (error) {
@@ -146,32 +151,40 @@ export async function fetchSpace(spaceId: string): Promise<SpaceSummary | null> 
  * hides space_members otherwise, so a non-member gets an empty list rather
  * than someone else's roster.
  */
-export async function fetchSpaceMembers(spaceId: string): Promise<SpaceMember[]> {
+export async function fetchSpaceMembers(
+  spaceId: string,
+): Promise<SpaceMember[]> {
   const supabase = getSupabase();
   if (!supabase) {
     return [];
   }
 
   const { data, error } = await supabase
-    .from('space_members')
+    .from("space_members")
     .select(
-      'user_id, role, joined_at, profile:profiles!space_members_user_id_fkey (display_name, avatar_url, presence)',
+      "user_id, role, joined_at, profile:profiles!space_members_user_id_fkey (display_name, avatar_url, presence)",
     )
-    .eq('space_id', spaceId)
-    .order('joined_at', { ascending: true });
+    .eq("space_id", spaceId)
+    .order("joined_at", { ascending: true });
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return ((data ?? []) as unknown as Array<{
-    user_id: string;
-    role: SpaceMember['role'];
-    joined_at: string;
-    profile: { display_name: string; avatar_url: string | null; presence: Presence | null } | null;
-  }>).map((row) => ({
+  return (
+    (data ?? []) as unknown as Array<{
+      user_id: string;
+      role: SpaceMember["role"];
+      joined_at: string;
+      profile: {
+        display_name: string;
+        avatar_url: string | null;
+        presence: Presence | null;
+      } | null;
+    }>
+  ).map((row) => ({
     userId: row.user_id,
-    displayName: row.profile?.display_name ?? 'Someone',
+    displayName: row.profile?.display_name ?? "Someone",
     avatarUrl: row.profile?.avatar_url ?? null,
     presence: row.profile?.presence ?? null,
     role: row.role,
@@ -184,7 +197,9 @@ export async function fetchSpaceMembers(spaceId: string): Promise<SpaceMember[]>
  * caller's own summaries logic but scoped to one space_id, because
  * fetchConversationSummaries does not return space membership.
  */
-export async function fetchSpaceConversations(spaceId: string): Promise<SpaceConversation[]> {
+export async function fetchSpaceConversations(
+  spaceId: string,
+): Promise<SpaceConversation[]> {
   const supabase = getSupabase();
   if (!supabase) {
     return [];
@@ -196,12 +211,12 @@ export async function fetchSpaceConversations(spaceId: string): Promise<SpaceCon
   }
 
   const { data, error } = await supabase
-    .from('conversations')
+    .from("conversations")
     .select(
-      'id, type, name, created_at, conversation_members!inner (user_id, last_read_at), messages (id, content, sender_id, created_at)',
+      "id, type, name, created_at",
     )
-    .eq('space_id', spaceId)
-    .order('created_at', { ascending: false })
+    .eq("space_id", spaceId)
+    .order("created_at", { ascending: false })
     .limit(50);
 
   if (error) {
@@ -210,34 +225,26 @@ export async function fetchSpaceConversations(spaceId: string): Promise<SpaceCon
 
   const rows = (data ?? []) as unknown as Array<{
     id: string;
-    type: SpaceConversation['type'];
+    type: SpaceConversation["type"];
     name: string | null;
     created_at: string;
-    conversation_members?: Array<{ user_id: string; last_read_at: string | null }>;
-    messages?: Array<{ id: string; content: string; sender_id: string; created_at: string }>;
   }>;
 
-  return rows.map((row) => {
-    const members = row.conversation_members ?? [];
-    const messages = (row.messages ?? [])
-      .slice()
-      .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
-    const latest = messages[0] ?? null;
+  // Latest message + unread per conversation, one bounded row each. See
+  // fetchConversationPreviews: the embedded-select approach this replaces
+  // returned every message of every conversation on each render.
+  const previews = await fetchConversationPreviews(rows.map((row) => row.id));
 
-    const myMembership = members.find((member) => member.user_id === selfId);
-    const readAt = myMembership?.last_read_at ? Date.parse(myMembership.last_read_at) : 0;
-    const unread = messages.filter((message) => {
-      if (message.sender_id === selfId) return false;
-      return Date.parse(message.created_at) > readAt;
-    }).length;
+  return rows.map((row) => {
+    const preview = previews.get(row.id);
 
     return {
       id: row.id,
       type: row.type,
       name: row.name,
-      lastMessageAt: latest?.created_at ?? row.created_at,
-      lastMessagePreview: latest?.content ?? null,
-      unreadCount: unread,
+      lastMessageAt: preview?.createdAt ?? row.created_at,
+      lastMessagePreview: preview?.content ?? null,
+      unreadCount: preview?.unreadCount ?? 0,
     };
   });
 }
@@ -265,9 +272,9 @@ export async function fetchMySpaces(): Promise<SpaceSummary[]> {
   }
 
   const { data: membershipRows, error: memberError } = await supabase
-    .from('space_members')
-    .select('space_id, joined_at')
-    .eq('user_id', selfId);
+    .from("space_members")
+    .select("space_id, joined_at")
+    .eq("user_id", selfId);
 
   if (memberError) {
     throw new Error(memberError.message);
@@ -283,10 +290,10 @@ export async function fetchMySpaces(): Promise<SpaceSummary[]> {
 
   const ids = memberships.map((row) => row.space_id);
   const { data, error } = await supabase
-    .from('spaces')
+    .from("spaces")
     .select(SPACE_SELECT)
-    .in('id', ids)
-    .order('created_at', { ascending: false });
+    .in("id", ids)
+    .order("created_at", { ascending: false });
 
   if (error) {
     throw new Error(error.message);
@@ -294,14 +301,18 @@ export async function fetchMySpaces(): Promise<SpaceSummary[]> {
 
   return ((data ?? []) as unknown as RawSpace[])
     .map((space) => toSummary(space, selfId))
-    .sort((a, b) => Date.parse(b.joinedAt ?? '') - Date.parse(a.joinedAt ?? ''));
+    .sort(
+      (a, b) => Date.parse(b.joinedAt ?? "") - Date.parse(a.joinedAt ?? ""),
+    );
 }
 
 /**
  * Public spaces the caller has NOT joined, for discovery. Spaces already joined
  * are excluded so this list is purely "somewhere new to go".
  */
-export async function fetchDiscoverableSpaces(limit: number = 20): Promise<SpaceSummary[]> {
+export async function fetchDiscoverableSpaces(
+  limit: number = 20,
+): Promise<SpaceSummary[]> {
   const supabase = getSupabase();
   if (!supabase) {
     return [];
@@ -310,22 +321,29 @@ export async function fetchDiscoverableSpaces(limit: number = 20): Promise<Space
   const selfId = await currentUserId();
 
   const { data: mine, error: memberError } = await supabase
-    .from('space_members')
-    .select('space_id')
-    .eq('user_id', selfId ?? '');
+    .from("space_members")
+    .select("space_id")
+    .eq("user_id", selfId ?? "");
 
   if (memberError) {
     throw new Error(memberError.message);
   }
 
-  const joinedIds = (mine ?? []).map((row: { space_id: string }) => row.space_id);
+  const joinedIds = (mine ?? []).map(
+    (row: { space_id: string }) => row.space_id,
+  );
 
-  let query = supabase.from('spaces').select(SPACE_SELECT).eq('is_public', true);
+  let query = supabase
+    .from("spaces")
+    .select(SPACE_SELECT)
+    .eq("is_public", true);
   if (joinedIds.length > 0) {
-    query = query.not('id', 'in', `(${joinedIds.join(',')})`);
+    query = query.not("id", "in", `(${joinedIds.join(",")})`);
   }
 
-  const { data, error } = await query.order('created_at', { ascending: false }).limit(limit);
+  const { data, error } = await query
+    .order("created_at", { ascending: false })
+    .limit(limit);
 
   if (error) {
     throw new Error(error.message);
@@ -333,27 +351,31 @@ export async function fetchDiscoverableSpaces(limit: number = 20): Promise<Space
 
   // No membership rows come back for spaces you have not joined, so memberCount
   // is null and the UI shows it as unknown.
-  return ((data ?? []) as unknown as RawSpace[]).map((space) => toSummary(space, selfId));
+  return ((data ?? []) as unknown as RawSpace[]).map((space) =>
+    toSummary(space, selfId),
+  );
 }
 
 /** Join a space as yourself. RLS requires user_id = auth.uid(), so nothing else is sent. */
-export async function joinSpace(spaceId: string): Promise<{ ok: boolean; error?: string }> {
+export async function joinSpace(
+  spaceId: string,
+): Promise<{ ok: boolean; error?: string }> {
   const supabase = getSupabase();
   if (!supabase) {
-    return { ok: false, error: 'Backend not configured' };
+    return { ok: false, error: "Backend not configured" };
   }
 
   const selfId = await currentUserId();
   if (!selfId) {
-    return { ok: false, error: 'Not signed in' };
+    return { ok: false, error: "Not signed in" };
   }
 
   // Joining twice is not an error from the caller's point of view.
   const { data: existing } = await supabase
-    .from('space_members')
-    .select('space_id')
-    .eq('space_id', spaceId)
-    .eq('user_id', selfId)
+    .from("space_members")
+    .select("space_id")
+    .eq("space_id", spaceId)
+    .eq("user_id", selfId)
     .maybeSingle();
 
   if (existing) {
@@ -361,8 +383,8 @@ export async function joinSpace(spaceId: string): Promise<{ ok: boolean; error?:
   }
 
   const { error } = await supabase
-    .from('space_members')
-    .insert({ space_id: spaceId, user_id: selfId, role: 'member' });
+    .from("space_members")
+    .insert({ space_id: spaceId, user_id: selfId, role: "member" });
 
   if (error) {
     return { ok: false, error: error.message };
@@ -371,22 +393,24 @@ export async function joinSpace(spaceId: string): Promise<{ ok: boolean; error?:
 }
 
 /** Leave a space by removing your own membership row. Owners cannot be removed here. */
-export async function leaveSpace(spaceId: string): Promise<{ ok: boolean; error?: string }> {
+export async function leaveSpace(
+  spaceId: string,
+): Promise<{ ok: boolean; error?: string }> {
   const supabase = getSupabase();
   if (!supabase) {
-    return { ok: false, error: 'Backend not configured' };
+    return { ok: false, error: "Backend not configured" };
   }
 
   const selfId = await currentUserId();
   if (!selfId) {
-    return { ok: false, error: 'Not signed in' };
+    return { ok: false, error: "Not signed in" };
   }
 
   const { error } = await supabase
-    .from('space_members')
+    .from("space_members")
     .delete()
-    .eq('space_id', spaceId)
-    .eq('user_id', selfId);
+    .eq("space_id", spaceId)
+    .eq("user_id", selfId);
 
   if (error) {
     return { ok: false, error: error.message };
@@ -405,18 +429,23 @@ function slugCandidates(name: string): string[] {
  * Both writes are attempted; if the membership write fails the space is
  * deleted again so a half-created space is never left behind.
  */
-export async function createSpace(input: CreateSpaceInput): Promise<CreateSpaceResult> {
+export async function createSpace(
+  input: CreateSpaceInput,
+): Promise<CreateSpaceResult> {
   const supabase = getSupabase();
   if (!supabase) {
-    return { ok: false, error: 'Backend not configured' };
+    return { ok: false, error: "Backend not configured" };
   }
 
   const name = input.name.trim();
   if (!name) {
-    return { ok: false, error: 'Space needs a name' };
+    return { ok: false, error: "Space needs a name" };
   }
   if (name.length > SPACE_NAME_MAX) {
-    return { ok: false, error: `Keep the name under ${SPACE_NAME_MAX} characters` };
+    return {
+      ok: false,
+      error: `Keep the name under ${SPACE_NAME_MAX} characters`,
+    };
   }
 
   const description = input.description?.trim() ?? null;
@@ -429,15 +458,15 @@ export async function createSpace(input: CreateSpaceInput): Promise<CreateSpaceR
 
   const selfId = await currentUserId();
   if (!selfId) {
-    return { ok: false, error: 'Not signed in' };
+    return { ok: false, error: "Not signed in" };
   }
 
   const isPublic = input.isPublic ?? true;
 
-  let lastError = 'Could not create space';
+  let lastError = "Could not create space";
   for (const slug of slugCandidates(name)) {
     const { data, error } = await supabase
-      .from('spaces')
+      .from("spaces")
       .insert({
         name,
         slug,
@@ -451,7 +480,7 @@ export async function createSpace(input: CreateSpaceInput): Promise<CreateSpaceR
     if (error) {
       // A unique-slug collision is expected and worth retrying; anything else
       // is a real failure and should surface immediately.
-      if (error.code === '23505' || error.message.includes('duplicate')) {
+      if (error.code === "23505" || error.message.includes("duplicate")) {
         lastError = error.message;
         continue;
       }
@@ -460,15 +489,15 @@ export async function createSpace(input: CreateSpaceInput): Promise<CreateSpaceR
 
     const created = data as unknown as RawSpace;
 
-    const { error: memberError } = await supabase.from('space_members').insert({
+    const { error: memberError } = await supabase.from("space_members").insert({
       space_id: created.id,
       user_id: selfId,
-      role: 'owner',
+      role: "owner",
     });
 
     if (memberError) {
       // Roll back so we never leave an ownerless space behind.
-      await supabase.from('spaces').delete().eq('id', created.id);
+      await supabase.from("spaces").delete().eq("id", created.id);
       return { ok: false, error: memberError.message };
     }
 
@@ -482,7 +511,7 @@ export async function createSpace(input: CreateSpaceInput): Promise<CreateSpaceR
         avatarUrl: created.avatar_url,
         isPublic: created.is_public,
         ownerId: created.owner_id,
-        myRole: 'owner',
+        myRole: "owner",
         memberCount: 1,
         joinedAt: new Date().toISOString(),
       },
@@ -493,22 +522,24 @@ export async function createSpace(input: CreateSpaceInput): Promise<CreateSpaceR
 }
 
 /** Watch membership changes so the Spaces screen stays current. */
-export function subscribeToSpaces(handlers: { onChange: () => void }): () => void {
+export function subscribeToSpaces(handlers: {
+  onChange: () => void;
+}): () => void {
   const supabase = getSupabase();
   if (!supabase) {
     return () => {};
   }
 
   const channel = supabase
-    .channel('spaces')
+    .channel("spaces")
     .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'spaces' },
+      "postgres_changes",
+      { event: "*", schema: "public", table: "spaces" },
       () => handlers.onChange(),
     )
     .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'space_members' },
+      "postgres_changes",
+      { event: "*", schema: "public", table: "space_members" },
       () => handlers.onChange(),
     )
     .subscribe();

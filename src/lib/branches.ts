@@ -1,6 +1,6 @@
-import { getSupabase } from './supabase';
-import type { MessageWithSender } from './database.types';
-import { MESSAGES_PAGE_SIZE } from './conversations';
+import { getSupabase } from "./supabase";
+import type { MessageWithSender } from "./database.types";
+import { MESSAGES_PAGE_SIZE } from "./conversations";
 
 /**
  * Conversation branches — the signature BRO interaction.
@@ -69,7 +69,7 @@ interface RawBranch {
 }
 
 const BRANCH_COLUMNS =
-  'id, conversation_id, root_message_id, title, created_by, message_count, is_pinned, last_activity_at, created_at';
+  "id, conversation_id, root_message_id, title, created_by, message_count, is_pinned, last_activity_at, created_at";
 
 function toBranch(row: RawBranch): Branch {
   return {
@@ -97,11 +97,15 @@ export async function fetchReplyCounts(
     return {};
   }
 
+  // Replies that already live inside a branch must not count toward the
+  // parent's pill: branchFromReplies moves them, so counting them again would
+  // resurrect the pill on a thread that already became a room.
   const { data, error } = await supabase
-    .from('messages')
-    .select('reply_to_message_id')
-    .in('reply_to_message_id', messageIds)
-    .eq('deleted_for_everyone', false);
+    .from("messages")
+    .select("reply_to_message_id")
+    .in("reply_to_message_id", messageIds)
+    .is("branch_id", null)
+    .eq("deleted_for_everyone", false);
 
   if (error) {
     // A missing pill must not break the chat screen.
@@ -109,7 +113,9 @@ export async function fetchReplyCounts(
   }
 
   const counts: Record<string, number> = {};
-  for (const row of (data ?? []) as Array<{ reply_to_message_id: string | null }>) {
+  for (const row of (data ?? []) as Array<{
+    reply_to_message_id: string | null;
+  }>) {
     const parent = row.reply_to_message_id;
     if (!parent) continue;
     counts[parent] = (counts[parent] ?? 0) + 1;
@@ -131,16 +137,19 @@ export async function fetchBranchesByRoot(
   }
 
   const { data, error } = await supabase
-    .from('conversation_branches')
-    .select('id, root_message_id')
-    .in('root_message_id', messageIds);
+    .from("conversation_branches")
+    .select("id, root_message_id")
+    .in("root_message_id", messageIds);
 
   if (error) {
     return {};
   }
 
   const byRoot: Record<string, string> = {};
-  for (const row of (data ?? []) as Array<{ id: string; root_message_id: string | null }>) {
+  for (const row of (data ?? []) as Array<{
+    id: string;
+    root_message_id: string | null;
+  }>) {
     if (row.root_message_id && !byRoot[row.root_message_id]) {
       byRoot[row.root_message_id] = row.id;
     }
@@ -149,45 +158,51 @@ export async function fetchBranchesByRoot(
 }
 
 /** Branches in a conversation, most recently active first. */
-export async function fetchBranches(conversationId: string): Promise<BranchWithContext[]> {
+export async function fetchBranches(
+  conversationId: string,
+): Promise<BranchWithContext[]> {
   const supabase = getSupabase();
   if (!supabase) {
     return [];
   }
 
   const { data, error } = await supabase
-    .from('conversation_branches')
+    .from("conversation_branches")
     .select(
       `${BRANCH_COLUMNS}, root: messages!conversation_branches_root_message_id_fkey (id, conversation_id, sender_id, content, type, status, reply_to_message_id, branch_id, created_at, updated_at, sender:profiles!messages_sender_id_fkey (id, username, display_name, avatar_url, status))`,
     )
-    .eq('conversation_id', conversationId)
-    .order('last_activity_at', { ascending: false });
+    .eq("conversation_id", conversationId)
+    .order("last_activity_at", { ascending: false });
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return ((data ?? []) as unknown as Array<RawBranch & { root: MessageWithSender | null }>).map(
-    (row) => ({
-      ...toBranch(row),
-      rootMessage: row.root ?? null,
-    }),
-  );
+  return (
+    (data ?? []) as unknown as Array<
+      RawBranch & { root: MessageWithSender | null }
+    >
+  ).map((row) => ({
+    ...toBranch(row),
+    rootMessage: row.root ?? null,
+  }));
 }
 
 /** One branch with its root message attached. Null when not found or not visible. */
-export async function fetchBranch(branchId: string): Promise<BranchWithContext | null> {
+export async function fetchBranch(
+  branchId: string,
+): Promise<BranchWithContext | null> {
   const supabase = getSupabase();
   if (!supabase) {
     return null;
   }
 
   const { data, error } = await supabase
-    .from('conversation_branches')
+    .from("conversation_branches")
     .select(
       `${BRANCH_COLUMNS}, root: messages!conversation_branches_root_message_id_fkey (id, conversation_id, sender_id, content, type, status, reply_to_message_id, branch_id, created_at, updated_at, sender:profiles!messages_sender_id_fkey (id, username, display_name, avatar_url, status))`,
     )
-    .eq('id', branchId)
+    .eq("id", branchId)
     .maybeSingle();
 
   if (error) {
@@ -216,12 +231,12 @@ export async function fetchBranchMessages(
   }
 
   const { data, error } = await supabase
-    .from('messages')
+    .from("messages")
     .select(
-      'id, conversation_id, sender_id, content, type, status, reply_to_message_id, branch_id, created_at, updated_at, deleted_for_everyone, sender:profiles!messages_sender_id_fkey (id, username, display_name, avatar_url, status)',
+      "id, conversation_id, sender_id, content, type, status, reply_to_message_id, branch_id, created_at, updated_at, deleted_for_everyone, sender:profiles!messages_sender_id_fkey (id, username, display_name, avatar_url, status)",
     )
-    .eq('branch_id', branchId)
-    .order('created_at', { ascending: true })
+    .eq("branch_id", branchId)
+    .order("created_at", { ascending: true })
     .limit(limit);
 
   if (error) {
@@ -245,22 +260,25 @@ export async function createBranch(
 ): Promise<CreateBranchResult> {
   const supabase = getSupabase();
   if (!supabase) {
-    return { ok: false, error: 'Backend not configured' };
+    return { ok: false, error: "Backend not configured" };
   }
 
   const { data: userData } = await supabase.auth.getUser();
   const selfId = userData.user?.id;
   if (!selfId) {
-    return { ok: false, error: 'Not signed in' };
+    return { ok: false, error: "Not signed in" };
   }
 
-  const trimmed = title?.trim() ?? '';
+  const trimmed = title?.trim() ?? "";
   if (trimmed.length > BRANCH_TITLE_MAX) {
-    return { ok: false, error: `Keep the title under ${BRANCH_TITLE_MAX} characters` };
+    return {
+      ok: false,
+      error: `Keep the title under ${BRANCH_TITLE_MAX} characters`,
+    };
   }
 
   const { data, error } = await supabase
-    .from('conversation_branches')
+    .from("conversation_branches")
     .insert({
       conversation_id: conversationId,
       root_message_id: rootMessageId,
@@ -284,50 +302,53 @@ export async function createBranch(
  * to the branch, not to a sibling message, and setting it would double-count in
  * the parent's reply pill. Branch depth stays one level for the same reason.
  */
-export async function postToBranch(branchId: string, content: string): Promise<SendToBranchResult> {
+export async function postToBranch(
+  branchId: string,
+  content: string,
+): Promise<SendToBranchResult> {
   const supabase = getSupabase();
   if (!supabase) {
-    return { ok: false, error: 'Backend not configured' };
+    return { ok: false, error: "Backend not configured" };
   }
 
   const trimmed = content.trim();
   if (!trimmed) {
-    return { ok: false, error: 'Message cannot be empty' };
+    return { ok: false, error: "Message cannot be empty" };
   }
 
   const { data: userData } = await supabase.auth.getUser();
   const senderId = userData.user?.id;
   if (!senderId) {
-    return { ok: false, error: 'Not signed in' };
+    return { ok: false, error: "Not signed in" };
   }
 
   // messages.conversation_id is NOT NULL, so it has to come from the branch
   // rather than be invented. This read is also what RLS scopes: if you are not a
   // member of the branch's conversation this returns null and we stop here.
   const { data: branch, error: branchError } = await supabase
-    .from('conversation_branches')
-    .select('conversation_id')
-    .eq('id', branchId)
+    .from("conversation_branches")
+    .select("conversation_id")
+    .eq("id", branchId)
     .maybeSingle();
 
   if (branchError) {
     return { ok: false, error: branchError.message };
   }
   if (!branch) {
-    return { ok: false, error: 'Branch not found' };
+    return { ok: false, error: "Branch not found" };
   }
 
   const { data, error } = await supabase
-    .from('messages')
+    .from("messages")
     .insert({
       conversation_id: (branch as { conversation_id: string }).conversation_id,
       branch_id: branchId,
       sender_id: senderId,
       content: trimmed,
-      type: 'text',
-      status: 'sent',
+      type: "text",
+      status: "sent",
     })
-    .select('id')
+    .select("id")
     .single();
 
   if (error) {
@@ -344,18 +365,21 @@ export async function renameBranch(
 ): Promise<{ ok: boolean; error?: string }> {
   const supabase = getSupabase();
   if (!supabase) {
-    return { ok: false, error: 'Backend not configured' };
+    return { ok: false, error: "Backend not configured" };
   }
 
   const trimmed = title.trim();
   if (trimmed.length > BRANCH_TITLE_MAX) {
-    return { ok: false, error: `Keep the title under ${BRANCH_TITLE_MAX} characters` };
+    return {
+      ok: false,
+      error: `Keep the title under ${BRANCH_TITLE_MAX} characters`,
+    };
   }
 
   const { error } = await supabase
-    .from('conversation_branches')
+    .from("conversation_branches")
     .update({ title: trimmed || null })
-    .eq('id', branchId);
+    .eq("id", branchId);
 
   if (error) {
     return { ok: false, error: error.message };
@@ -367,16 +391,18 @@ export async function renameBranch(
  * Delete a branch. Its messages are released back into the parent conversation
  * (branch_id -> null) rather than destroyed, so nothing is lost.
  */
-export async function deleteBranch(branchId: string): Promise<{ ok: boolean; error?: string }> {
+export async function deleteBranch(
+  branchId: string,
+): Promise<{ ok: boolean; error?: string }> {
   const supabase = getSupabase();
   if (!supabase) {
-    return { ok: false, error: 'Backend not configured' };
+    return { ok: false, error: "Backend not configured" };
   }
 
   const { error } = await supabase
-    .from('conversation_branches')
+    .from("conversation_branches")
     .delete()
-    .eq('id', branchId);
+    .eq("id", branchId);
 
   if (error) {
     return { ok: false, error: error.message };
@@ -404,11 +430,11 @@ export async function branchFromReplies(
   }
 
   const { error } = await supabase
-    .from('messages')
+    .from("messages")
     .update({ branch_id: created.branch.id })
-    .eq('reply_to_message_id', rootMessageId)
-    .eq('conversation_id', conversationId)
-    .is('branch_id', null);
+    .eq("reply_to_message_id", rootMessageId)
+    .eq("conversation_id", conversationId)
+    .is("branch_id", null);
 
   if (error) {
     // Roll the branch back so we never leave an empty shell behind.
@@ -423,7 +449,10 @@ export async function branchFromReplies(
 }
 
 /** Live updates inside one branch. */
-export function subscribeToBranch(branchId: string, handlers: { onChange: () => void }): () => void {
+export function subscribeToBranch(
+  branchId: string,
+  handlers: { onChange: () => void },
+): () => void {
   const supabase = getSupabase();
   if (!supabase) {
     return () => {};
@@ -432,21 +461,21 @@ export function subscribeToBranch(branchId: string, handlers: { onChange: () => 
   const channel = supabase
     .channel(`branch:${branchId}`)
     .on(
-      'postgres_changes',
+      "postgres_changes",
       {
-        event: '*',
-        schema: 'public',
-        table: 'messages',
+        event: "*",
+        schema: "public",
+        table: "messages",
         filter: `branch_id=eq.${branchId}`,
       },
       () => handlers.onChange(),
     )
     .on(
-      'postgres_changes',
+      "postgres_changes",
       {
-        event: '*',
-        schema: 'public',
-        table: 'conversation_branches',
+        event: "*",
+        schema: "public",
+        table: "conversation_branches",
         filter: `id=eq.${branchId}`,
       },
       () => handlers.onChange(),
@@ -459,7 +488,10 @@ export function subscribeToBranch(branchId: string, handlers: { onChange: () => 
 }
 
 /** Live updates to branch creation and counters, for the chat screen's pills. */
-export function subscribeToBranches(conversationId: string, handlers: { onChange: () => void }): () => void {
+export function subscribeToBranches(
+  conversationId: string,
+  handlers: { onChange: () => void },
+): () => void {
   const supabase = getSupabase();
   if (!supabase) {
     return () => {};
@@ -468,11 +500,11 @@ export function subscribeToBranches(conversationId: string, handlers: { onChange
   const channel = supabase
     .channel(`branches:${conversationId}`)
     .on(
-      'postgres_changes',
+      "postgres_changes",
       {
-        event: '*',
-        schema: 'public',
-        table: 'conversation_branches',
+        event: "*",
+        schema: "public",
+        table: "conversation_branches",
         filter: `conversation_id=eq.${conversationId}`,
       },
       () => handlers.onChange(),

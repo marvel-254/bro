@@ -1,5 +1,6 @@
 import {
   MESSAGES_PAGE_SIZE,
+  compareMessagesNewestFirst,
   fetchMessages,
   sendMessage,
   markConversationRead,
@@ -38,6 +39,7 @@ type Chain = {
   neq: jest.Mock;
   in: jest.Mock;
   lt: jest.Mock;
+  or: jest.Mock;
   order: jest.Mock;
   limit: jest.Mock;
   maybeSingle: jest.Mock;
@@ -63,6 +65,7 @@ function makeSupabase(overrides: Record<string, unknown> = {}): SupabaseClient {
     auth: { getUser: jest.fn() },
     channel: jest.fn(() => createChannel()),
     removeChannel: jest.fn(() => Promise.resolve()),
+    rpc: jest.fn(),
     ...overrides,
   };
   return client as unknown as SupabaseClient;
@@ -122,19 +125,39 @@ describe("conversations", () => {
       await expect(fetchMessages("conv-1")).rejects.toThrow("boom");
     });
 
-    it("adds a before filter when provided", async () => {
+    it("adds a keyset cursor when provided", async () => {
       const chain = createChain();
-      chain.lt.mockReturnValue(RESOLVED([]));
+      chain.or.mockReturnValue(RESOLVED([]));
       const supabase = makeSupabase();
       (supabase.from as jest.Mock).mockReturnValue(chain);
       mockedGetSupabase.mockReturnValue(supabase);
 
-      await fetchMessages("conv-1", 20, "2026-10-03T12:00:00Z");
-      expect(chain.lt).toHaveBeenCalledWith(
-        "created_at",
-        "2026-10-03T12:00:00Z",
+      await fetchMessages("conv-1", 20, {
+        createdAt: "2026-10-03T12:00:00Z",
+        id: "m1",
+      });
+      // (created_at, id) keyset: strictly older than the cursor pair.
+      expect(chain.or).toHaveBeenCalledWith(
+        "created_at.lt.2026-10-03T12:00:00Z,and(created_at.eq.2026-10-03T12:00:00Z,id.lt.m1)",
       );
       expect(chain.limit).toHaveBeenCalledWith(20);
+    });
+
+    it("orders by created_at then id so ties cannot loop a page", async () => {
+      const chain = createChain();
+      const orderSpy = jest.fn().mockReturnValue(chain);
+      chain.order = orderSpy;
+      chain.limit.mockReturnValue(RESOLVED([]));
+      const supabase = makeSupabase();
+      (supabase.from as jest.Mock).mockReturnValue(chain);
+      mockedGetSupabase.mockReturnValue(supabase);
+
+      await fetchMessages("conv-1");
+
+      expect(orderSpy).toHaveBeenNthCalledWith(1, "created_at", {
+        ascending: false,
+      });
+      expect(orderSpy).toHaveBeenNthCalledWith(2, "id", { ascending: false });
     });
   });
 
@@ -284,20 +307,7 @@ describe("conversations", () => {
             { user_id: "self", last_read_at: "2026-10-03T11:00:00Z" },
             { user_id: "peer-1", last_read_at: null },
           ],
-          messages: [
-            {
-              id: "m1",
-              content: "hi",
-              sender_id: "peer-1",
-              created_at: "2026-10-03T11:30:00Z",
-            },
-            {
-              id: "m2",
-              content: "yo",
-              sender_id: "peer-1",
-              created_at: "2026-10-03T12:00:00Z",
-            },
-          ],
+
         },
       ];
       const peerRows = [
@@ -329,6 +339,19 @@ describe("conversations", () => {
       });
       (supabase.auth.getUser as jest.Mock).mockResolvedValue({
         data: { user: { id: "self" } },
+        error: null,
+      });
+      (supabase.rpc as jest.Mock).mockResolvedValue({
+        data: [
+          {
+            conversation_id: "conv-1",
+            message_id: "m2",
+            content: "yo",
+            sender_id: "peer-1",
+            created_at: "2026-10-03T12:00:00Z",
+            unread_count: 2,
+          },
+        ],
         error: null,
       });
       mockedGetSupabase.mockReturnValue(supabase);
@@ -660,6 +683,16 @@ describe("conversations", () => {
   });
 
   describe("createDirectConversation", () => {
+    function authed() {
+      const supabase = makeSupabase();
+      (supabase.auth.getUser as jest.Mock).mockResolvedValue({
+        data: { user: { id: "user-1" } },
+        error: null,
+      });
+      mockedGetSupabase.mockReturnValue(supabase);
+      return supabase;
+    }
+
     it('returns "Backend not configured" when Supabase is null', async () => {
       mockedGetSupabase.mockReturnValue(null);
       const result = await createDirectConversation("peer-1");
@@ -677,167 +710,160 @@ describe("conversations", () => {
       expect(result).toEqual({ ok: false, error: "Not signed in" });
     });
 
-    it("returns existing conversation id when one is shared", async () => {
-      const memberChain = createChain();
-      memberChain.eq
-        .mockReturnValueOnce(RESOLVED([{ conversation_id: "conv-a" }]))
-        .mockReturnValueOnce(RESOLVED([{ conversation_id: "existing-conv" }]));
+    it("calls the RPC with the peer id and returns its conversation", async () => {
+      const supabase = authed();
+      (supabase.rpc as jest.Mock).mockResolvedValue({
+        data: "new-conv",
+        error: null,
+      });
 
+      const result = await createDirectConversation("peer-1");
+
+      expect(result).toEqual({ ok: true, conversationId: "new-conv" });
+      expect(supabase.rpc).toHaveBeenCalledWith("create_direct_conversation", {
+        peer_id: "peer-1",
+      });
+      // Peer addition happens server-side now: no membership inserts from here.
+      expect(supabase.from).not.toHaveBeenCalled();
+    });
+
+    it("returns the existing conversation id when the RPC finds one", async () => {
+      const supabase = authed();
+      (supabase.rpc as jest.Mock).mockResolvedValue({
+        data: "existing-conv",
+        error: null,
+      });
+
+      expect(await createDirectConversation("peer-1")).toEqual({
+        ok: true,
+        conversationId: "existing-conv",
+      });
+    });
+
+    it("surfaces an RPC failure, e.g. a blocked peer", async () => {
+      const supabase = authed();
+      (supabase.rpc as jest.Mock).mockResolvedValue({
+        data: null,
+        error: { message: "cannot converse: a block exists" },
+      });
+
+      expect(await createDirectConversation("peer-1")).toEqual({
+        ok: false,
+        error: "cannot converse: a block exists",
+      });
+    });
+
+    it("rejects an empty RPC result", async () => {
+      const supabase = authed();
+      (supabase.rpc as jest.Mock).mockResolvedValue({ data: null, error: null });
+
+      expect(await createDirectConversation("peer-1")).toEqual({
+        ok: false,
+        error: "Could not create conversation",
+      });
+    });
+  });
+
+  describe("compareMessagesNewestFirst", () => {
+    const at = (created_at: string, id: string) => ({ created_at, id });
+
+    it("orders newer first", () => {
+      expect(
+        compareMessagesNewestFirst(
+          at("2026-10-03T12:00:00Z", "m2"),
+          at("2026-10-03T11:00:00Z", "m1"),
+        ),
+      ).toBeLessThan(0);
+    });
+
+    it("breaks created_at ties by id so pages cannot loop", () => {
+      expect(compareMessagesNewestFirst(at("2026-10-03T12:00:00Z", "b"), at("2026-10-03T12:00:00Z", "a"))).toBeLessThan(0);
+      expect(compareMessagesNewestFirst(at("2026-10-03T12:00:00Z", "a"), at("2026-10-03T12:00:00Z", "a"))).toBe(0);
+    });
+  });
+
+  describe("fetchConversationPeer", () => {
+    function byTable(tables: Record<string, ReturnType<typeof createChain>>) {
       const supabase = makeSupabase();
-      (supabase.from as jest.Mock).mockReturnValue(memberChain);
+      (supabase.from as jest.Mock).mockImplementation((table: string) => tables[table]);
       (supabase.auth.getUser as jest.Mock).mockResolvedValue({
-        data: { user: { id: "user-1" } },
+        data: { user: { id: "self" } },
         error: null,
       });
       mockedGetSupabase.mockReturnValue(supabase);
+    }
 
-      const result = await createDirectConversation("peer-1");
-      expect(result).toEqual({ ok: true, conversationId: "existing-conv" });
+    it("returns null without a backend", async () => {
+      mockedGetSupabase.mockReturnValue(null);
+      expect(await fetchConversationPeer("c1")).toBeNull();
     });
 
-    it("creates a new conversation and membership rows when none exists", async () => {
+    it("returns no peer for group conversations, without reading members", async () => {
+      const convChain = createChain();
+      convChain.eq.mockReturnValue({
+        maybeSingle: jest.fn().mockResolvedValue({
+          data: { id: "c1", type: "group" },
+          error: null,
+        }),
+      });
+      const members = createChain();
+      byTable({ conversations: convChain, conversation_members: members });
+
+      expect(await fetchConversationPeer("c1")).toEqual({
+        type: "group",
+        peerId: null,
+        peerName: null,
+      });
+      expect(members.eq).not.toHaveBeenCalled();
+    });
+
+    it("resolves the single peer of a direct conversation", async () => {
+      const convChain = createChain();
+      convChain.eq.mockReturnValue({
+        maybeSingle: jest.fn().mockResolvedValue({
+          data: { id: "c1", type: "direct" },
+          error: null,
+        }),
+      });
+
       const memberChain = createChain();
-      memberChain.eq
-        .mockReturnValueOnce(RESOLVED([{ conversation_id: "conv-a" }]))
-        .mockReturnValueOnce(RESOLVED([]));
-
-      const convInsertChain = createChain();
-      convInsertChain.single.mockReturnValue(RESOLVED({ id: "new-conv" }));
-
-      const memberInsertChain = createChain();
-      memberInsertChain.insert.mockReturnValue(RESOLVED(null));
-
-      const supabase = makeSupabase();
-      let callCount = 0;
-      (supabase.from as jest.Mock).mockImplementation(() => {
-        callCount++;
-        if (callCount === 1 || callCount === 2) return memberChain;
-        if (callCount === 3) return convInsertChain;
-        return memberInsertChain;
+      memberChain.eq.mockReturnValue({
+        neq: jest.fn().mockResolvedValue({
+          data: [{ user_id: "peer", profile: { display_name: "Sarah" } }],
+          error: null,
+        }),
       });
-      (supabase.auth.getUser as jest.Mock).mockResolvedValue({
-        data: { user: { id: "user-1" } },
-        error: null,
-      });
-      mockedGetSupabase.mockReturnValue(supabase);
 
-      const result = await createDirectConversation("peer-1");
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.conversationId).toBe("new-conv");
-      }
+      byTable({ conversations: convChain, conversation_members: memberChain });
+
+      expect(await fetchConversationPeer("c1")).toEqual({
+        type: "direct",
+        peerId: "peer",
+        peerName: "Sarah",
+      });
     });
 
-    it("returns error when conversation creation fails", async () => {
+    it("returns no peer when the member count is not exactly one", async () => {
+      const convChain = createChain();
+      convChain.eq.mockReturnValue({
+        maybeSingle: jest.fn().mockResolvedValue({
+          data: { id: "c1", type: "direct" },
+          error: null,
+        }),
+      });
+
       const memberChain = createChain();
-      memberChain.eq
-        .mockReturnValueOnce(RESOLVED([{ conversation_id: "conv-a" }]))
-        .mockReturnValueOnce(RESOLVED([]));
-
-      const convInsertChain = createChain();
-      convInsertChain.single.mockReturnValue(
-        RESOLVED(null, { message: "create failed" }),
-      );
-
-      const supabase = makeSupabase();
-      let callCount = 0;
-      (supabase.from as jest.Mock).mockImplementation(() => {
-        callCount++;
-        return callCount === 1 ? memberChain : convInsertChain;
+      memberChain.eq.mockReturnValue({
+        neq: jest.fn().mockResolvedValue({ data: [], error: null }),
       });
-      (supabase.auth.getUser as jest.Mock).mockResolvedValue({
-        data: { user: { id: "user-1" } },
-        error: null,
+
+      byTable({ conversations: convChain, conversation_members: memberChain });
+
+      expect(await fetchConversationPeer("c1")).toEqual({
+        type: "direct",
+        peerId: null,
+        peerName: null,
       });
-      mockedGetSupabase.mockReturnValue(supabase);
-
-      const result = await createDirectConversation("peer-1");
-      expect(result).toEqual({ ok: false, error: "create failed" });
-    });
-  });
-});
-
-describe("fetchConversationPeer", () => {
-  function byTable(tables: Record<string, ReturnType<typeof createChain>>) {
-    const supabase = makeSupabase();
-    (supabase.from as jest.Mock).mockImplementation((table: string) => tables[table]);
-    (supabase.auth.getUser as jest.Mock).mockResolvedValue({
-      data: { user: { id: "self" } },
-      error: null,
-    });
-    mockedGetSupabase.mockReturnValue(supabase);
-  }
-
-  it("returns null without a backend", async () => {
-    mockedGetSupabase.mockReturnValue(null);
-    expect(await fetchConversationPeer("c1")).toBeNull();
-  });
-
-  it("returns no peer for group conversations, without reading members", async () => {
-    const convChain = createChain();
-    convChain.eq.mockReturnValue({
-      maybeSingle: jest.fn().mockResolvedValue({
-        data: { id: "c1", type: "group" },
-        error: null,
-      }),
-    });
-    const members = createChain();
-    byTable({ conversations: convChain, conversation_members: members });
-
-    expect(await fetchConversationPeer("c1")).toEqual({
-      type: "group",
-      peerId: null,
-      peerName: null,
-    });
-    expect(members.eq).not.toHaveBeenCalled();
-  });
-
-  it("resolves the single peer of a direct conversation", async () => {
-    const convChain = createChain();
-    convChain.eq.mockReturnValue({
-      maybeSingle: jest.fn().mockResolvedValue({
-        data: { id: "c1", type: "direct" },
-        error: null,
-      }),
-    });
-
-    const memberChain = createChain();
-    memberChain.eq.mockReturnValue({
-      neq: jest.fn().mockResolvedValue({
-        data: [{ user_id: "peer", profile: { display_name: "Sarah" } }],
-        error: null,
-      }),
-    });
-
-    byTable({ conversations: convChain, conversation_members: memberChain });
-
-    expect(await fetchConversationPeer("c1")).toEqual({
-      type: "direct",
-      peerId: "peer",
-      peerName: "Sarah",
-    });
-  });
-
-  it("returns no peer when the member count is not exactly one", async () => {
-    const convChain = createChain();
-    convChain.eq.mockReturnValue({
-      maybeSingle: jest.fn().mockResolvedValue({
-        data: { id: "c1", type: "direct" },
-        error: null,
-      }),
-    });
-
-    const memberChain = createChain();
-    memberChain.eq.mockReturnValue({
-      neq: jest.fn().mockResolvedValue({ data: [], error: null }),
-    });
-
-    byTable({ conversations: convChain, conversation_members: memberChain });
-
-    expect(await fetchConversationPeer("c1")).toEqual({
-      type: "direct",
-      peerId: null,
-      peerName: null,
     });
   });
 });
