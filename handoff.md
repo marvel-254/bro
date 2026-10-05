@@ -279,6 +279,9 @@ silently, duplicating every threaded message:
 
 **Still not built:**
 - Drops / Statuses / Squads creation UI: tables exist, read-only in Pulse.
+- Invites landed (parse/provider/listener, signup + signin wiring, profile
+  wizard with unique-username and real interests persistence). Voice-memo
+  card removed as fake; eye toggle works.
   `invite`/`follow` activity have no UI; client `recordActivity()` was removed
   in migration 011, so when invite/follow UIs land they should derive activity
   from a database trigger the same way messages do.
