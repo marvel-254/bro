@@ -16,3 +16,7 @@ android/app/*.apk
 android/app/build/
 coverage/
 .nyc_output/
+
+# Supabase CLI local state (project link, cached versions, never commit)
+supabase/.temp/
+supabase/.branches/

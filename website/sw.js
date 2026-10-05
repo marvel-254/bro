@@ -1,11 +1,12 @@
 /* eslint-disable no-undef */
-const CACHE_NAME = 'bro-v1';
+const CACHE_NAME = 'bro-v2';
 const ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
   '/icon-192.png',
-  '/icon-512.png'
+  '/icon-512.png',
+  '/download.html'
 ];
 
 self.addEventListener('install', (event) => {

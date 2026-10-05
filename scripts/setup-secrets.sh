@@ -3,8 +3,8 @@
 # setup-secrets.sh — Helper script to configure BRO GitHub secrets via the
 # GitHub CLI (`gh`).
 #
-# This script prompts for the two values BRO's CI/CD workflows need and stores
-# them as repository secrets on `bro-app/bro` (adjust REPO if you forked it).
+# This script prompts for the values BRO's CI/CD workflows need and stores
+# them as repository secrets on `marvel-254/bro` (adjust REPO if you forked it).
 #
 # Usage:
 #   ./scripts/setup-secrets.sh
@@ -48,22 +48,30 @@ fi
 # 2. Gather inputs
 # ---------------------------------------------------------------------------
 info ""
-info "=== EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY (required) ==="
-info "Obtain this from the Clerk dashboard:"
-info "  https://dashboard.clerk.com -> select the BRO application ->"
-info "  'API keys' -> 'Publishable key' (starts with 'pk_')."
-printf "Paste the Clerk publishable key: "
-read -r CLERK_KEY
-CLERK_KEY="$(printf '%s' "$CLERK_KEY" | tr -d '[:space:]')"
+info "=== EXPO_PUBLIC_SUPABASE_URL (required) ==="
+info "Obtain this from the Supabase dashboard:"
+info "  https://supabase.com/dashboard -> select the BRO project ->"
+info "  'Project Settings' -> 'API' -> 'Project URL'."
+printf "Supabase project URL: "
+read -r SUPABASE_URL
+SUPABASE_URL="$(printf '%s' "$SUPABASE_URL" | tr -d '[:space:]')"
 
-if [ -z "$CLERK_KEY" ]; then
-    die "No key provided — aborting."
+if [ -z "$SUPABASE_URL" ]; then
+    die "No URL provided — aborting."
 fi
 
-case "$CLERK_KEY" in
-    pk_*) : ;;
-    *) warn "Key does not start with 'pk_'. Clerk publishable keys always begin with 'pk_'. Continuing anyway." ;;
-esac
+info ""
+info "=== EXPO_PUBLIC_SUPABASE_ANON_KEY (required) ==="
+info "Obtain this from the Supabase dashboard:"
+info "  'Project Settings' -> 'API' -> 'anon public' key."
+info "The anon key is public: access is limited by row level security, not by hiding the key."
+printf "Supabase anon public key: "
+read -r SUPABASE_ANON_KEY
+SUPABASE_ANON_KEY="$(printf '%s' "$SUPABASE_ANON_KEY" | tr -d '[:space:]')"
+
+if [ -z "$SUPABASE_ANON_KEY" ]; then
+    die "No anon key provided — aborting."
+fi
 
 info ""
 info "=== EXPO_PUBLIC_API_URL (optional) ==="
@@ -79,17 +87,27 @@ API_URL="$(printf '%s' "$API_URL" | tr -d '[:space:]')"
 info ""
 info "Setting secrets on ${REPO} ..."
 
-# gh secret set will fail loudly if the value is empty, so guard explicitly.
-if [ -z "$CLERK_KEY" ]; then
-    die "Refusing to set an empty EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY."
+if [ -z "$SUPABASE_URL" ]; then
+    die "Refusing to set an empty EXPO_PUBLIC_SUPABASE_URL."
+fi
+if [ -z "$SUPABASE_ANON_KEY" ]; then
+    die "Refusing to set an empty EXPO_PUBLIC_SUPABASE_ANON_KEY."
 fi
 
-if gh secret set EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY \
+if gh secret set EXPO_PUBLIC_SUPABASE_URL \
     --repo "${REPO}" \
-    --body "$CLERK_KEY"; then
-    info "Set EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY"
+    --body "$SUPABASE_URL"; then
+    info "Set EXPO_PUBLIC_SUPABASE_URL"
 else
-    die "Failed to set EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY" 2
+    die "Failed to set EXPO_PUBLIC_SUPABASE_URL" 2
+fi
+
+if gh secret set EXPO_PUBLIC_SUPABASE_ANON_KEY \
+    --repo "${REPO}" \
+    --body "$SUPABASE_ANON_KEY"; then
+    info "Set EXPO_PUBLIC_SUPABASE_ANON_KEY"
+else
+    die "Failed to set EXPO_PUBLIC_SUPABASE_ANON_KEY" 2
 fi
 
 if gh secret set EXPO_PUBLIC_API_URL \
@@ -112,3 +130,4 @@ fi
 info ""
 info "Done. Secrets are configured. CI workflows will pick them up on the next run."
 info "Reminder: secrets must be re-added if you fork or rename the repository."
+info "Never set the Supabase service-role key here — it bypasses RLS and must stay server-side only."

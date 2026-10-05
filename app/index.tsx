@@ -1,20 +1,20 @@
 import { View, Text } from 'react-native';
 import { useEffect } from 'react';
 import { useRouter } from 'expo-router';
-import { useAuth } from '@clerk/clerk-expo';
+import { useAuth } from '@/lib/auth-context';
 import { COLORS } from '@/theme';
 
 function RedirectHandler() {
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoading, isAuthenticated } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (isLoaded) {
-      router.replace(isSignedIn ? '/(tabs)' : '/(auth)/welcome');
+    if (!isLoading) {
+      router.replace(isAuthenticated ? '/(tabs)' : '/(auth)/welcome');
     }
-  }, [isLoaded, isSignedIn, router]);
+  }, [isLoading, isAuthenticated, router]);
 
-  if (!isLoaded) {
+  if (isLoading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.semantic.canvasRoot }}>
         <Text style={{ color: COLORS.onSurface }}>Loading...</Text>

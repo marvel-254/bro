@@ -62,11 +62,22 @@ module.exports = [
     },
   },
   {
-    files: ['*.{js,cjs,mjs}'],
+    files: ['*.{js,cjs}'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'commonjs',
       globals: { ...globals.node },
+    },
+  },
+  {
+    files: ['*.mjs', 'scripts/**/*.{js,cjs,mjs}'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: { ...globals.node },
+    },
+    rules: {
+      'no-console': 'off',
     },
   },
 ];

@@ -16,7 +16,11 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.bro"
+      "bundleIdentifier": "app.bro",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Video calls need the camera so the other person can see you.",
+        "NSMicrophoneUsageDescription": "Voice and video calls need the microphone so the other person can hear you."
+      }
     },
     "android": {
       "package": "app.bro",
@@ -40,9 +44,13 @@
         }
       ],
       "permissions": [
-        "INTERNET"
+        "INTERNET",
+        "CAMERA",
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS"
       ],
-      "usesCleartextTraffic": false
+      "usesCleartextTraffic": false,
+      "allowBackup": false
     },
     "plugins": [
       "expo-router",

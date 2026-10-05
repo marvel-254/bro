@@ -3,6 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#090A0F">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <title>BRO — Download APK</title>
 <meta name="description" content="Download BRO for Android via GitHub Releases. Get the latest APK, changelog, and installation guide.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -138,5 +144,12 @@ footer a{border-bottom:1px solid rgba(255,255,255,0.15);padding-bottom:1px}
 <footer>
 Built for BRO — <a href="https://github.com/marvel-254/bro">github.com/marvel-254/bro</a> &middot; <a href="/PRIVACY.md">Privacy</a>
 </footer>
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}
+</script>
 </body>
 </html>

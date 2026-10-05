@@ -13,7 +13,7 @@ When you create a BRO account, we collect:
 - **Display name** — your real or preferred name
 - **Profile information** — bio, avatar, interests (optional)
 
-This data is processed by **Clerk** (https://clerk.com), our authentication provider. Clerk stores and processes your account data on their servers in accordance with their Privacy Policy.
+This data is processed by **Supabase** (https://supabase.co), our backend and authentication provider. Supabase Auth stores and processes your credential data; all profile and conversation data lives in PostgREST with row-level security enforced per-request.
 
 ### Message and Conversation Data
 - Messages you send and receive
@@ -46,8 +46,7 @@ BRO uses the following third-party services:
 
 | Service | Purpose | Privacy Policy |
 |---------|---------|---------------|
-| Clerk (https://clerk.com) | Authentication and user management | https://clerk.com/legal/privacy |
-| Convex (https://convex.dev) | Database, real-time sync, and hosting | https://convex.dev/legal/privacy |
+| Supabase (https://supabase.co) | Authentication, database, real-time sync, storage | https://supabase.co/privacy |
 
 Your data is shared with these providers only as necessary for their services.
 
@@ -55,7 +54,7 @@ Your data is shared with these providers only as necessary for their services.
 
 - All data is encrypted in transit (TLS)
 - Authentication tokens are stored securely on your device using encrypted storage
-- Passwords are never stored on BRO servers (handled by Clerk)
+- Passwords are never stored on BRO servers (handled by Supabase Auth)
 - We implement industry-standard security measures
 
 ## 5. Your Rights

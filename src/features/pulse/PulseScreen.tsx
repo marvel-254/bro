@@ -1,245 +1,279 @@
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, RefreshControl, StyleSheet } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING, RADIUS } from '../../theme';
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '../../theme';
 import { Avatar } from '../../components/ui/Avatar';
+import { usePeople } from '../../lib/people-context';
+import { useAuth } from '../../lib/auth-context';
+import { isSupabaseConfigured } from '../../lib/supabase';
+import {
+  fetchLiveConversations,
+  fetchUpcomingPlans,
+  subscribeToPulse,
+  type PulseLiveConversation,
+  type PulsePlan,
+} from '../../lib/pulse';
+import { LoadingState, ErrorState, EmptyState } from '../../components/feedback/States';
 
-const activeUsers = [
-  { id: '1', name: 'Alex', activity: 'Agent Swarms', status: 'online', avatar: 'A' },
-  { id: '2', name: 'Sarah', activity: 'Design Lab', status: 'online', avatar: 'S' },
-  { id: '3', name: 'Brian', activity: 'Reviewing PRs', status: 'online', avatar: 'B' },
-  { id: '4', name: 'Nia', activity: 'Nairobi Tech', status: 'away', avatar: 'N' },
-  { id: '5', name: 'Tariq', activity: 'Offline', status: 'offline', avatar: 'T' },
-];
+/**
+ * Pulse — what is happening right now.
+ *
+ * Three time-bounded strips and nothing else: Live now (conversations with a
+ * recent burst), Tap-in (plans still open), Around (peers and their presence).
+ * There is no ranking and no score, so this cannot decay into a feed; ordering
+ * is purely chronological and everything expires on its own.
+ */
 
-const liveConversations = [
-  {
-    id: '1',
-    badge: 'LIVE',
-    badgeCount: '24 TALKING',
-    badgeColor: '#93000a',
-    topicLabel: 'AI BUILDERS',
-    topicColor: COLORS.primaryContainer,
-    title: "What's everyone building with local agent runtimes?",
-    speaker: 'Sarah',
-    snippet: "I'm deploying an autonomous agent runtime on edge devices.",
-    avatarLabel: 'S',
-    speakerColor: COLORS.secondary,
-    avatarStack: ['1', '2', '3', '4'],
-    extraCount: 20,
-    duration: '01:42',
-    accentColor: COLORS.primaryContainer,
-    location: null,
-  },
-  {
-    id: '2',
-    badge: 'HOT',
-    badgeCount: '18 IN CONVERSATION',
-    badgeColor: '#1d2027',
-    topicLabel: 'NAIROBI TECH',
-    topicColor: COLORS.secondaryFixedDim,
-    title: 'Where are founders and developers hanging out this Friday?',
-    speaker: 'Brian',
-    snippet: 'Kilimani tech hub demo night kicks off at 7pm!',
-    avatarLabel: 'B',
-    speakerColor: COLORS.tertiaryContainer,
-    avatarStack: ['5', '6'],
-    extraCount: 16,
-    duration: null,
-    accentColor: COLORS.secondaryFixed,
-    location: 'Nairobi Hub',
-  },
-];
+function relativeLabel(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
 
-const trendingChips = ['#AIAgents', '#AfricaBuilders', '#GameDev', '#DesignSystems'];
-const chipCounts = ['1.4k talks', '820', null, null];
+function startsLabel(iso: string): string {
+  const starts = new Date(iso).getTime();
+  const diffMs = starts - Date.now();
+  if (diffMs <= 0) return 'happening now';
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 60) return `in ${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `in ${hours}h`;
+  return `in ${Math.floor(hours / 24)}d`;
+}
+
+function titleFor(live: PulseLiveConversation): string {
+  if (live.name) return live.name;
+  if (live.peers.length === 1) return live.peers[0].displayName;
+  if (live.peers.length > 1) {
+    return `${live.peers[0].displayName} +${live.peers.length - 1}`;
+  }
+  return 'Conversation';
+}
 
 export default function PulseScreen() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const { people } = usePeople();
+
+  const [live, setLive] = useState<PulseLiveConversation[]>([]);
+  const [plans, setPlans] = useState<PulsePlan[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async (asRefresh = false) => {
+    if (asRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+    try {
+      const [liveRows, planRows] = await Promise.all([
+        fetchLiveConversations(),
+        fetchUpcomingPlans(),
+      ]);
+      setLive(liveRows);
+      setPlans(planRows);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load Pulse');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setLoading(false);
+      return;
+    }
+    void load();
+    const unsubscribe = subscribeToPulse({ onChange: () => void load(true) });
+    return unsubscribe;
+  }, [load]);
+
+  const firstName = user?.displayName?.split(' ')[0] ?? null;
+  const around = people.filter((person) => person.presence !== 'offline');
+  const isQuiet = live.length === 0 && plans.length === 0 && around.length === 0;
+
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* Greeting Header */}
-      <View style={styles.greetingSection}>
-        <View style={styles.greetingRow}>
-          <View style={{ flex: 1 }}>
-            <View style={styles.statusRow}>
-              <View style={styles.pulseDot} />
-              <Text style={styles.statusLabel}>Lattice Node Active</Text>
-            </View>
-            <Text style={styles.greeting}>Good evening, Langat</Text>
-          </View>
-          <View style={styles.iconCircle}>
-            <Ionicons name="wifi" size={22} color={COLORS.primaryContainer} />
-          </View>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => void load(true)}
+          tintColor={COLORS.primaryContainer}
+        />
+      }
+    >
+      <View style={styles.header}>
+        <View style={styles.headerText}>
+          <Text style={styles.greeting}>
+            {firstName ? `Yoh, ${firstName}` : 'Yoh, tsup bruv?'}
+          </Text>
+          <Text style={styles.subtitle}>What's happening right now</Text>
         </View>
-        <Text style={styles.subtitle}>What's happening in your world?</Text>
+        <TouchableOpacity
+          style={styles.iconCircle}
+          onPress={() => router.push('/search')}
+          accessibilityRole="button"
+          accessibilityLabel="Search BRO"
+        >
+          <Ionicons name="search" size={20} color={COLORS.primaryContainer} />
+        </TouchableOpacity>
       </View>
 
-      {/* Broadcast Launcher Card */}
-      <View style={styles.broadcastCard}>
-        <View style={styles.broadcastInner}>
-          <View style={styles.broadcastLeft}>
-            <View style={styles.broadcastAvatar}>
-              <View style={styles.broadcastStatus} />
+      {!isSupabaseConfigured ? (
+        <EmptyState
+          message="Backend not configured. Pull up EXPO_PUBLIC_SUPABASE_URL and the anon key to see what's live."
+          icon={<Ionicons name="cloud-offline-outline" size={36} color={COLORS.onSurfaceVariant} />}
+        />
+      ) : loading ? (
+        <LoadingState message="Checking what's live..." />
+      ) : error ? (
+        <ErrorState message={error} onRetry={() => void load()} />
+      ) : (
+        <>
+          {/* Strip 1 — Live now */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Live now</Text>
+              <Text style={styles.sectionMeta}>{live.length || ''}</Text>
             </View>
-            <Text style={styles.broadcastText}>Start a live discussion or ping your circle...</Text>
-          </View>
-          <View style={styles.broadcastActions}>
-            <TouchableOpacity style={styles.actionBtn}>
-              <Ionicons name="mic" size={18} color={COLORS.primaryContainer} />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBtn}>
-              <Ionicons name="flash" size={18} color={COLORS.onSurface} />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-
-      {/* Active Now */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <View style={styles.sectionHeaderLeft}>
-            <View style={styles.sectionDot} />
-            <Text style={styles.sectionTitle}>Active Now</Text>
-            <View style={styles.countBadge}>
-              <Text style={styles.countText}>38</Text>
-            </View>
-          </View>
-          <TouchableOpacity>
-            <Text style={styles.sectionAction}>Radar Map</Text>
-          </TouchableOpacity>
-        </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.usersRow}>
-          {activeUsers.map((user) => (
-            <TouchableOpacity key={user.id} style={styles.userItem}>
-              <View style={styles.userAvatarWrapper}>
-                <Avatar name={user.name} size={60} status={user.status === 'online' ? 'online' : undefined} />
-              </View>
-              <Text style={styles.userName}>{user.name}</Text>
-              <Text style={[styles.userActivity, { color: user.status === 'online' ? COLORS.primaryContainer : COLORS.semantic.textDim }]}>
-                {user.activity}
-              </Text>
-            </TouchableOpacity>
-          ))}
-          <TouchableOpacity style={styles.userItem}>
-            <View style={[styles.userAvatarWrapper, styles.moreCircle]}>
-              <Text style={[styles.userName, { textAlign: 'center', fontSize: 12, fontWeight: '700', color: COLORS.primaryContainer }]}>+33</Text>
-            </View>
-            <Text style={[styles.userName, { color: COLORS.semantic.textDim }]}>Network</Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </View>
-
-      {/* Live Conversations */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <View style={styles.sectionHeaderLeft}>
-            <Ionicons name="sparkles" size={16} color={COLORS.primaryContainer} />
-            <Text style={styles.sectionTitle}>Live Conversations</Text>
-          </View>
-          <TouchableOpacity>
-            <Text style={styles.sectionAction}>Active Grid</Text>
-          </TouchableOpacity>
-        </View>
-
-        {liveConversations.map((conv) => (
-          <View key={conv.id} style={[styles.conversationCard, { borderColor: conv.accentColor + '30' }]}>
-            <View style={styles.cardTop}>
-              <View style={[styles.liveBadge, { backgroundColor: conv.badgeColor }]}>
-                {conv.badge === 'LIVE' && <View style={styles.livePulse} />}
-                <Text style={styles.liveBadgeText}>{conv.badge}</Text>
-                <Text style={styles.liveBadgeCount}>{conv.badgeCount}</Text>
-              </View>
-              <View style={styles.cardMeta}>
-                {conv.duration && (
-                  <View style={styles.audioVisual}>
-                    {[1, 2, 3, 4].map((i) => (
-                      <View key={i} style={[styles.audioBar, { height: 8 + (i % 3) * 4 }]} />
-                    ))}
-                    <Text style={styles.audioDuration}>{conv.duration}</Text>
-                  </View>
-                )}
-                {conv.location && (
-                  <View style={styles.locationRow}>
-                    <Ionicons name="location" size={12} color={COLORS.onSurfaceVariant} />
-                    <Text style={styles.locationText}>{conv.location}</Text>
-                  </View>
-                )}
-              </View>
-            </View>
-
-            <Text style={[styles.topicLabel, { color: conv.topicColor }]}>{conv.topicLabel}</Text>
-            <Text style={styles.conversationTitle}>{conv.title}</Text>
-
-            <View style={styles.snippetCard}>
-              <View style={styles.snippetAvatar}>
-                <Text style={styles.snippetAvatarText}>{conv.avatarLabel}</Text>
-              </View>
-              <View style={styles.snippetContent}>
-                <View style={styles.snippetHeader}>
-                  <Text style={[styles.snippetName, { color: conv.speakerColor }]}>{conv.speaker}</Text>
-                  <Text style={styles.snippetTime}>just now</Text>
-                </View>
-                <Text style={styles.snippetText}>"{conv.snippet}"</Text>
-              </View>
-            </View>
-
-            <View style={styles.cardFooter}>
-              <View style={styles.avatarStack}>
-                {conv.avatarStack.map((_, i) => (
-                  <View key={i} style={styles.stackAvatar}>
-                    <Text style={styles.stackAvatarText}>{String.fromCharCode(65 + i)}</Text>
-                  </View>
+            {live.length === 0 ? (
+              <Text style={styles.stripEmpty}>Quiet fr. Nothing cooking.</Text>
+            ) : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.rail}
+              >
+                {live.map((item) => (
+                  <TouchableOpacity
+                    key={item.conversationId}
+                    style={styles.liveCard}
+                    onPress={() => router.push(`/chat/${item.conversationId}`)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${titleFor(item)}, ${item.messageCount} messages`}
+                  >
+                    <View style={styles.liveCardTop}>
+                      <Text style={styles.liveBadge}>LIVE</Text>
+                      <Text style={styles.liveCount}>
+                        {item.messageCount} in {relativeLabel(item.lastMessageAt)}
+                      </Text>
+                    </View>
+                    <Text style={styles.liveTitle} numberOfLines={1}>
+                      {titleFor(item)}
+                    </Text>
+                    {item.lastMessagePreview ? (
+                      <Text style={styles.liveSnippet} numberOfLines={2}>
+                        {item.lastMessagePreview}
+                      </Text>
+                    ) : null}
+                    <View style={styles.avatarRow}>
+                      {item.peers.slice(0, 4).map((peer) => (
+                        <Avatar
+                          key={peer.userId}
+                          name={peer.displayName}
+                          uri={peer.avatarUrl}
+                          size={22}
+                          style={styles.stackedAvatar}
+                        />
+                      ))}
+                      {item.peers.length > 4 ? (
+                        <Text style={styles.avatarOverflow}>+{item.peers.length - 4}</Text>
+                      ) : null}
+                    </View>
+                  </TouchableOpacity>
                 ))}
-                <View style={styles.stackAvatarExtra}>
-                  <Text style={styles.stackExtraText}>+{conv.extraCount}</Text>
+              </ScrollView>
+            )}
+          </View>
+
+          {/* Strip 2 — Tap-in */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Tap in</Text>
+              <Text style={styles.sectionMeta}>{plans.length || ''}</Text>
+            </View>
+            {plans.length === 0 ? (
+              <Text style={styles.stripEmpty}>Nothing on. Make something happen.</Text>
+            ) : (
+              plans.map((plan) => (
+                <View key={plan.id} style={styles.planRow}>
+                  <View style={styles.planMain}>
+                    <Text style={styles.planTitle} numberOfLines={1}>
+                      {plan.title}
+                    </Text>
+                    <Text style={styles.planMeta}>
+                      {plan.creatorName ? `${plan.creatorName} · ` : ''}
+                      {startsLabel(plan.startsAt)}
+                      {plan.location ? ` · ${plan.location}` : ''}
+                    </Text>
+                  </View>
+                  <View style={styles.planTally}>
+                    <Text style={styles.planGoing}>{plan.goingCount} in</Text>
+                    <Text style={styles.planMeta}>{plan.responseCount} said</Text>
+                  </View>
                 </View>
-              </View>
-              <TouchableOpacity style={styles.joinBtn}>
-                <Text style={styles.joinText}>JOIN</Text>
-                <Ionicons name="arrow-forward" size={14} color={COLORS.onPrimary} />
-              </TouchableOpacity>
+              ))
+            )}
+          </View>
+
+          {/* Strip 3 — Around */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Around</Text>
+              <Text style={styles.sectionMeta}>{around.length || ''}</Text>
             </View>
+            {around.length === 0 ? (
+              <Text style={styles.stripEmpty}>Uko solo msee. No bros around.</Text>
+            ) : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.rail}
+              >
+                {around.map((person) => (
+                  <TouchableOpacity
+                    key={person.userId}
+                    style={styles.aroundItem}
+                    onPress={() => router.push('/new-chat')}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Message ${person.displayName}`}
+                  >
+                    <Avatar
+                      name={person.displayName}
+                      uri={person.avatarUrl}
+                      presence={person.presence}
+                      size={44}
+                    />
+                    <Text style={styles.aroundName} numberOfLines={1}>
+                      {person.displayName.split(' ')[0]}
+                    </Text>
+                    <Text style={styles.aroundState} numberOfLines={1}>
+                      {person.presence}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
           </View>
-        ))}
-      </View>
 
-      {/* Trending Spaces */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Trending Spaces</Text>
-          <Ionicons name="trending-up" size={16} color={COLORS.onSurfaceVariant} />
-        </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
-          {trendingChips.map((chip, i) => (
-            <TouchableOpacity key={chip} style={[styles.chip, i === 0 && styles.chipActive]}>
-              <Text style={[styles.chipText, i === 0 && styles.chipTextActive]}>{chip}</Text>
-              {chipCounts[i] && (
-                <Text style={[styles.chipCount, i === 0 && styles.chipCountActive]}>{chipCounts[i]}</Text>
-              )}
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
-      {/* Recent Activity */}
-      <TouchableOpacity style={styles.activityCard}>
-        <View style={styles.activityInner}>
-          <View style={styles.activityAvatar}>
-            <Text style={styles.activityAvatarText}>S</Text>
-            <Ionicons name={"ios-reply" as any} size={8} color={COLORS.onSecondary} />
-          </View>
-          <View style={styles.activityContent}>
-            <View style={styles.activityRow}>
-              <Text style={styles.activityName}>Sarah</Text>
-              <Text style={styles.activityAction}>replied in</Text>
-              <Text style={styles.activitySpace}>AI Agent Discussion</Text>
-            </View>
-            <Text style={styles.activityTime}>2m ago</Text>
-          </View>
-        </View>
-        <Ionicons name="chevron-forward" size={16} color={COLORS.onSurfaceVariant} />
-      </TouchableOpacity>
-
-      <View style={{ height: 80 }} />
+          {isQuiet ? (
+            <Text style={styles.quietNote}>Quiet fr. Drop a vibe cuz.</Text>
+          ) : null}
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -247,490 +281,168 @@ export default function PulseScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.semantic.canvasRoot,
+    backgroundColor: COLORS.surface,
   },
-  greetingSection: {
-    paddingHorizontal: SPACING.margin,
+  content: {
     paddingTop: SPACING.spaceXs,
-    paddingBottom: SPACING.spaceMd,
+    paddingBottom: SPACING.spaceXl,
   },
-  greetingRow: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: SPACING.spaceMd,
+    paddingBottom: SPACING.spaceSm,
   },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.spaceXs,
-    marginBottom: 4,
-  },
-  pulseDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.tertiaryContainer,
-    shadowColor: COLORS.tertiaryContainer,
-    shadowRadius: 6,
-    shadowOpacity: 0.9,
-  },
-  statusLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 2,
-    color: COLORS.onSurfaceVariant,
+  headerText: {
+    flex: 1,
   },
   greeting: {
-    fontSize: 28,
+    ...TYPOGRAPHY.headlineMD,
     fontWeight: '700',
+    letterSpacing: -0.5,
     color: COLORS.onSurface,
-    letterSpacing: -1,
+  },
+  subtitle: {
+    ...TYPOGRAPHY.bodySM,
+    color: COLORS.onSurfaceVariant,
+    marginTop: 2,
   },
   iconCircle: {
     width: 44,
     height: 44,
-    borderRadius: 22,
-    backgroundColor: COLORS.surfaceContainerHigh,
+    borderRadius: RADIUS.full,
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: COLORS.onSurfaceVariant,
-    marginTop: 4,
-  },
-  broadcastCard: {
-    marginHorizontal: SPACING.margin,
-    padding: SPACING.spaceMd,
-    borderRadius: RADIUS.DEFAULT,
-    backgroundColor: COLORS.surfaceContainer,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.6,
-    shadowRadius: 20,
-  },
-  broadcastInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: SPACING.spaceMd,
-  },
-  broadcastLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.spaceSm,
-    flex: 1,
-  },
-  broadcastAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.surfaceContainerHigh,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  broadcastStatus: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.primaryContainer,
-    shadowColor: COLORS.primaryContainer,
-    shadowRadius: 8,
-    shadowOpacity: 0.8,
-  },
-  broadcastText: {
-    flex: 1,
-    fontSize: 14,
-    color: COLORS.onSurfaceVariant,
-    overflow: 'hidden',
-  },
-  broadcastActions: {
-    flexDirection: 'row',
-    gap: SPACING.spaceXs,
-  },
-  actionBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.surfaceContainerHigh,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  section: {
-    marginTop: SPACING.spaceLg,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACING.margin,
-    marginBottom: SPACING.spaceSm,
-  },
-  sectionHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.spaceXs,
-  },
-  sectionDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.tertiaryContainer,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.onSurface,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  sectionAction: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.onSurfaceVariant,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  countBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-    backgroundColor: COLORS.surfaceContainerHigh,
-  },
-  countText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: COLORS.tertiary,
-  },
-  usersRow: {
-    flexDirection: 'row',
-    gap: SPACING.spaceMd,
-    paddingHorizontal: SPACING.margin,
-    paddingVertical: SPACING.spaceSm,
-  },
-  userItem: {
-    alignItems: 'center',
-    width: 72,
-  },
-  userAvatarWrapper: {
-    position: 'relative',
-  },
-  moreCircle: {
     backgroundColor: COLORS.surfaceContainerHigh,
     borderWidth: 1,
     borderColor: COLORS.outlineVariant,
   },
-  userName: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.onSurface,
-    textAlign: 'center',
-    marginTop: 4,
+  section: {
+    marginTop: SPACING.spaceSm,
   },
-  userActivity: {
-    fontSize: 10,
-    color: COLORS.primaryContainer,
-    textAlign: 'center',
-    marginTop: 2,
-  },
-  conversationCard: {
-    marginHorizontal: SPACING.margin,
-    padding: SPACING.spaceLg,
-    borderRadius: RADIUS.DEFAULT,
-    backgroundColor: COLORS.surfaceContainerHigh,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.6,
-    shadowRadius: 24,
-    marginBottom: SPACING.spaceMd,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-  },
-  cardTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.spaceMd,
-  },
-  liveBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  livePulse: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#ff5c5c',
-  },
-  liveBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#ffdad6',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  liveBadgeCount: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#ffdad6',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  cardMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.spaceSm,
-  },
-  audioVisual: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 2,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    backgroundColor: COLORS.surfaceContainerLowest,
-    borderRadius: 6,
-  },
-  audioBar: {
-    width: 2,
-    borderRadius: 1,
-    backgroundColor: COLORS.primaryContainer,
-  },
-  audioDuration: {
-    fontSize: 10,
-    color: COLORS.primaryFixed,
-    marginLeft: 4,
-    fontFamily: 'monospace',
-  },
-  locationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  locationText: {
-    fontSize: 10,
-    color: COLORS.onSurfaceVariant,
-  },
-  topicLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 2,
-    marginBottom: 4,
-  },
-  conversationTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: COLORS.onSurface,
-    lineHeight: 24,
-    marginBottom: SPACING.spaceMd,
-  },
-  snippetCard: {
-    flexDirection: 'row',
-    gap: SPACING.spaceSm,
-    padding: SPACING.spaceSm,
-    backgroundColor: COLORS.surfaceContainerLowest,
-    borderRadius: RADIUS.DEFAULT,
-    marginBottom: SPACING.spaceMd,
-  },
-  snippetAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.surfaceContainerHigh,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  snippetAvatarText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: COLORS.onSurface,
-  },
-  snippetContent: {
-    flex: 1,
-  },
-  snippetHeader: {
+  sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.spaceXs,
-    marginBottom: 2,
+    paddingHorizontal: SPACING.spaceMd,
+    marginBottom: SPACING.spaceXs,
   },
-  snippetName: {
-    fontSize: 12,
-    fontWeight: '600',
+  sectionTitle: {
+    ...TYPOGRAPHY.labelLG,
+    fontWeight: '700',
+    color: COLORS.onSurface,
   },
-  snippetTime: {
-    fontSize: 10,
+  sectionMeta: {
+    ...TYPOGRAPHY.labelSM,
     color: COLORS.onSurfaceVariant,
   },
-  snippetText: {
-    fontSize: 12,
-    color: COLORS.onSurface,
-    fontStyle: 'italic',
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  avatarStack: {
-    flexDirection: 'row',
-    marginLeft: -8,
-  },
-  stackAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.surfaceContainerHigh,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.surfaceContainerHigh,
-  },
-  stackAvatarText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: COLORS.onSurface,
-  },
-  stackAvatarExtra: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.surfaceContainerHighest,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.surfaceContainerHigh,
-  },
-  stackExtraText: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: COLORS.primaryContainer,
-  },
-  joinBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.primaryContainer,
-    shadowColor: COLORS.primaryContainer,
-    shadowRadius: 16,
-    shadowOpacity: 0.4,
-  },
-  joinText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.onPrimary,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  chipsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: SPACING.margin,
+  stripEmpty: {
+    ...TYPOGRAPHY.bodySM,
+    color: COLORS.onSurfaceVariant,
+    paddingHorizontal: SPACING.spaceMd,
     paddingVertical: SPACING.spaceXs,
   },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 32,
-    paddingHorizontal: 12,
-    borderRadius: RADIUS.full,
+  rail: {
+    paddingHorizontal: SPACING.spaceMd,
+    gap: SPACING.spaceSm,
+  },
+  liveCard: {
+    width: 220,
+    padding: SPACING.spaceSm,
+    borderRadius: RADIUS.sm,
     backgroundColor: COLORS.surfaceContainer,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: COLORS.outlineVariant,
   },
-  chipActive: {
-    backgroundColor: COLORS.primaryContainer + '20',
-    borderColor: COLORS.primaryContainer,
-  },
-  chipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.onSurfaceVariant,
-  },
-  chipTextActive: {
-    color: COLORS.primaryContainer,
-  },
-  chipCount: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: COLORS.tertiaryContainer,
-    marginLeft: 6,
-  },
-  chipCountActive: {
-    color: COLORS.onPrimary,
-  },
-  activityCard: {
+  liveCardTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginHorizontal: SPACING.margin,
-    marginTop: SPACING.spaceSm,
-    padding: SPACING.spaceMd,
-    borderRadius: RADIUS.DEFAULT,
-    backgroundColor: COLORS.surfaceContainerLow,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
+    marginBottom: SPACING.spaceXs,
   },
-  activityInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.spaceSm,
-    flex: 1,
-  },
-  activityAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: COLORS.surfaceContainerHigh,
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-  },
-  activityAvatarText: {
-    fontSize: 12,
+  liveBadge: {
+    ...TYPOGRAPHY.labelSM,
     fontWeight: '700',
-    color: COLORS.onSurface,
+    color: COLORS.primaryContainer,
+    letterSpacing: 1,
   },
-  activityContent: {
-    flex: 1,
-  },
-  activityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  activityName: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.onSurface,
-  },
-  activityAction: {
-    fontSize: 12,
+  liveCount: {
+    ...TYPOGRAPHY.labelSM,
     color: COLORS.onSurfaceVariant,
   },
-  activitySpace: {
-    fontSize: 12,
+  liveTitle: {
+    ...TYPOGRAPHY.bodyMD,
     fontWeight: '600',
-    color: COLORS.primaryContainer,
+    color: COLORS.onSurface,
   },
-  activityTime: {
-    fontSize: 10,
+  liveSnippet: {
+    ...TYPOGRAPHY.bodySM,
     color: COLORS.onSurfaceVariant,
     marginTop: 2,
+  },
+  avatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.spaceXs,
+  },
+  stackedAvatar: {
+    marginRight: -6,
+    borderWidth: 1,
+    borderColor: COLORS.surfaceContainer,
+  },
+  avatarOverflow: {
+    ...TYPOGRAPHY.labelSM,
+    color: COLORS.onSurfaceVariant,
+    marginLeft: SPACING.spaceXs,
+  },
+  planRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: SPACING.spaceMd,
+    paddingVertical: SPACING.spaceSm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.outlineVariant,
+  },
+  planMain: {
+    flex: 1,
+  },
+  planTitle: {
+    ...TYPOGRAPHY.bodyMD,
+    fontWeight: '600',
+    color: COLORS.onSurface,
+  },
+  planMeta: {
+    ...TYPOGRAPHY.labelSM,
+    color: COLORS.onSurfaceVariant,
+    marginTop: 2,
+  },
+  planTally: {
+    alignItems: 'flex-end',
+  },
+  planGoing: {
+    ...TYPOGRAPHY.labelLG,
+    fontWeight: '700',
+    color: COLORS.primaryContainer,
+  },
+  aroundItem: {
+    width: 68,
+    alignItems: 'center',
+    gap: 2,
+  },
+  aroundName: {
+    ...TYPOGRAPHY.labelSM,
+    color: COLORS.onSurface,
+    marginTop: 2,
+  },
+  aroundState: {
+    ...TYPOGRAPHY.labelSM,
+    color: COLORS.onSurfaceVariant,
+  },
+  quietNote: {
+    ...TYPOGRAPHY.bodySM,
+    color: COLORS.onSurfaceVariant,
+    textAlign: 'center',
+    paddingTop: SPACING.spaceMd,
   },
 });

@@ -68,7 +68,7 @@ For F-Droid maintainers:
 - **Build command**: `cd android && ./gradlew assembleRelease`
 - **Source code**: Fully open-source under GNU GPL v3.0+
 - **Dependencies**: All dependencies are open-source (see `package.json`)
-- **Third-party services**: Clerk (authentication), Convex (database/hosting) — see [PRIVACY.md](PRIVACY.md)
+- **Third-party services**: Supabase (authentication, database, realtime, storage) — see [PRIVACY.md](PRIVACY.md)
 - **Required permissions**: INTERNET (for API and auth)
 - **No tracking**: No analytics, crash reporting, or advertising SDKs
 - **Reproducible build**: Yes (Gradle, no local signing config)
@@ -103,5 +103,4 @@ Built with:
 - [React Native](https://reactnative.dev/) — Mobile framework
 - [Expo](https://expo.dev/) — Development platform
 - [Expo Router](https://expo.github.io/router/) — File-based routing
-- [Clerk](https://clerk.com) — Authentication
-- [Convex](https://convex.dev) — Backend, database, and realtime
+- [Supabase](https://supabase.co) — Authentication, database, real-time sync, and storage

@@ -1,27 +1,42 @@
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, KeyboardAvoidingView, Platform, Alert } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING, RADIUS } from '../../theme';
-import { useAuth } from '../../lib/auth-context';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { COLORS, SPACING, RADIUS } from "../../theme";
+import { useAuth } from "../../lib/auth-context";
+import { useInvites } from "../../lib/invite-context";
+import { useRouter } from "expo-router";
+import { useState } from "react";
 
 export default function SignInScreen() {
   const { signIn, error, clearError } = useAuth();
+  const { consumeInvite } = useInvites();
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSignIn = async () => {
     if (!email || !password) {
-      Alert.alert('Error', 'Please enter email and password');
+      Alert.alert("Error", "Please enter email and password");
       return;
     }
     setIsLoading(true);
     clearError();
     try {
       await signIn(email, password);
-      router.replace('/(tabs)');
+      // A pending invite finally has an owner. Redeem it and land where it
+      // points instead of dropping it on the floor.
+      const redeemed = await consumeInvite();
+      router.replace(redeemed.destination ?? "/(tabs)");
     } catch {
       // Error is set in auth context
     } finally {
@@ -30,7 +45,10 @@ export default function SignInScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.select({ ios: 'padding', android: undefined })}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.select({ ios: "padding", android: undefined })}
+    >
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={20} color={COLORS.onSurface} />
@@ -62,7 +80,11 @@ export default function SignInScreen() {
 
           <Text style={styles.label}>Password</Text>
           <View style={styles.input}>
-            <Ionicons name="lock-closed" size={18} color={COLORS.semantic.textDim} />
+            <Ionicons
+              name="lock-closed"
+              size={18}
+              color={COLORS.semantic.textDim}
+            />
             <TextInput
               style={styles.inputText}
               placeholder="Enter password"
@@ -72,7 +94,11 @@ export default function SignInScreen() {
               onChangeText={setPassword}
             />
             <TouchableOpacity>
-              <Ionicons name="eye-off" size={18} color={COLORS.semantic.textDim} />
+              <Ionicons
+                name="eye-off"
+                size={18}
+                color={COLORS.semantic.textDim}
+              />
             </TouchableOpacity>
           </View>
 
@@ -80,8 +106,14 @@ export default function SignInScreen() {
             <Text style={styles.forgotText}>Forgot password?</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.signInBtn} onPress={handleSignIn} disabled={isLoading}>
-            <Text style={styles.signInText}>{isLoading ? 'Signing in...' : 'Sign in'}</Text>
+          <TouchableOpacity
+            style={styles.signInBtn}
+            onPress={handleSignIn}
+            disabled={isLoading}
+          >
+            <Text style={styles.signInText}>
+              {isLoading ? "Signing in..." : "Sign in"}
+            </Text>
           </TouchableOpacity>
 
           <View style={styles.divider}>
@@ -101,7 +133,7 @@ export default function SignInScreen() {
         </View>
 
         <Text style={styles.footer}>Don't have an account?</Text>
-        <TouchableOpacity onPress={() => router.replace('/(auth)/sign-up')}>
+        <TouchableOpacity onPress={() => router.replace("/(auth)/sign-up")}>
           <Text style={styles.footerLink}>Create account</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -128,19 +160,19 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
     backgroundColor: COLORS.surfaceContainerHigh,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   logo: {
     fontSize: 24,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.primaryContainer,
     letterSpacing: 2,
     marginBottom: SPACING.spaceLg,
   },
   title: {
     fontSize: 28,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.onSurface,
     marginBottom: SPACING.spaceXl,
   },
@@ -151,7 +183,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.spaceMd,
   },
   errorText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 14,
   },
   form: {
@@ -159,22 +191,22 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.onSurfaceVariant,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
     letterSpacing: 1,
     marginBottom: 4,
   },
   input: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: SPACING.spaceSm,
     paddingHorizontal: SPACING.spaceMd,
     paddingVertical: 14,
     backgroundColor: COLORS.surfaceContainer,
     borderRadius: RADIUS.full,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: "rgba(255,255,255,0.06)",
   },
   inputText: {
     flex: 1,
@@ -182,19 +214,19 @@ const styles = StyleSheet.create({
     color: COLORS.onSurface,
   },
   forgot: {
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
     marginTop: 4,
   },
   forgotText: {
     fontSize: 13,
     color: COLORS.primaryContainer,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   signInBtn: {
     paddingVertical: 16,
     borderRadius: RADIUS.full,
     backgroundColor: COLORS.primaryContainer,
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: SPACING.spaceSm,
     shadowColor: COLORS.primaryContainer,
     shadowRadius: 16,
@@ -202,14 +234,14 @@ const styles = StyleSheet.create({
   },
   signInText: {
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.onPrimary,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
     letterSpacing: 2,
   },
   divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: SPACING.spaceSm,
     marginVertical: SPACING.spaceMd,
   },
@@ -223,32 +255,32 @@ const styles = StyleSheet.create({
     color: COLORS.onSurfaceVariant,
   },
   socialBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: SPACING.spaceSm,
     paddingVertical: 12,
     borderRadius: RADIUS.full,
     backgroundColor: COLORS.surfaceContainer,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: "rgba(255,255,255,0.06)",
     marginTop: 6,
   },
   socialText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
     color: COLORS.onSurface,
   },
   footer: {
-    textAlign: 'center',
+    textAlign: "center",
     fontSize: 14,
     color: COLORS.onSurfaceVariant,
     marginTop: SPACING.spaceLg,
   },
   footerLink: {
-    textAlign: 'center',
+    textAlign: "center",
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.primaryContainer,
     marginTop: 4,
     paddingVertical: SPACING.spaceSm,

@@ -1,59 +1,95 @@
-import { View, Text } from 'react-native';
-import { Tab, Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
+import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '@/theme';
 
+/**
+ * The `+` is a raised center action, not a tab — it opens the Create screen
+ * rather than switching to one. That matches docs/research/dashboard-layout-A.md.
+ */
+function CreateAction() {
+  const router = useRouter();
+  return (
+    <Pressable
+      onPress={() => router.push('/create')}
+      accessibilityRole="button"
+      accessibilityLabel="Create"
+      style={{ top: -14, alignItems: 'center', justifyContent: 'center' }}
+    >
+      <View
+        style={{
+          width: 52,
+          height: 52,
+          borderRadius: 26,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: COLORS.primaryContainer,
+        }}
+      >
+        <Ionicons name="add" size={26} color={COLORS.onPrimary} />
+      </View>
+    </Pressable>
+  );
+}
+
 export default function TabsLayout() {
   return (
-    <Tabs>
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: COLORS.surfaceTint,
+        tabBarInactiveTintColor: COLORS.semantic.textDim,
+        tabBarStyle: {
+          backgroundColor: COLORS.semantic.canvasRoot,
+          borderTopColor: COLORS.semantic.ghostBorderLight,
+        },
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Pulse',
+          title: 'Home',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name="pulse" size={22} color={focused ? COLORS.primaryContainer : color} />
+            <Ionicons name={focused ? 'home' : 'home-outline'} size={22} color={color} />
           ),
-          tabBarLabel: 'Pulse',
+        }}
+      />
+      <Tabs.Screen
+        name="chats"
+        options={{
+          title: 'Chats',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'chatbubbles' : 'chatbubbles-outline'} size={22} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="people"
         options={{
-          title: 'People',
+          title: 'Bros',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name="people" size={22} color={focused ? COLORS.primaryContainer : color} />
+            <Ionicons name={focused ? 'people' : 'people-outline'} size={22} color={color} />
           ),
-          tabBarLabel: 'People',
-        }}
-      />
-      <Tabs.Screen
-        name="create"
-        options={{
-          title: 'Create',
-          tabBarIcon: () => (
-            <Ionicons name="add-circle" size={28} color={COLORS.primaryContainer} />
-          ),
-          tabBarLabel: '',
-        }}
-      />
-      <Tabs.Screen
-        name="spaces"
-        options={{
-          title: 'Spaces',
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name="chatbubble-ellipses" size={22} color={focused ? COLORS.primaryContainer : color} />
-          ),
-          tabBarLabel: 'Spaces',
         }}
       />
       <Tabs.Screen
         name="you"
         options={{
-          title: 'You',
+          title: 'Me',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name="person" size={22} color={focused ? COLORS.primaryContainer : color} />
+            <Ionicons name={focused ? 'person' : 'person-outline'} size={22} color={color} />
           ),
-          tabBarLabel: 'You',
+        }}
+      />
+      {/* v1 nav is frozen at Home / Chats / Bros / Me. Spaces stays routable
+          but hidden. Create is the raised center `+`, a button rather than a
+          tab, so it never reads as a fifth destination. */}
+      <Tabs.Screen name="spaces" options={{ href: null }} />
+      <Tabs.Screen
+        name="create"
+        options={{
+          title: 'Create',
+          tabBarButton: () => <CreateAction />,
         }}
       />
     </Tabs>
