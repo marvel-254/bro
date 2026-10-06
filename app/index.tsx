@@ -1,8 +1,8 @@
 import { View, Text } from 'react-native';
 import { useEffect } from 'react';
 import { useRouter } from 'expo-router';
-import { useAuth } from '@/lib/auth-context';
-import { COLORS } from '@/theme';
+import { useAuth } from '../src/lib/auth-context';
+import { COLORS } from '../src/theme';
 
 function RedirectHandler() {
   const { isLoading, isAuthenticated } = useAuth();

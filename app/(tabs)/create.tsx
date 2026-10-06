@@ -1,2 +1,2 @@
-import CreateScreen from '../../../src/features/conversations/CreateScreen';
+import CreateScreen from '../../src/features/conversations/CreateScreen';
 export default CreateScreen;

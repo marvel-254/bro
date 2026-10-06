@@ -1,2 +1,2 @@
-import PeopleScreen from '../../../src/features/people/PeopleScreen';
+import PeopleScreen from '../../src/features/people/PeopleScreen';
 export default PeopleScreen;

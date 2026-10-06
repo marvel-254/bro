@@ -1,7 +1,7 @@
 import { Tabs, useRouter } from 'expo-router';
 import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '@/theme';
+import { COLORS } from '../../src/theme';
 
 /**
  * The `+` is a raised center action, not a tab — it opens the Create screen

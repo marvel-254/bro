@@ -1,13 +1,13 @@
-import { COLORS } from '@/theme';
+import { COLORS } from '../src/theme';
 import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
-import { AuthProvider, useAuth } from '@/lib/auth-context';
-import { PresenceProvider } from '@/lib/presence-context';
-import { PeopleProvider } from '@/lib/people-context';
-import { ActivityBadgeProvider } from '@/lib/activity-badge-context';
-import { CallProvider } from '@/lib/call-context';
-import IncomingCallOverlay from '@/features/calls/IncomingCallOverlay';
-import { InviteProvider } from '@/lib/invite-context';
+import { AuthProvider, useAuth } from '../src/lib/auth-context';
+import { PresenceProvider } from '../src/lib/presence-context';
+import { PeopleProvider } from '../src/lib/people-context';
+import { ActivityBadgeProvider } from '../src/lib/activity-badge-context';
+import { CallProvider } from '../src/lib/call-context';
+import IncomingCallOverlay from '../src/features/calls/IncomingCallOverlay';
+import { InviteProvider } from '../src/lib/invite-context';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
