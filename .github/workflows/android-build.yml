@@ -96,7 +96,7 @@ jobs:
       # config that `expo prebuild` generated.
       - name: Generate APK
         working-directory: android
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleRelease
         env:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
@@ -105,18 +105,18 @@ jobs:
 
       - name: Verify APK exists
         run: |
-          if [ ! -f android/app/build/outputs/apk/debug/app-debug.apk ]; then
+          if [ ! -f android/app/build/outputs/apk/release/app-release.apk ]; then
             echo "APK not found at expected path"
             find android -name "*.apk" -type f 2>/dev/null
             exit 1
           fi
-          echo "APK verified: $(ls -lh android/app/build/outputs/apk/debug/app-debug.apk)"
+          echo "APK verified: $(ls -lh android/app/build/outputs/apk/release/app-release.apk)"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: BRO-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: BRO-release
+          path: android/app/build/outputs/apk/release/app-release.apk
           retention-days: 7
 
       - name: Push APK to Vercel Blob
@@ -124,4 +124,4 @@ jobs:
           BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
         run: |
           set -euo pipefail
-          node scripts/upload-apk-blob.mjs android/app/build/outputs/apk/debug/app-debug.apk
+          node scripts/upload-apk-blob.mjs android/app/build/outputs/apk/release/app-release.apk

@@ -19,7 +19,7 @@ if (!token) {
 }
 
 const apkPath =
-  process.argv[2] ?? 'android/app/build/outputs/apk/debug/app-debug.apk';
+  process.argv[2] ?? 'android/app/build/outputs/apk/release/app-release.apk';
 
 let body;
 try {
