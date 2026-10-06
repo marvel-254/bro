@@ -31,18 +31,22 @@ function AppProviders({ children }: { children: React.ReactNode }) {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <InviteProvider>
-          <AuthProvider>
-            <AppProviders>
-              <View style={{ flex: 1, backgroundColor: COLORS.semantic.canvasRoot }}>
-                <StatusBar style="light" />
-                <ErrorBoundary>{children}</ErrorBoundary>
-              </View>
-            </AppProviders>
-          </AuthProvider>
-        </InviteProvider>
-      </SafeAreaProvider>
+      {/* Outermost on purpose: a throw inside any provider below would
+          otherwise take the whole tree down and render nothing at all. */}
+      <ErrorBoundary>
+        <SafeAreaProvider>
+          <InviteProvider>
+            <AuthProvider>
+              <AppProviders>
+                <View style={{ flex: 1, backgroundColor: COLORS.semantic.canvasRoot }}>
+                  <StatusBar style="light" />
+                  {children}
+                </View>
+              </AppProviders>
+            </AuthProvider>
+          </InviteProvider>
+        </SafeAreaProvider>
+      </ErrorBoundary>
     </GestureHandlerRootView>
   );
 }
