@@ -20,3 +20,6 @@ coverage/
 # Supabase CLI local state (project link, cached versions, never commit)
 supabase/.temp/
 supabase/.branches/
+
+# Agent tooling (review agent config, never commit)
+.openclaude/
