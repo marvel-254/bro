@@ -90,7 +90,14 @@ jobs:
       - name: Run Tests
         run: npm test -- --passWithNoTests
 
-      # Build the debug APK. Gradle is invoked from the generated `android/`
+      # Fast gate: prove the production JS bundle actually resolves before
+      # spending ~12 min on Gradle. This is the check that catches missing
+      # runtime deps and bad import paths -- a debug build never bundles, so
+      # these breakages used to surface only here, one build at a time.
+      - name: Verify production JS bundle
+        run: npx expo export --platform android --output-dir .bundle-check --clear
+
+      # Build the release APK. Gradle is invoked from the generated `android/`
       # directory. EXPO_PUBLIC_* env vars are inherited from the job-level
       # `env:` block and are embedded into the native build by the Gradle
       # config that `expo prebuild` generated.

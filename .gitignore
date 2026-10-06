@@ -23,3 +23,6 @@ supabase/.branches/
 
 # Agent tooling (review agent config, never commit)
 .openclaude/
+
+# Local bundle verification output
+.bundle-check/
