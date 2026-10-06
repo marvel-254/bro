@@ -4,13 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#090A0F">
+<meta name="theme-color" content="#0e0318">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <title>BRO — Communication, Reimagined</title>
-
 <meta property="og:title" content="BRO — Communication, Reimagined">
 <meta property="og:description" content="A living communication environment: Pulse, People, Conversations, Branches, Spaces.">
 <meta property="og:type" content="website">
@@ -27,224 +26,186 @@
 <link rel="sitemap" type="application/xml" href="https://bro.omixsystems.store/sitemap.xml">
 <meta name="description" content="BRO is a living communication environment. Pulse. People. Conversations. Branches. Spaces.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/vapor.css">
 <style>
-:root{--ink:#090A0F;--paper:#F5F2EB;--bone:#EAE7DC;--stone:#D6D2C8;--ink-dim:#7A7568;--ink-faint:#A19D8F;--accent:#2D8C6A;--accent-soft:rgba(45,140,106,0.08);--radius:24px;--radius-sm:10px;--font:'Outfit',system-ui,sans-serif;--serif:'Instrument Serif',Georgia,serif;--max:1100px}
-*{margin:0;padding:0;box-sizing:border-box}
-html{scroll-behavior:smooth}
-body{font-family:var(--font);background:var(--paper);color:var(--ink);line-height:1.55;-webkit-font-smoothing:antialiased}
-::selection{background:rgba(45,140,106,0.15);color:inherit}
-img{display:block;max-width:100%}
-a{color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(45,140,106,0.25);transition:border-color .2s}
-a:hover{border-bottom-color:var(--accent)}
-
-/* Header */
-.site-head{position:sticky;top:0;z-index:50;background:rgba(245,242,235,0.92);backdrop-filter:saturate(1.4) blur(18px);border-bottom:1px solid rgba(0,0,0,0.04);padding:18px 32px;display:flex;align-items:center;justify-content:space-between}
-.site-head .logo{font-weight:800;font-size:22px;letter-spacing:-0.03em;color:var(--ink);border:none;line-height:1}
-.site-head .logo img{height:28px;width:auto;vertical-align:middle}
-.nav{display:flex;gap:28px;font-size:14px;font-weight:500;color:var(--ink-dim)}
-.nav a{color:var(--ink-dim);border-bottom:none;display:inline-block;position:relative}
-.nav a::after{content:'';position:absolute;bottom:-2px;left:0;width:0;height:1.5px;background:var(--accent);transition:width .25s ease}
-.nav a:hover{color:var(--ink);border-bottom:none}
-.nav a:hover::after{width:100%}
-
-/* Hero */
-.hero{position:relative;padding:140px 32px 120px;overflow:hidden;background:linear-gradient(180deg,#F5F2EB 0%,#EAE7DC 100%);border-bottom:1px solid rgba(0,0,0,0.05)}
-.hero-inner{max-width:var(--max);margin:0 auto;display:grid;grid-template-columns:1.1fr 0.9fr;gap:80px;align-items:center}
-.hero-eyebrow{display:inline-block;font-family:var(--font);font-size:11px;text-transform:uppercase;letter-spacing:0.14em;color:var(--ink-faint);margin-bottom:16px;border:1px solid rgba(0,0,0,0.08);padding:6px 12px;border-radius:100px}
-.hero h1{font-weight:900;font-size:clamp(48px,7vw,84px);line-height:0.92;letter-spacing:-0.045em;margin-bottom:24px;color:var(--ink)}
-.hero h1 em{font-family:var(--serif);font-weight:400;font-style:italic;color:var(--accent);display:block;margin-top:4px}
-.hero p.lead{font-size:20px;color:var(--ink-dim);max-width:480px;line-height:1.5}
-.hero-cta{display:inline-flex;align-items:center;gap:10px;background:var(--ink);color:var(--paper);font-weight:600;font-size:15px;padding:14px 28px;border-radius:100px;margin-top:28px;border:none;cursor:pointer;transition:transform .2s, box-shadow .2s;box-shadow:0 16px 40px rgba(9,10,15,0.25)}
-.hero-cta:hover{transform:translateY(-2px);box-shadow:0 24px 60px rgba(9,10,15,0.3)}
-.hero-visual{position:relative;padding:24px;background:rgba(255,255,255,0.55);border:1px solid rgba(0,0,0,0.06);border-radius:var(--radius);box-shadow:0 40px 80px rgba(0,0,0,0.08), inset 0 0 0 1px rgba(255,255,255,0.4);backdrop-filter:blur(4px)}
-.phone-mock{aspect-ratio:9/17.5;background:linear-gradient(180deg,#1a1c24,#0d0e14);border-radius:36px;padding:14px;border:1px solid rgba(255,255,255,0.08);box-shadow:0 0 0 1px rgba(255,255,255,0.05) inset, 0 60px 120px rgba(0,0,0,0.3);position:relative}
-.phone-bad{position:absolute;top:14px;left:50%;transform:translateX(-50%);width:28%;height:4px;background:#333;border-radius:100px;z-index:10}
-.phone-content{height:100%;overflow:hidden;border-radius:26px;background:#090A0F;display:flex;align-items:center;justify-content:center;position:relative}
-.phone-content .pulse-preview{text-align:center;padding:20px;color:#fff}
-.phone-content .pulse-preview h3{font-weight:800;font-size:24px;letter-spacing:-0.03em;color:#fff;margin-bottom:8px}
-.phone-content .pulse-preview h3 span{color:#00E5FF}
-.phone-content .pulse-preview p{font-size:13px;color:#8F9CAE}
-
-/* Sections */
-.section{padding:100px 32px;border-top:1px solid rgba(0,0,0,0.06)}
-.section-inner{max-width:var(--max);margin:0 auto}
-.section-header{text-align:center;margin-bottom:72px}
-.section-header h2{font-weight:800;font-size:clamp(32px,4.2vw,48px);letter-spacing:-0.035em;line-height:1.05;margin-bottom:12px;color:var(--ink)}
-.section-header p{font-size:18px;color:var(--ink-dim);max-width:520px;margin:0 auto}
-
-/* Feature grid */
-.features{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:24px}
-.feature-card{background:#fff;border:1px solid rgba(0,0,0,0.06);border-radius:var(--radius);padding:36px 28px;transition:box-shadow .2s, transform .2s;box-shadow:0 4px 30px rgba(0,0,0,0.03)}
-.feature-card:hover{box-shadow:0 20px 60px rgba(0,0,0,0.08);transform:translateY(-3px)}
-.feature-card h3{font-weight:700;font-size:20px;margin-bottom:10px;letter-spacing:-0.02em}
-.feature-card p{font-size:15px;color:var(--ink-dim);line-height:1.6}
-.feature-card .tag{display:inline-block;font-family:var(--font);font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--accent);border:1px solid var(--accent-soft);padding:3px 8px;border-radius:100px;margin-bottom:14px}
-
-/* Stats / trust */
-.trust{background:var(--ink);color:var(--paper);padding:80px 32px;border-radius:var(--radius);margin-top:80px}
-.trust-inner{max-width:var(--max);margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center}
-.trust h2{font-weight:800;font-size:32px;letter-spacing:-0.03em;line-height:1.1;margin-bottom:16px}
-.trust p{font-size:16px;color:var(--stone);line-height:1.65;max-width:460px}
-.stats{display:flex;gap:48px;margin-top:24px}
-.stat h4{font-size:36px;font-weight:800;letter-spacing:-0.03em;color:#fff}
-.stat p{font-size:12px;color:var(--stone);text-transform:uppercase;letter-spacing:0.08em;margin-top:4px}
-
-/* CTA */
-.cta-section{padding:120px 32px;text-align:center;background:linear-gradient(180deg,#F5F2EB,#EAE7DC)}
-.cta-section h2{font-weight:900;font-size:clamp(36px,5vw,64px);letter-spacing:-0.045em;line-height:1.05;margin-bottom:16px;color:var(--ink)}
-.cta-section h2 em{font-family:var(--serif);font-weight:400;font-style:italic;color:var(--accent);display:block}
-.cta-section p{font-size:18px;color:var(--ink-dim);max-width:520px;margin:0 auto 32px}
-.cta-btn{display:inline-flex;align-items:center;gap:10px;background:var(--ink);color:var(--paper);font-weight:600;font-size:15px;padding:16px 32px;border-radius:100px;border:none;cursor:pointer;transition:transform .2s;box-shadow:0 16px 40px rgba(9,10,15,0.25)}
-.cta-btn:hover{transform:translateY(-2px)}
-
-/* Footer */
-.site-foot{padding:48px 32px;border-top:1px solid rgba(0,0,0,0.08);display:flex;align-items:center;justify-content:space-between;max-width:var(--max);margin:0 auto;flex-wrap:wrap;gap:12px;font-size:13px;color:var(--ink-dim)}
-.site-foot a{color:var(--ink-dim);border-bottom:none}
-
-@media(max-width:900px){.hero-inner{grid-template-columns:1fr;gap:48px}.hero-visual{max-width:320px;margin:0 auto}.trust-inner{grid-template-columns:1fr}.stats{gap:32px}.nav{display:none}}
-
-/* Dark mode */
-[data-theme="dark"]{--ink:#F2F5F9;--paper:#090A0F;--bone:#12141A;--stone:#181A22;--ink-dim:#9AA3B2;--ink-faint:#5A6575;--accent:#00E5FF;--accent-soft:rgba(0,229,255,0.10);}
-[data-theme="dark"] body{background:var(--paper);color:var(--ink)}
-[data-theme="dark"] .section{border-top-color:rgba(255,255,255,0.06)}
-[data-theme="dark"] .hero{background:linear-gradient(180deg,#0d0e14 0%,#12141A 100%);border-bottom-color:rgba(255,255,255,0.06)}
-[data-theme="dark"] .hero-visual{background:rgba(255,255,255,0.04);border-color:rgba(255,255,255,0.08)}
-[data-theme="dark"] .feature-card{background:#12141A;border-color:rgba(255,255,255,0.08);color:var(--ink)}
-[data-theme="dark"] .feature-card h3{color:#F2F5F9}
-[data-theme="dark"] .feature-card p{color:var(--ink-dim)}
-[data-theme="dark"] .trust{background:#0d0e14}
-[data-theme="dark"] .cta-section{background:linear-gradient(180deg,#12141A,#090A0F)}
-[data-theme="dark"] .site-foot{border-top-color:rgba(255,255,255,0.08);color:var(--ink-faint)}
-[data-theme="dark"] .nav a{color:var(--ink-dim)}
-[data-theme="dark"] .nav a:hover{color:var(--ink)}
-
+.hero{position:relative;padding:120px 28px 150px;overflow:hidden;border-bottom:1px solid var(--line)}
+.hero-inner{max-width:var(--max);margin:0 auto;display:grid;grid-template-columns:1.1fr .9fr;gap:64px;align-items:center;position:relative;z-index:1}
+.hero p.lead{margin-top:22px}
+.hero-cta-row{display:flex;gap:16px;margin-top:32px;flex-wrap:wrap}
+.terminal{margin-top:36px;max-width:520px;background:rgba(0,0,0,.45);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.terminal-bar{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--line-soft)}
+.terminal-body{padding:16px;font-size:13px;line-height:1.9;color:var(--ink-dim)}
+.terminal-body .p{color:var(--cyan)}
+.terminal-body .m{color:var(--magenta)}
+.phone-mock{justify-self:center;width:min(300px,80vw);border:1px solid var(--cyan);border-radius:26px;background:rgba(0,0,0,.55);box-shadow:var(--glow-cyan-box);overflow:hidden}
+.phone-bad{height:26px;border-bottom:1px solid var(--line-soft);position:relative}
+.phone-bad::after{content:"";position:absolute;top:9px;left:50%;transform:translateX(-50%);width:88px;height:8px;border-radius:4px;background:var(--panel)}
+.phone-content{padding:26px 22px 30px}
+.phone-content h3{font-family:var(--display);font-size:26px;letter-spacing:.02em}
+.phone-content h3 span{color:var(--magenta);text-shadow:0 0 14px rgba(255,0,255,.7)}
+.phone-content p{font-size:12px;color:var(--ink-dim);margin-top:8px}
+.pulse-row{display:flex;align-items:center;gap:10px;margin-top:18px;padding:10px 12px;border:1px solid var(--line-soft);border-radius:8px;font-size:12px}
+.pulse-row+.pulse-row{margin-top:10px}
+.section{max-width:var(--max);margin:0 auto;padding:96px 28px 24px}
+.features{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:36px}
+.feature-card h3{font-family:var(--display);font-size:20px;margin:14px 0 10px;letter-spacing:.02em}
+.feature-card p{font-size:13px;color:var(--ink-dim)}
+.feature-card .tag{font-size:11px;letter-spacing:.2em;color:var(--magenta);text-transform:uppercase}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:36px}
+.stat{text-align:left}
+.stat b{display:block;font-family:var(--display);font-size:clamp(30px,4vw,46px);color:var(--cyan);text-shadow:0 0 16px rgba(0,255,255,.5)}
+.stat span{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim)}
+.cta-section{max-width:var(--max);margin:96px auto;padding:0 28px 120px}
+.cta-box{text-align:center;padding:72px 28px;box-shadow:var(--glow-cta)}
+.cta-box h2{margin:18px 0 12px}
+.cta-box p{color:var(--ink-dim);margin-bottom:32px}
+@media(max-width:860px){.hero-inner{grid-template-columns:1fr;gap:48px}.features{grid-template-columns:1fr}.stats{grid-template-columns:1fr;gap:24px}.hero{padding:88px 20px 120px}.section{padding:72px 20px 16px}.cta-section{padding:0 20px 88px}}
 </style>
 </head>
 <body>
+<div class="scanlines" aria-hidden="true"></div>
 
 <header class="site-head" role="banner">
-<a href="/" class="logo" aria-label="BRO Home" style="display:inline-flex;align-items:center;gap:10px;border:none;color:inherit"><img src="/app-logo.png" alt="BRO" style="height:32px;width:auto;border-radius:8px;display:block"></a>
-<nav class="nav" aria-label="Primary">
-<a href="#features">Features</a>
-<a href="#about">About</a>
-<a href="#download">Download</a>
-<a href="https://github.com/marvel-254/bro">Source</a>
-<button onclick="toggleTheme()" aria-label="Toggle dark mode" style="margin-left:8px;background:transparent;border:1px solid rgba(0,0,0,0.12);border-radius:100px;padding:6px 12px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;color:var(--ink-dim);transition:background .2s" onmouseover="this.style.background='rgba(0,0,0,0.04)';this.style.color='var(--ink)'" onmouseout="this.style.background='transparent';this.style.color='var(--ink-dim)'">◐</button>
-</nav>
+  <div class="logo">BRO</div>
+  <nav class="nav" aria-label="Primary">
+    <a href="#features">Features</a>
+    <a href="#about">About</a>
+    <a href="/download.html">Download</a>
+  </nav>
 </header>
 
 <main>
 <section class="hero" aria-label="Introduction">
-<div class="hero-inner">
-<div>
-<div class="hero-eyebrow">Android / Open Source / GPL-3.0</div>
-<h1>TALK. CONNECT. EXIST.<br><em>Communication, reimagined.</em></h1>
-<p class="lead">BRO is not another chat app. It is a living environment built around conversations, people, spaces, and presence — with branching, real-time sync, and discovery at its core.</p>
-<a href="#download" class="hero-cta">Download APK →</a>
-</div>
-<div class="hero-visual" aria-hidden="true">
-<div class="phone-mock">
-<div class="phone-bad"></div>
-<div class="phone-content">
-<div class="pulse-preview">
-<h3>PULSE <span>LIVE</span></h3>
-<p>Active people · Live conversations · Recent activity</p>
-</div>
-</div>
-</div>
-</div>
-</div>
+  <div class="grid-floor" aria-hidden="true"></div>
+  <div class="hero-inner">
+    <div>
+      <div class="hero-eyebrow eyebrow">Android / Open Source / GPL-3.0</div>
+      <h1 class="display" aria-label="TALK. CONNECT. EXIST."><span id="typed" aria-hidden="true"></span><span class="cursor" aria-hidden="true"></span><noscript>TALK. CONNECT.<br><span class="glow-cyan">EXIST.</span></noscript></h1>
+      <p class="lead">BRO is not another chat app. It is a living environment built around conversations, people, spaces, and presence — with branching, real-time sync, and discovery at its core.</p>
+      <div class="hero-cta-row">
+        <a href="/download.html" class="btn"><span>Download APK →</span></a>
+
+      </div>
+      <div class="terminal" aria-hidden="true">
+        <div class="terminal-bar"><div class="dots"><i></i><i></i><i></i></div><span class="meta">bro@pulse:~</span></div>
+        <div class="terminal-body">
+          <div><span class="p">$</span> bro who-is-live <span class="cursor"></span></div>
+          <div><span class="m">▸</span> 12 bros online · 3 live conversations</div>
+          <div><span class="m">▸</span> Nairobi Tech branching now</div>
+        </div>
+      </div>
+    </div>
+    <div class="hero-visual" aria-hidden="true">
+      <div class="phone-mock">
+        <div class="phone-bad"></div>
+        <div class="phone-content">
+          <h3>PULSE <span>LIVE</span></h3>
+          <p>Active people · Live conversations · Recent activity</p>
+          <div class="pulse-row"><span class="pulse-dot"></span> Sarah is cooking…</div>
+          <div class="pulse-row"><span class="pulse-dot"></span> Kilimani hub · 18 in</div>
+          <div class="pulse-row"><span class="pulse-dot"></span> Tariq is chilling</div>
+        </div>
+      </div>
+    </div>
+  </div>
 </section>
 
 <section class="section" id="features" aria-label="Features">
-<div class="section-inner">
-<div class="section-header">
-<h2>Built for real communication</h2>
-<p>Every feature serves the loop: discover → connect → talk → branch → stay present.</p>
-</div>
-<div class="features">
-<article class="feature-card">
-<div class="tag">Discovery</div>
-<h3>Pulse</h3>
-<p>Not a feed. A real-time snapshot of your communication world: active people, live conversations, recommended spaces, and recent activity — all in one view.</p>
-</article>
-<article class="feature-card">
-<div class="tag">People</div>
-<h3>People</h3>
-<p>Search, discover, and connect. See mutual spaces, follow conversations, send messages — without turning into a follower system.</p>
-</article>
-<article class="feature-card">
-<div class="tag">Conversations</div>
-<h3>Conversations</h3>
-<p>Direct and group messaging with real-time sync, typing indicators, delivery states, reactions, and contextual branches off any message.</p>
-</article>
-<article class="feature-card">
-<div class="tag">Branches</div>
-<h3>Conversation Branches</h3>
-<p>A message can grow branches. Context is preserved: see who started it, who is in it, and where it belongs inside the conversation.</p>
-</article>
-<article class="feature-card">
-<div class="tag">Spaces</div>
-<h3>Spaces</h3>
-<p>Communities organized around shared interests. Conversations flow naturally within spaces — not buried in channels.</p>
-</article>
-<article class="feature-card">
-<div class="tag">Presence</div>
-<h3>Presence</h3>
-<p>Real-time online status, typing indicators, message delivery states, and conversation activity — everywhere in the app.</p>
-</article>
-</div>
-</div>
+  <div class="eyebrow">System modules</div>
+  <h2 class="display">Built for real communication</h2>
+  <p class="lede">Every feature serves the loop: discover → connect → talk → branch → stay present.</p>
+  <div class="features">
+    <article class="feature-card card">
+      <div class="tag">Discovery</div>
+      <h3>Pulse</h3>
+      <p>Not a feed. A real-time snapshot of your communication world: active people, live conversations, recommended spaces, and recent activity — all in one view.</p>
+    </article>
+    <article class="feature-card card card-magenta">
+      <div class="tag">People</div>
+      <h3>People</h3>
+      <p>Search, discover, and connect. See mutual spaces, follow conversations, send messages — without turning into a follower system.</p>
+    </article>
+    <article class="feature-card card">
+      <div class="tag">Messaging</div>
+      <h3>Conversations</h3>
+      <p>Direct and group messaging with real-time sync, typing indicators, delivery states, reactions, and contextual branches off any message.</p>
+    </article>
+    <article class="feature-card card card-magenta">
+      <div class="tag">Threads</div>
+      <h3>Conversation Branches</h3>
+      <p>A message can grow branches. Context is preserved: see who started it, who is in it, and where it belongs inside the conversation.</p>
+    </article>
+    <article class="feature-card card">
+      <div class="tag">Community</div>
+      <h3>Spaces</h3>
+      <p>Communities organized around shared interests. Conversations flow naturally within spaces — not buried in channels.</p>
+    </article>
+    <article class="feature-card card card-magenta">
+      <div class="tag">Signal</div>
+      <h3>Presence</h3>
+      <p>Know who is here, chilling, locked in, or off the grid — without surveillance. Typing, moods, and availability at a glance.</p>
+    </article>
+  </div>
 </section>
 
 <section class="section" id="about" aria-label="About">
-<div class="section-inner">
-<div class="trust">
-<div class="trust-inner">
-<div>
-<h2>Free. Open. Your data.</h2>
-<p>BRO is released under the GNU General Public License (GPL-3.0-or-later). No proprietary SDKs, no tracking, no ads. Only the <code>INTERNET</code> permission is requested. Source is available at GitHub.</p>
-<div class="stats">
-<div class="stat"><h4>GPL-3.0</h4><p>License</p></div>
-<div class="stat"><h4>TypeScript</h4><p>Code</p></div>
-<div class="stat"><h4>42</h4><p>Tests passing</p></div>
-</div>
-</div>
-<div style="font-family:var(--serif);font-size:48px;color:rgba(255,255,255,0.08);line-height:1;letter-spacing:-0.04em">TALK.<br>CONNECT.<br>EXIST.</div>
-</div>
-</div>
-</div>
+  <div class="eyebrow">Manifesto</div>
+  <h2 class="display">Not another <span class="glow-magenta">chat list</span></h2>
+  <p class="lede">Chat apps show you a list of threads. BRO shows you what is alive: who is around, what is being said, where the energy is. Ephemeral by default, permanent by choice. Conversation first, channels second.</p>
+  <div class="stats">
+    <div class="stat"><b>1:1 + GROUP</b><span>Conversations</span></div>
+    <div class="stat"><b>∞ BRANCH</b><span>Context threads</span></div>
+    <div class="stat"><b>0 ADS</b><span>Tracking-free</span></div>
+  </div>
 </section>
 
 <section class="cta-section" id="download" aria-label="Download">
-<div style="max-width:var(--max);margin:0 auto">
-<h2>Get BRO <em>today</em></h2>
-<p>Download the debug APK from GitHub Releases. For F-Droid, search <strong>BRO</strong> once the submission completes.</p>
-<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:16px">
-<a href="https://github.com/marvel-254/bro/releases/tag/v0.1.0" class="cta-btn">Download APK from GitHub</a>
-<a href="https://bro.omixsystems.store/download.html" class="cta-btn" style="background:transparent;color:var(--ink);border:1.5px solid rgba(0,0,0,0.15);box-shadow:none">Download page →</a>
-</div>
-<p style="margin-top:12px;font-size:13px;color:var(--ink-faint)">Also available via <a href="https://f-droid.org/" style="color:var(--ink-dim)">F-Droid</a> and on <a href="https://github.com/marvel-254/bro">GitHub Source</a>.</p>
-</div>
+  <div class="cta-box card">
+    <div class="dots" style="justify-content:center"><i></i><i></i><i></i></div>
+    <h2 class="display">Pull up.</h2>
+    <p>Free, open-source, yours. Grab the APK and tap in.</p>
+    <a href="/download.html" class="btn btn-magenta"><span>Get BRO for Android</span></a>
+  </div>
 </section>
 </main>
 
-<footer class="site-foot" role="contentinfo">
-<div>
-<strong>BRO</strong> — <a href="https://github.com/marvel-254/bro">github.com/marvel-254/bro</a>
-</div>
-<div style="display:flex;gap:24px">
-<a href="/PRIVACY.md">Privacy Policy</a>
-<a href="https://marvel-254.github.io/bro/">Hosted Privacy</a>
-<a href="https://github.com/marvel-254/bro/blob/main/CHANGELOG.md">Changelog</a>
-</div>
+<footer>
+  Built for BRO · <a href="/PRIVACY.md">Privacy</a> · <a href="/TERMS.md">Terms</a>
 </footer>
 
-
 <script>
-function toggleTheme(){const html=document.documentElement;const t=html.getAttribute('data-theme');if(t==='dark'){html.removeAttribute('data-theme');localStorage.setItem('broTheme','light');}else{html.setAttribute('data-theme','dark');localStorage.setItem('broTheme','dark');}}
-(function(){const s=localStorage.getItem('broTheme');if(s==='dark')document.documentElement.setAttribute('data-theme','dark');})();
+(function () {
+  var el = document.getElementById("typed");
+  if (!el) return;
+  var L1a = "TALK. ", L1b = "CONNECT.", L2 = "EXIST.";
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    el.innerHTML = L1a + L1b + "<br><span class=\"glow-cyan\">" + L2 + "</span>";
+    return;
+  }
+  var CYAN_OPEN = '<span class="glow-cyan">';
+  var seq = [];
+  (L1a + L1b).split("").forEach(function (ch) { seq.push({ t: "w", ch: ch }); });
+  seq.push({ t: "br" });
+  // Beat before the punchline.
+  seq.push({ t: "wait", ms: 700 });
+  L2.split("").forEach(function (ch) { seq.push({ t: "c", ch: ch }); });
+  var i = 0, line1 = "", line2 = "", cyan = false;
+  function paint() {
+    el.innerHTML = line1 + (line2 ? "<br>" + CYAN_OPEN + line2 + "</span>" : "");
+  }
+  function step() {
+    if (i >= seq.length) return;
+    var s = seq[i++];
+    if (s.t === "br") { paint(); setTimeout(step, 350); }
+    else if (s.t === "wait") { paint(); setTimeout(step, s.ms); }
+    else if (s.t === "w") { line1 += s.ch; paint(); setTimeout(step, 150); }
+    else { line2 += s.ch; cyan = true; paint(); setTimeout(step, 260); }
+  }
+  // Let the grid land first, then speak.
+  setTimeout(step, 900);
+})();
 </script>
 <script>
 if ("serviceWorker" in navigator) {

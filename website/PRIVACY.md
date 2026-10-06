@@ -22,5 +22,5 @@ BRO is a free, open-source social communication platform (GPL-3.0-or-later). Thi
 - All backend mutations verify authorization explicitly
 
 ## 4. Open Source
-Source: https://github.com/marvel-254/bro
+Source code is available on request while the project is in private development.
 License: GNU General Public License v3 or later

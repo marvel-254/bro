@@ -3,7 +3,6 @@
 BRO is a free, open-source social communication platform built with React Native + Expo + TypeScript. It introduces a new interaction model centered on Pulse, People, Conversations, Conversation Branches, Spaces, Presence, and Discovery.
 
 - Website: https://bro.omixsystems.store/
-- Source: https://github.com/marvel-254/bro
 - License: GPL-3.0-or-later
 - Download: https://bro.omixsystems.store/download.html
 - Privacy: https://bro.omixsystems.store/PRIVACY.md

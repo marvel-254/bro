@@ -21,4 +21,4 @@ BRO is provided "as is" without warranty. The maintainers may update, suspend, o
 BRO provides basic moderation tools (block, report). Decisions are made by the maintainer in good faith.
 
 ## 6. Contact
-For terms questions: see https://github.com/marvel-254/bro
+For terms questions: privacy@bro.app

@@ -4,146 +4,105 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#090A0F">
+<meta name="theme-color" content="#0e0318">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <title>BRO — Download APK</title>
-<meta name="description" content="Download BRO for Android via GitHub Releases. Get the latest APK, changelog, and installation guide.">
+<meta name="description" content="Download BRO for Android. Get the latest APK instantly, read the changelog, and install.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/vapor.css">
 <style>
-:root{--bg:#090A0F;--surface:#12141A;--surface-2:#181A22;--text:#F2F5F9;--text-dim:#8F9CAE;--text-faint:#4F5B6E;--accent:#00E5FF;--accent-soft:rgba(0,229,255,0.12);--radius:14px;--radius-sm:8px;--max:720px}
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Outfit',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.55;min-height:100vh;display:flex;flex-direction:column}
-a{color:var(--accent);text-decoration:none}
-main{flex:1;max-width:var(--max);margin:0 auto;padding:72px 24px 96px}
-header{margin-bottom:56px}
-.tag{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--accent);border:1px solid var(--accent-soft);padding:4px 10px;border-radius:var(--radius-sm);margin-bottom:14px}
-h1{font-weight:800;font-size:clamp(36px,6vw,52px);line-height:1.1;letter-spacing:-0.03em;margin-bottom:12px}
-h1 .accent{color:var(--accent)}
-.subtitle{font-size:18px;color:var(--text-dim);max-width:480px}
-.section{padding:28px 0;border-bottom:1px solid rgba(255,255,255,0.06)}
+main{flex:1;max-width:760px;margin:0 auto;padding:88px 24px 110px;position:relative;z-index:1}
+.page-head{margin-bottom:48px}
+.page-head h1{margin:18px 0 14px}
+.hero-card{text-align:center;padding:56px 28px;box-shadow:var(--glow-cta)}
+.hero-card h2{margin:16px 0 8px}
+.hero-card p{color:var(--ink-dim);margin-bottom:28px;font-size:14px}
+.hero-card .btn{font-size:15px;padding:16px 34px}
+.build-line{margin-top:20px}
+.section{padding:40px 0;border-bottom:1px solid var(--line-soft)}
 .section:last-of-type{border-bottom:none}
-h2{font-weight:600;font-size:22px;margin-bottom:16px;color:var(--text)}
-.card{background:var(--surface);border:1px solid rgba(255,255,255,0.06);border-radius:var(--radius);padding:28px 24px}
-.release{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 0;border-bottom:1px solid rgba(255,255,255,0.06)}
+.section h2{margin:14px 0 8px}
+.section .lede{margin-bottom:8px}
+.release{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 0;border-bottom:1px solid var(--line-soft)}
 .release:last-child{border-bottom:none;padding-bottom:0}
-.release-info h3{font-weight:600;font-size:16px}
-.release-info .date{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-faint)}
-.release-info .note{font-size:14px;color:var(--text-dim);margin-top:2px}
-.btn{display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:#090A0F;font-weight:700;font-size:14px;padding:10px 18px;border-radius:var(--radius-sm);border:none;cursor:pointer;transition:filter .15s}
-.btn:hover{filter:brightness(1.12)}
-.btn-secondary{background:transparent;color:var(--text);border:1px solid rgba(255,255,255,0.12)}
-.btn-secondary:hover{border-color:rgba(255,255,255,0.3);filter:brightness(1.1)}
-.note{font-size:13px;color:var(--text-faint);margin-top:8px}
-footer{border-top:1px solid rgba(255,255,255,0.06);padding:28px 24px;text-align:center;font-size:13px;color:var(--text-faint)}
-footer a{border-bottom:1px solid rgba(255,255,255,0.15);padding-bottom:1px}
-@media(max-width:640px){main{padding:48px 20px 72px}.release{flex-direction:column;align-items:flex-start;gap:12px}}
+.release h3{font-size:15px;font-weight:700}
+.release h3 a{color:var(--ink)}
+.release h3 a:hover{color:var(--cyan);text-shadow:var(--glow-cyan-sm)}
+.changelog{font-size:13px;line-height:1.75;color:var(--ink-dim)}
+.changelog ul{padding-left:18px}
+.changelog strong{color:var(--ink)}
+.steps{padding-left:18px;line-height:2;font-size:14px;color:var(--ink-dim)}
+.steps strong{color:var(--ink)}
+code{font-family:var(--mono);font-size:12px;color:var(--cyan);background:rgba(0,255,255,.07);padding:2px 6px;border-radius:4px}
+.alt-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:16px}
+.topnav{display:flex;justify-content:space-between;align-items:center}
+@media(max-width:640px){main{padding:56px 20px 88px}.release{flex-direction:column;align-items:flex-start;gap:14px}.hero-card{padding:44px 20px}}
 </style>
 </head>
 <body>
-<main>
-<header>
-<div class="tag">Download</div>
-<h1>BRO for Android<br><span class="accent">Download via GitHub Releases</span></h1>
-<p class="subtitle">The APK is built automatically by GitHub Actions. Grab the latest build, read the changelog, and install.</p>
+<div class="scanlines" aria-hidden="true"></div>
+
+<header class="site-head" role="banner">
+  <a href="/" class="logo">BRO</a>
+  <nav class="nav" aria-label="Primary">
+    <a href="/">Home</a>
+  </nav>
 </header>
 
-<section class="section" aria-label="Releases">
-<h2>Releases</h2>
-<p style="color:var(--text-dim);font-size:14px;margin-bottom:12px">Every tag triggers a release build. The APK is attached automatically.</p>
+<main>
+<header class="page-head">
+  <div class="topnav">
+    <div class="eyebrow">Download</div>
+    <div class="dots" aria-hidden="true"><i></i><i></i><i></i></div>
+  </div>
+  <h1 class="display">Get <span class="glow-cyan">BRO</span><br>on Android</h1>
+  <p class="lede">One tap, instant download. No accounts, no stores, no waiting rooms.</p>
+</header>
 
-<div class="card" style="border-color:rgba(0,229,255,0.25)">
-<div class="release">
-<div class="release-info">
-<h3>Latest debug build</h3>
-<p class="date">Continuous — updates on every merge to main</p>
-<p class="note">Hosted on Vercel Blob, rebuilt on every merge to the main branch. Always the freshest build.</p>
-</div>
-<a href="https://x3zj3ht2vzg6otli.public.blob.vercel-storage.com/apk/app-debug.apk" class="btn">Download APK</a>
-</div>
-</div>
-
-<div class="card">
-<div class="release">
-<div class="release-info">
-<h3><a href="https://github.com/marvel-254/bro/releases/tag/v0.1.1">v0.1.1 — Build Fix</a></h3>
-<p class="date">2026-10-03</p>
-<p class="note">Upgraded to Expo SDK 53 — fixes the Android build so the APK now builds via GitHub Actions. Includes Pulse, People, Conversations, Branches, Spaces, Supabase auth, and F-Droid-compliant build.</p>
-</div>
-<a href="https://github.com/marvel-254/bro/releases/tag/v0.1.1" class="btn">Download APK</a>
-</div>
-<div class="release">
-<div class="release-info">
-<h3><a href="https://github.com/marvel-254/bro/releases/tag/v0.1.0">v0.1.0 — Initial Release</a></h3>
-<p class="date">2026-10-02</p>
-<p class="note">First public APK. Includes Pulse, People, Conversations, Branches, Spaces, Supabase auth, and F-Droid-compliant build.</p>
-</div>
-<a href="https://github.com/marvel-254/bro/releases/tag/v0.1.0" class="btn btn-secondary">View Release</a>
-</div>
-<div class="release">
-<div class="release-info">
-<h3>Upcoming</h3>
-<p class="date">Next tag</p>
-<p class="note">Release workflow triggers on <code>v*</code> tags. See <a href="https://github.com/marvel-254/bro/blob/main/CHANGELOG.md">CHANGELOG.md</a> for what's coming.</p>
-</div>
-<a href="https://github.com/marvel-254/bro/releases" class="btn btn-secondary">All Releases</a>
-</div>
-</div>
-</section>
-
-<section class="section" aria-label="Changelog">
-<h2>Changelog</h2>
-<p style="color:var(--text-dim);font-size:14px;margin-bottom:12px">All changes start from v0.1.0. See <a href="https://github.com/marvel-254/bro/blob/main/CHANGELOG.md">CHANGELOG.md</a> in the repo.</p>
-<div class="card">
-<div style="font-size:14px;color:var(--text);line-height:1.7">
-<p><strong>v0.1.1</strong> — 2026-10-03</p>
-<ul style="padding-left:18px;color:var(--text-dim);font-size:14px">
-<li>Upgraded to Expo SDK 53 (expo-modules-core 2.5.0) — fixes the missing Gradle plugin that broke the Android APK build</li>
-<li>React Native 0.79, React 19, expo-router 5</li>
-<li>Working Android debug APK attached to this release</li>
-</ul>
-<p style="margin-top:14px"><strong>v0.1.0</strong> — 2026-10-02</p>
-<ul style="padding-left:18px;color:var(--text-dim);font-size:14px">
-<li>Initial Android APK build via GitHub Actions</li>
-<li>Pulse, People, Conversations, Branches, Spaces, Activity screens</li>
-<li>Supabase authentication</li>
-<li>F-Droid metadata and privacy-hosting ready</li>
-<li>TypeScript / lint / test verification passing</li>
-</ul>
-</div>
-</div>
+<section aria-label="Latest build">
+  <div class="hero-card card">
+    <div class="dots" style="justify-content:center" aria-hidden="true"><i></i><i></i><i></i></div>
+    <h2 class="display">Latest build</h2>
+    <p><span class="pulse-dot"></span>&nbsp; Continuous — rebuilt on every merge to main, hosted for instant download.</p>
+    <a href="https://x3zj3ht2vzg6otli.public.blob.vercel-storage.com/apk/app-debug.apk" class="btn btn-magenta"><span>⬇ Download APK</span></a>
+    <p class="meta build-line">~200 MB · Android 7+ · <span class="cursor"></span></p>
+  </div>
 </section>
 
 <section class="section" aria-label="Install guide">
-<h2>Install Guide</h2>
-<div class="card" style="font-size:14px;color:var(--text-dim)">
-<ol style="padding-left:18px;line-height:1.8">
-<li><strong>Download</strong> the APK from the release above.</li>
-<li><strong>Enable</strong> "Install unknown apps" for your browser/file manager in Android Settings.</li>
-<li><strong>Install</strong> the APK. BRO runs on Android 7+.</li>
-<li>Join — create an account with Supabase inside the app.</li>
-</ol>
-<p class="note">No tracking, no ads, only <code>INTERNET</code> permission. Source code is GPL-3.0-or-later at <a href="https://github.com/marvel-254/bro">github.com/marvel-254/bro</a>.</p>
-</div>
+  <div class="eyebrow">Manual</div>
+  <h2 class="display">Install guide</h2>
+  <div class="card">
+    <ol class="steps">
+      <li><strong>Download</strong> the APK with the big button above.</li>
+      <li><strong>Enable</strong> "Install unknown apps" for your browser in Android Settings.</li>
+      <li><strong>Install</strong> the APK. BRO runs on Android 7+.</li>
+      <li><strong>Join</strong> — create an account inside the app. No email confirmation needed.</li>
+    </ol>
+    <p class="meta" style="margin-top:14px">No tracking, no ads, only <code>INTERNET</code> permission. GPL-3.0-or-later.</p>
+  </div>
 </section>
 
 <section class="section" aria-label="Alternatives">
-<h2>Alternatives</h2>
-<p style="color:var(--text-dim);font-size:14px;margin-bottom:12px">If you prefer open-source repositories or a dedicated marketplace.</p>
-<div style="display:flex;gap:12px;flex-wrap:wrap">
-<a href="https://f-droid.org/" class="btn btn-secondary">F-Droid</a>
-<a href="https://github.com/marvel-254/bro" class="btn btn-secondary">GitHub Source</a>
-<a href="/" class="btn btn-secondary">Back to BRO</a>
-</div>
+  <div class="eyebrow">Elsewhere</div>
+  <h2 class="display">Alternatives</h2>
+  <p class="lede">Prefer open-source repositories or a dedicated marketplace.</p>
+  <div class="alt-row">
+    <a href="https://f-droid.org/" class="btn btn-ghost"><span>F-Droid</span></a>
+    <a href="/" class="btn btn-ghost"><span>Back to BRO</span></a>
+  </div>
 </section>
 </main>
 
 <footer>
-Built for BRO — <a href="https://github.com/marvel-254/bro">github.com/marvel-254/bro</a> &middot; <a href="/PRIVACY.md">Privacy</a>
+  Built for BRO · <a href="/PRIVACY.md">Privacy</a> · <a href="/TERMS.md">Terms</a>
 </footer>
+
 <script>
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
