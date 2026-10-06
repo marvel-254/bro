@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -7,13 +7,13 @@ import {
   RefreshControl,
   StyleSheet,
   Alert,
-} from 'react-native';
-import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '../../theme';
-import { Avatar } from '../../components/ui/Avatar';
-import { isSupabaseConfigured } from '../../lib/supabase';
+} from "react-native";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from "../../theme";
+import { Avatar } from "../../components/ui/Avatar";
+import { isSupabaseConfigured } from "../../lib/supabase";
 import {
   fetchSpace,
   fetchSpaceMembers,
@@ -23,8 +23,12 @@ import {
   type SpaceMember,
   type SpaceConversation,
   type SpaceSummary,
-} from '../../lib/spaces';
-import { LoadingState, ErrorState, EmptyState } from '../../components/feedback/States';
+} from "../../lib/spaces";
+import {
+  LoadingState,
+  ErrorState,
+  EmptyState,
+} from "../../components/feedback/States";
 
 /**
  * One space: what it is, who is in it, and the conversations that live in it.
@@ -38,7 +42,7 @@ function memberCountLabel(space: SpaceSummary): string {
   if (space.memberCount !== null) {
     return `${space.memberCount} in`;
   }
-  return space.isPublic ? 'Public' : 'Private';
+  return space.isPublic ? "Public" : "Private";
 }
 
 export default function SpaceDetail({ spaceId }: { spaceId: string }) {
@@ -64,7 +68,7 @@ export default function SpaceDetail({ spaceId }: { spaceId: string }) {
         const summary = await fetchSpace(spaceId);
         // Null means it does not exist or RLS hides it; both read as not found.
         if (!summary) {
-          setError('Space not found');
+          setError("Space not found");
           return;
         }
         setSpace(summary);
@@ -78,7 +82,7 @@ export default function SpaceDetail({ spaceId }: { spaceId: string }) {
         setConversations(conversationRows);
         setError(null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Could not load space');
+        setError(err instanceof Error ? err.message : "Could not load space");
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -100,7 +104,7 @@ export default function SpaceDetail({ spaceId }: { spaceId: string }) {
     const result = await joinSpace(spaceId);
     setBusy(false);
     if (!result.ok) {
-      Alert.alert('Could not join', result.error ?? 'Try again in a bit.');
+      Alert.alert("Could not join", result.error ?? "Try again in a bit.");
       return;
     }
     void load(true);
@@ -111,7 +115,7 @@ export default function SpaceDetail({ spaceId }: { spaceId: string }) {
     const result = await leaveSpace(spaceId);
     setBusy(false);
     if (!result.ok) {
-      Alert.alert('Could not leave', result.error ?? 'Try again in a bit.');
+      Alert.alert("Could not leave", result.error ?? "Try again in a bit.");
       return;
     }
     router.back();
@@ -122,7 +126,13 @@ export default function SpaceDetail({ spaceId }: { spaceId: string }) {
       <View style={styles.centered}>
         <EmptyState
           message="Backend not configured."
-          icon={<Ionicons name="cloud-offline-outline" size={36} color={COLORS.onSurfaceVariant} />}
+          icon={
+            <Ionicons
+              name="cloud-offline-outline"
+              size={36}
+              color={COLORS.onSurfaceVariant}
+            />
+          }
         />
       </View>
     );
@@ -135,18 +145,24 @@ export default function SpaceDetail({ spaceId }: { spaceId: string }) {
   if (error || !space) {
     return (
       <View style={styles.centered}>
-        <ErrorState message={error ?? 'Space not found'} onRetry={() => void load()} />
+        <ErrorState
+          message={error ?? "Space not found"}
+          onRetry={() => void load()}
+        />
       </View>
     );
   }
 
   const isMine = space.myRole !== null;
-  const isOwner = space.myRole === 'owner';
+  const isOwner = space.myRole === "owner";
 
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + SPACING.spaceXs }]}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: insets.top + SPACING.spaceXs },
+      ]}
       showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl
@@ -179,7 +195,11 @@ export default function SpaceDetail({ spaceId }: { spaceId: string }) {
             accessibilityRole="button"
             accessibilityLabel={`Leave ${space.name}`}
           >
-            <Ionicons name="exit-outline" size={20} color={COLORS.onSurfaceVariant} />
+            <Ionicons
+              name="exit-outline"
+              size={20}
+              color={COLORS.onSurfaceVariant}
+            />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -197,7 +217,7 @@ export default function SpaceDetail({ spaceId }: { spaceId: string }) {
             accessibilityRole="button"
             accessibilityLabel={`Join ${space.name}`}
           >
-            <Text style={styles.joinBtnText}>{busy ? '...' : 'Tap in'}</Text>
+            <Text style={styles.joinBtnText}>{busy ? "..." : "Tap in"}</Text>
           </TouchableOpacity>
         ) : null}
       </View>
@@ -213,11 +233,11 @@ export default function SpaceDetail({ spaceId }: { spaceId: string }) {
               style={styles.row}
               onPress={() => router.push(`/chat/${conversation.id}`)}
               accessibilityRole="button"
-              accessibilityLabel={`Open ${conversation.name ?? 'chat'}`}
+              accessibilityLabel={`Open ${conversation.name ?? "chat"}`}
             >
               <View style={styles.rowBody}>
                 <Text style={styles.rowTitle} numberOfLines={1}>
-                  {conversation.name ?? 'Chat'}
+                  {conversation.name ?? "Chat"}
                 </Text>
                 {conversation.lastMessagePreview ? (
                   <Text style={styles.rowMeta} numberOfLines={1}>
@@ -227,7 +247,9 @@ export default function SpaceDetail({ spaceId }: { spaceId: string }) {
               </View>
               {conversation.unreadCount > 0 ? (
                 <View style={styles.unreadPill}>
-                  <Text style={styles.unreadText}>{conversation.unreadCount}</Text>
+                  <Text style={styles.unreadText}>
+                    {conversation.unreadCount}
+                  </Text>
                 </View>
               ) : null}
             </TouchableOpacity>
@@ -239,7 +261,7 @@ export default function SpaceDetail({ spaceId }: { spaceId: string }) {
         <Text style={styles.sectionTitle}>Members</Text>
         {members.length === 0 ? (
           <Text style={styles.stripEmpty}>
-            {isMine ? 'Just you so far.' : 'Join to see who is in here.'}
+            {isMine ? "Just you so far." : "Join to see who is in here."}
           </Text>
         ) : (
           members.map((member) => (
@@ -277,8 +299,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: SPACING.spaceSm,
     paddingHorizontal: SPACING.spaceSm,
   },
@@ -290,7 +312,7 @@ const styles = StyleSheet.create({
   },
   title: {
     ...TYPOGRAPHY.headlineSM,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.onSurface,
   },
   meta: {
@@ -299,7 +321,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   hero: {
-    alignItems: 'flex-start',
+    alignItems: "flex-start",
     gap: SPACING.spaceSm,
     paddingHorizontal: SPACING.spaceMd,
     paddingTop: SPACING.spaceSm,
@@ -316,7 +338,7 @@ const styles = StyleSheet.create({
   },
   joinBtnText: {
     ...TYPOGRAPHY.labelLG,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.onPrimary,
   },
   section: {
@@ -324,7 +346,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...TYPOGRAPHY.labelLG,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.onSurfaceVariant,
     paddingHorizontal: SPACING.spaceMd,
     marginBottom: SPACING.spaceXs,
@@ -335,8 +357,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.spaceMd,
   },
   row: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: SPACING.spaceSm,
     paddingHorizontal: SPACING.spaceMd,
     paddingVertical: SPACING.spaceSm,
@@ -348,7 +370,7 @@ const styles = StyleSheet.create({
   },
   rowTitle: {
     ...TYPOGRAPHY.bodyMD,
-    fontWeight: '600',
+    fontWeight: "600",
     color: COLORS.onSurface,
   },
   rowMeta: {
@@ -362,11 +384,11 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: RADIUS.full,
     backgroundColor: COLORS.primaryContainer,
-    alignItems: 'center',
+    alignItems: "center",
   },
   unreadText: {
     ...TYPOGRAPHY.labelSM,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.onPrimary,
   },
 });

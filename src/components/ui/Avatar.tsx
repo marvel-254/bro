@@ -1,6 +1,6 @@
-import { View, Text, StyleSheet } from 'react-native';
-import { COLORS } from '../../theme';
-import { PRESENCE_COLORS, type Presence } from '../../lib/presence';
+import { View, Text, StyleSheet } from "react-native";
+import { COLORS } from "../../theme";
+import { PRESENCE_COLORS, type Presence } from "../../lib/presence";
 
 /**
  * Avatar with a presence dot.
@@ -19,11 +19,11 @@ interface AvatarProps {
 }
 
 function initialsOf(name?: string): string {
-  if (!name) return '?';
+  if (!name) return "?";
   return name
     .split(/\s+/)
     .map((word) => word[0])
-    .join('')
+    .join("")
     .toUpperCase()
     .slice(0, 2);
 }
@@ -47,7 +47,9 @@ export function Avatar({ uri, name, size = 40, presence, style }: AvatarProps) {
             },
           ]}
         >
-          <Text style={[styles.text, { fontSize: size * 0.36 }]}>{initials}</Text>
+          <Text style={[styles.text, { fontSize: size * 0.36 }]}>
+            {initials}
+          </Text>
         </View>
       ) : (
         <View
@@ -60,7 +62,9 @@ export function Avatar({ uri, name, size = 40, presence, style }: AvatarProps) {
             },
           ]}
         >
-          <Text style={[styles.text, { fontSize: size * 0.36 }]}>{initials}</Text>
+          <Text style={[styles.text, { fontSize: size * 0.36 }]}>
+            {initials}
+          </Text>
         </View>
       )}
 
@@ -72,7 +76,8 @@ export function Avatar({ uri, name, size = 40, presence, style }: AvatarProps) {
               width: dot,
               height: dot,
               borderRadius: dot / 2,
-              backgroundColor: PRESENCE_COLORS[presence] ?? PRESENCE_COLORS.offline,
+              backgroundColor:
+                PRESENCE_COLORS[presence] ?? PRESENCE_COLORS.offline,
             },
           ]}
           accessibilityLabel={`Presence: ${presence}`}
@@ -84,22 +89,22 @@ export function Avatar({ uri, name, size = 40, presence, style }: AvatarProps) {
 
 const styles = StyleSheet.create({
   container: {
-    position: 'relative',
+    position: "relative",
   },
   circle: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: COLORS.surfaceContainerHigh,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: COLORS.semantic.ghostBorder,
   },
   text: {
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.onSurface,
     letterSpacing: 0.5,
   },
   dot: {
-    position: 'absolute',
+    position: "absolute",
     right: -1,
     bottom: -1,
     borderWidth: 2,

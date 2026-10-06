@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   View,
   Text,
@@ -7,20 +13,20 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-} from 'react-native';
-import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '../../theme';
-import { Avatar } from '../../components/ui/Avatar';
-import { isSupabaseConfigured } from '../../lib/supabase';
+} from "react-native";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from "../../theme";
+import { Avatar } from "../../components/ui/Avatar";
+import { isSupabaseConfigured } from "../../lib/supabase";
 import {
   isSearchable,
   searchEverything,
   totalResults,
   EMPTY_RESULTS,
   type SearchResults,
-} from '../../lib/search';
-import { EmptyState } from '../../components/feedback/States';
+} from "../../lib/search";
+import { EmptyState } from "../../components/feedback/States";
 
 /**
  * Global search across people, spaces, conversations and messages.
@@ -33,10 +39,10 @@ import { EmptyState } from '../../components/feedback/States';
 const DEBOUNCE_MS = 300;
 
 function relativeLabel(iso: string | null): string {
-  if (!iso) return '';
+  if (!iso) return "";
   const diffMs = Date.now() - new Date(iso).getTime();
   const minutes = Math.floor(diffMs / 60_000);
-  if (minutes < 1) return 'now';
+  if (minutes < 1) return "now";
   if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h`;
@@ -46,7 +52,7 @@ function relativeLabel(iso: string | null): string {
 export default function SearchScreen() {
   const router = useRouter();
 
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResults>(EMPTY_RESULTS);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +84,7 @@ export default function SearchScreen() {
       setHasSearched(true);
     } catch (err) {
       if (requestId.current !== id) return;
-      setError(err instanceof Error ? err.message : 'Search failed');
+      setError(err instanceof Error ? err.message : "Search failed");
       setHasSearched(true);
     } finally {
       if (requestId.current === id) {
@@ -91,7 +97,10 @@ export default function SearchScreen() {
     (text: string) => {
       setQuery(text);
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
-      debounceTimer.current = setTimeout(() => void runSearch(text), DEBOUNCE_MS);
+      debounceTimer.current = setTimeout(
+        () => void runSearch(text),
+        DEBOUNCE_MS,
+      );
     },
     [runSearch],
   );
@@ -107,7 +116,9 @@ export default function SearchScreen() {
 
   const startChatWith = useCallback(
     async (personId: string) => {
-      const { createDirectConversation } = await import('../../lib/conversations');
+      const { createDirectConversation } = await import(
+        "../../lib/conversations"
+      );
       const created = await createDirectConversation(personId);
       if (created.ok) {
         router.push(`/chat/${created.conversationId}`);
@@ -137,14 +148,20 @@ export default function SearchScreen() {
           returnKeyType="search"
           accessibilityLabel="Search BRO"
         />
-        {searching ? <ActivityIndicator size="small" color={COLORS.primaryContainer} /> : null}
+        {searching ? (
+          <ActivityIndicator size="small" color={COLORS.primaryContainer} />
+        ) : null}
         {query.length > 0 && !searching ? (
           <TouchableOpacity
-            onPress={() => onChange('')}
+            onPress={() => onChange("")}
             accessibilityRole="button"
             accessibilityLabel="Clear search"
           >
-            <Ionicons name="close-circle" size={16} color={COLORS.onSurfaceVariant} />
+            <Ionicons
+              name="close-circle"
+              size={16}
+              color={COLORS.onSurfaceVariant}
+            />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -152,24 +169,45 @@ export default function SearchScreen() {
       {!isSupabaseConfigured ? (
         <EmptyState
           message="Backend not configured. Set the Supabase URL and anon key to search."
-          icon={<Ionicons name="cloud-offline-outline" size={36} color={COLORS.onSurfaceVariant} />}
+          icon={
+            <Ionicons
+              name="cloud-offline-outline"
+              size={36}
+              color={COLORS.onSurfaceVariant}
+            />
+          }
         />
       ) : error ? (
         <View style={styles.errorWrap}>
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity onPress={() => void runSearch(query)} accessibilityRole="button">
+          <TouchableOpacity
+            onPress={() => void runSearch(query)}
+            accessibilityRole="button"
+          >
             <Text style={styles.retry}>Run it back</Text>
           </TouchableOpacity>
         </View>
       ) : !isSearchable(query) ? (
         <EmptyState
           message="Search people, spaces, chats and messages."
-          icon={<Ionicons name="search-outline" size={36} color={COLORS.onSurfaceVariant} />}
+          icon={
+            <Ionicons
+              name="search-outline"
+              size={36}
+              color={COLORS.onSurfaceVariant}
+            />
+          }
         />
       ) : hasSearched && total === 0 && !searching ? (
         <EmptyState
           message="idek what that is cuz. Try another name fr."
-          icon={<Ionicons name="help-circle-outline" size={36} color={COLORS.onSurfaceVariant} />}
+          icon={
+            <Ionicons
+              name="help-circle-outline"
+              size={36}
+              color={COLORS.onSurfaceVariant}
+            />
+          }
         />
       ) : (
         <ScrollView
@@ -189,7 +227,11 @@ export default function SearchScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={`Message ${person.displayName}`}
                 >
-                  <Avatar name={person.displayName} uri={person.avatarUrl} size={38} />
+                  <Avatar
+                    name={person.displayName}
+                    uri={person.avatarUrl}
+                    size={38}
+                  />
                   <View style={styles.rowBody}>
                     <Text style={styles.rowTitle} numberOfLines={1}>
                       {person.displayName}
@@ -200,7 +242,11 @@ export default function SearchScreen() {
                       </Text>
                     ) : null}
                   </View>
-                  <Ionicons name="chatbubble-outline" size={18} color={COLORS.onSurfaceVariant} />
+                  <Ionicons
+                    name="chatbubble-outline"
+                    size={18}
+                    color={COLORS.onSurfaceVariant}
+                  />
                 </TouchableOpacity>
               ))}
             </View>
@@ -226,7 +272,11 @@ export default function SearchScreen() {
                       {space.description ?? `${space.memberCount} in`}
                     </Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={16} color={COLORS.onSurfaceVariant} />
+                  <Ionicons
+                    name="chevron-forward"
+                    size={16}
+                    color={COLORS.onSurfaceVariant}
+                  />
                 </TouchableOpacity>
               ))}
             </View>
@@ -255,10 +305,14 @@ export default function SearchScreen() {
                   </View>
                   {conversation.unreadCount > 0 ? (
                     <View style={styles.unreadPill}>
-                      <Text style={styles.unreadText}>{conversation.unreadCount}</Text>
+                      <Text style={styles.unreadText}>
+                        {conversation.unreadCount}
+                      </Text>
                     </View>
                   ) : (
-                    <Text style={styles.rowMeta}>{relativeLabel(conversation.lastMessageAt)}</Text>
+                    <Text style={styles.rowMeta}>
+                      {relativeLabel(conversation.lastMessageAt)}
+                    </Text>
                   )}
                 </TouchableOpacity>
               ))}
@@ -274,17 +328,19 @@ export default function SearchScreen() {
                   style={styles.row}
                   onPress={() => router.push(`/chat/${message.conversationId}`)}
                   accessibilityRole="button"
-                  accessibilityLabel={`Open message from ${message.senderName ?? 'someone'}`}
+                  accessibilityLabel={`Open message from ${message.senderName ?? "someone"}`}
                 >
                   <View style={styles.rowBody}>
                     <Text style={styles.rowTitle} numberOfLines={1}>
-                      {message.senderName ?? 'Someone'}
+                      {message.senderName ?? "Someone"}
                     </Text>
                     <Text style={styles.rowMeta} numberOfLines={2}>
                       {message.content}
                     </Text>
                   </View>
-                  <Text style={styles.rowMeta}>{relativeLabel(message.createdAt)}</Text>
+                  <Text style={styles.rowMeta}>
+                    {relativeLabel(message.createdAt)}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -306,12 +362,12 @@ const styles = StyleSheet.create({
   },
   title: {
     ...TYPOGRAPHY.headlineMD,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.onSurface,
   },
   searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: SPACING.spaceXs,
     margin: SPACING.spaceMd,
     paddingHorizontal: SPACING.spaceSm,
@@ -337,14 +393,14 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...TYPOGRAPHY.labelLG,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.onSurfaceVariant,
     paddingHorizontal: SPACING.spaceMd,
     marginBottom: SPACING.spaceXs,
   },
   row: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: SPACING.spaceSm,
     paddingHorizontal: SPACING.spaceMd,
     paddingVertical: SPACING.spaceSm,
@@ -356,7 +412,7 @@ const styles = StyleSheet.create({
   },
   rowTitle: {
     ...TYPOGRAPHY.bodyMD,
-    fontWeight: '600',
+    fontWeight: "600",
     color: COLORS.onSurface,
   },
   rowMeta: {
@@ -370,28 +426,28 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: RADIUS.full,
     backgroundColor: COLORS.primaryContainer,
-    alignItems: 'center',
+    alignItems: "center",
   },
   unreadText: {
     ...TYPOGRAPHY.labelSM,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.onPrimary,
   },
   errorWrap: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     gap: SPACING.spaceSm,
     padding: SPACING.spaceXl,
   },
   errorText: {
     ...TYPOGRAPHY.bodyMD,
     color: COLORS.error,
-    textAlign: 'center',
+    textAlign: "center",
   },
   retry: {
     ...TYPOGRAPHY.labelLG,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.primaryContainer,
   },
 });

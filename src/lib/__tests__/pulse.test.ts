@@ -4,13 +4,15 @@ import {
   fetchLiveConversations,
   fetchUpcomingPlans,
   subscribeToPulse,
-} from '../pulse';
-import { getSupabase } from '../supabase';
-import type { SupabaseClient } from '@supabase/supabase-js';
+} from "../pulse";
+import { getSupabase } from "../supabase";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
-jest.mock('../supabase', () => ({ getSupabase: jest.fn() }));
+jest.mock("../supabase", () => ({ getSupabase: jest.fn() }));
 
-const mockedGetSupabase = getSupabase as jest.MockedFunction<typeof getSupabase>;
+const mockedGetSupabase = getSupabase as jest.MockedFunction<
+  typeof getSupabase
+>;
 
 type Chain = {
   select: jest.Mock;
@@ -34,7 +36,7 @@ function createChain(): Chain {
   const chain = new Proxy(target, {
     get(t, prop) {
       const key = String(prop);
-      if (key === 'then') return undefined;
+      if (key === "then") return undefined;
       if (!(key in t)) t[key] = jest.fn(() => chain);
       return t[key];
     },
@@ -61,10 +63,14 @@ function createChannel() {
   return channel;
 }
 
-const RESOLVED = (data: unknown, error: unknown = null) => Promise.resolve({ data, error });
+const RESOLVED = (data: unknown, error: unknown = null) =>
+  Promise.resolve({ data, error });
 
 /** Signed-in supabase whose `from` returns the given chains in call order. */
-function makeSequencedSupabase(chains: Chain[], selfId = 'self'): SupabaseClient {
+function makeSequencedSupabase(
+  chains: Chain[],
+  selfId = "self",
+): SupabaseClient {
   const supabase = makeSupabase();
   let call = 0;
   (supabase.from as jest.Mock).mockImplementation(() => {
@@ -79,28 +85,28 @@ function makeSequencedSupabase(chains: Chain[], selfId = 'self'): SupabaseClient
   return supabase;
 }
 
-describe('pulse', () => {
+describe("pulse", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  describe('constants', () => {
-    it('uses a 15 minute live window by default', () => {
+  describe("constants", () => {
+    it("uses a 15 minute live window by default", () => {
       expect(LIVE_WINDOW_MINUTES).toBe(15);
     });
 
-    it('requires at least 2 messages to call a conversation live', () => {
+    it("requires at least 2 messages to call a conversation live", () => {
       expect(LIVE_MIN_MESSAGES).toBe(2);
     });
   });
 
-  describe('fetchLiveConversations', () => {
-    it('returns an empty array when Supabase is not configured', async () => {
+  describe("fetchLiveConversations", () => {
+    it("returns an empty array when Supabase is not configured", async () => {
       mockedGetSupabase.mockReturnValue(null);
       expect(await fetchLiveConversations()).toEqual([]);
     });
 
-    it('returns an empty array when not signed in', async () => {
+    it("returns an empty array when not signed in", async () => {
       const supabase = makeSupabase();
       (supabase.auth.getUser as jest.Mock).mockResolvedValue({
         data: { user: null },
@@ -110,7 +116,7 @@ describe('pulse', () => {
       expect(await fetchLiveConversations()).toEqual([]);
     });
 
-    it('returns an empty array when the caller is in no conversations', async () => {
+    it("returns an empty array when the caller is in no conversations", async () => {
       const membershipChain = createChain();
       membershipChain.eq.mockReturnValue(RESOLVED([]));
       const supabase = makeSequencedSupabase([membershipChain]);
@@ -119,25 +125,37 @@ describe('pulse', () => {
       expect(await fetchLiveConversations()).toEqual([]);
     });
 
-    it('throws when the membership query fails', async () => {
+    it("throws when the membership query fails", async () => {
       const membershipChain = createChain();
-      membershipChain.eq.mockReturnValue(RESOLVED(null, { message: 'rls denied' }));
+      membershipChain.eq.mockReturnValue(
+        RESOLVED(null, { message: "rls denied" }),
+      );
       const supabase = makeSequencedSupabase([membershipChain]);
       mockedGetSupabase.mockReturnValue(supabase);
 
-      await expect(fetchLiveConversations()).rejects.toThrow('rls denied');
+      await expect(fetchLiveConversations()).rejects.toThrow("rls denied");
     });
 
-    it('ignores conversations below the live message threshold', async () => {
+    it("ignores conversations below the live message threshold", async () => {
       const membershipChain = createChain();
-      membershipChain.eq.mockReturnValue(RESOLVED([{ conversation_id: 'conv-1' }]));
+      membershipChain.eq.mockReturnValue(
+        RESOLVED([{ conversation_id: "conv-1" }]),
+      );
 
       const messageChain = createChain();
       messageChain.in.mockReturnValue({
         gte: jest.fn().mockReturnValue({
           order: jest.fn().mockReturnValue({
             limit: jest.fn().mockResolvedValue({
-              data: [{ id: 'm1', conversation_id: 'conv-1', content: 'yo', sender_id: 'peer', created_at: '2026-10-03T12:00:00Z' }],
+              data: [
+                {
+                  id: "m1",
+                  conversation_id: "conv-1",
+                  content: "yo",
+                  sender_id: "peer",
+                  created_at: "2026-10-03T12:00:00Z",
+                },
+              ],
               error: null,
             }),
           }),
@@ -152,7 +170,9 @@ describe('pulse', () => {
 
     it("excludes the caller's own messages from the burst count", async () => {
       const membershipChain = createChain();
-      membershipChain.eq.mockReturnValue(RESOLVED([{ conversation_id: 'conv-1' }]));
+      membershipChain.eq.mockReturnValue(
+        RESOLVED([{ conversation_id: "conv-1" }]),
+      );
 
       const messageChain = createChain();
       messageChain.in.mockReturnValue({
@@ -160,8 +180,20 @@ describe('pulse', () => {
           order: jest.fn().mockReturnValue({
             limit: jest.fn().mockResolvedValue({
               data: [
-                { id: 'm1', conversation_id: 'conv-1', content: 'mine', sender_id: 'self', created_at: '2026-10-03T12:00:00Z' },
-                { id: 'm2', conversation_id: 'conv-1', content: 'mine too', sender_id: 'self', created_at: '2026-10-03T11:59:00Z' },
+                {
+                  id: "m1",
+                  conversation_id: "conv-1",
+                  content: "mine",
+                  sender_id: "self",
+                  created_at: "2026-10-03T12:00:00Z",
+                },
+                {
+                  id: "m2",
+                  conversation_id: "conv-1",
+                  content: "mine too",
+                  sender_id: "self",
+                  created_at: "2026-10-03T11:59:00Z",
+                },
               ],
               error: null,
             }),
@@ -175,9 +207,11 @@ describe('pulse', () => {
       expect(await fetchLiveConversations()).toEqual([]);
     });
 
-    it('returns live conversations with peers and the newest preview', async () => {
+    it("returns live conversations with peers and the newest preview", async () => {
       const membershipChain = createChain();
-      membershipChain.eq.mockReturnValue(RESOLVED([{ conversation_id: 'conv-1' }]));
+      membershipChain.eq.mockReturnValue(
+        RESOLVED([{ conversation_id: "conv-1" }]),
+      );
 
       const messageChain = createChain();
       messageChain.in.mockReturnValue({
@@ -185,8 +219,20 @@ describe('pulse', () => {
           order: jest.fn().mockReturnValue({
             limit: jest.fn().mockResolvedValue({
               data: [
-                { id: 'm2', conversation_id: 'conv-1', content: 'newest', sender_id: 'peer', created_at: '2026-10-03T12:00:00Z' },
-                { id: 'm1', conversation_id: 'conv-1', content: 'older', sender_id: 'peer', created_at: '2026-10-03T11:59:00Z' },
+                {
+                  id: "m2",
+                  conversation_id: "conv-1",
+                  content: "newest",
+                  sender_id: "peer",
+                  created_at: "2026-10-03T12:00:00Z",
+                },
+                {
+                  id: "m1",
+                  conversation_id: "conv-1",
+                  content: "older",
+                  sender_id: "peer",
+                  created_at: "2026-10-03T11:59:00Z",
+                },
               ],
               error: null,
             }),
@@ -196,7 +242,7 @@ describe('pulse', () => {
 
       const conversationChain = createChain();
       conversationChain.in.mockReturnValue(
-        RESOLVED([{ id: 'conv-1', type: 'group', name: 'The Crew' }]),
+        RESOLVED([{ id: "conv-1", type: "group", name: "The Crew" }]),
       );
 
       const peerChain = createChain();
@@ -204,8 +250,8 @@ describe('pulse', () => {
         neq: jest.fn().mockResolvedValue({
           data: [
             {
-              conversation_id: 'conv-1',
-              profile: { id: 'peer', display_name: 'Sarah', avatar_url: null },
+              conversation_id: "conv-1",
+              profile: { id: "peer", display_name: "Sarah", avatar_url: null },
             },
           ],
           error: null,
@@ -224,20 +270,22 @@ describe('pulse', () => {
 
       expect(result).toHaveLength(1);
       expect(result[0]).toMatchObject({
-        conversationId: 'conv-1',
-        type: 'group',
-        name: 'The Crew',
+        conversationId: "conv-1",
+        type: "group",
+        name: "The Crew",
         messageCount: 2,
-        lastMessagePreview: 'newest',
-        lastMessageAt: '2026-10-03T12:00:00Z',
+        lastMessagePreview: "newest",
+        lastMessageAt: "2026-10-03T12:00:00Z",
       });
       expect(result[0].peers).toHaveLength(1);
-      expect(result[0].peers[0].displayName).toBe('Sarah');
+      expect(result[0].peers[0].displayName).toBe("Sarah");
     });
 
-    it('still returns live conversations when the peer lookup fails', async () => {
+    it("still returns live conversations when the peer lookup fails", async () => {
       const membershipChain = createChain();
-      membershipChain.eq.mockReturnValue(RESOLVED([{ conversation_id: 'conv-1' }]));
+      membershipChain.eq.mockReturnValue(
+        RESOLVED([{ conversation_id: "conv-1" }]),
+      );
 
       const messageChain = createChain();
       messageChain.in.mockReturnValue({
@@ -245,8 +293,20 @@ describe('pulse', () => {
           order: jest.fn().mockReturnValue({
             limit: jest.fn().mockResolvedValue({
               data: [
-                { id: 'm2', conversation_id: 'conv-1', content: 'a', sender_id: 'peer', created_at: '2026-10-03T12:00:00Z' },
-                { id: 'm1', conversation_id: 'conv-1', content: 'b', sender_id: 'peer', created_at: '2026-10-03T11:59:00Z' },
+                {
+                  id: "m2",
+                  conversation_id: "conv-1",
+                  content: "a",
+                  sender_id: "peer",
+                  created_at: "2026-10-03T12:00:00Z",
+                },
+                {
+                  id: "m1",
+                  conversation_id: "conv-1",
+                  content: "b",
+                  sender_id: "peer",
+                  created_at: "2026-10-03T11:59:00Z",
+                },
               ],
               error: null,
             }),
@@ -256,12 +316,14 @@ describe('pulse', () => {
 
       const conversationChain = createChain();
       conversationChain.in.mockReturnValue(
-        RESOLVED([{ id: 'conv-1', type: 'direct', name: null }]),
+        RESOLVED([{ id: "conv-1", type: "direct", name: null }]),
       );
 
       const peerChain = createChain();
       peerChain.in.mockReturnValue({
-        neq: jest.fn().mockResolvedValue({ data: null, error: { message: 'peer boom' } }),
+        neq: jest
+          .fn()
+          .mockResolvedValue({ data: null, error: { message: "peer boom" } }),
       });
 
       const supabase = makeSequencedSupabase([
@@ -277,15 +339,22 @@ describe('pulse', () => {
       expect(result[0].peers).toEqual([]);
     });
 
-    it('throws when the message query fails', async () => {
+    it("throws when the message query fails", async () => {
       const membershipChain = createChain();
-      membershipChain.eq.mockReturnValue(RESOLVED([{ conversation_id: 'conv-1' }]));
+      membershipChain.eq.mockReturnValue(
+        RESOLVED([{ conversation_id: "conv-1" }]),
+      );
 
       const messageChain = createChain();
       messageChain.in.mockReturnValue({
         gte: jest.fn().mockReturnValue({
           order: jest.fn().mockReturnValue({
-            limit: jest.fn().mockResolvedValue({ data: null, error: { message: 'msg boom' } }),
+            limit: jest
+              .fn()
+              .mockResolvedValue({
+                data: null,
+                error: { message: "msg boom" },
+              }),
           }),
         }),
       });
@@ -293,17 +362,17 @@ describe('pulse', () => {
       const supabase = makeSequencedSupabase([membershipChain, messageChain]);
       mockedGetSupabase.mockReturnValue(supabase);
 
-      await expect(fetchLiveConversations()).rejects.toThrow('msg boom');
+      await expect(fetchLiveConversations()).rejects.toThrow("msg boom");
     });
   });
 
-  describe('fetchUpcomingPlans', () => {
-    it('returns an empty array when Supabase is not configured', async () => {
+  describe("fetchUpcomingPlans", () => {
+    it("returns an empty array when Supabase is not configured", async () => {
       mockedGetSupabase.mockReturnValue(null);
       expect(await fetchUpcomingPlans()).toEqual([]);
     });
 
-    it('returns an empty array when nobody has posted a plan', async () => {
+    it("returns an empty array when nobody has posted a plan", async () => {
       const planChain = createChain();
       planChain.gt.mockReturnValue({
         order: jest.fn().mockReturnValue({
@@ -316,44 +385,46 @@ describe('pulse', () => {
       expect(await fetchUpcomingPlans()).toEqual([]);
     });
 
-    it('throws when the plans query fails', async () => {
+    it("throws when the plans query fails", async () => {
       const planChain = createChain();
       planChain.gt.mockReturnValue({
         order: jest.fn().mockReturnValue({
-          limit: jest.fn().mockResolvedValue({ data: null, error: { message: 'plan boom' } }),
+          limit: jest
+            .fn()
+            .mockResolvedValue({ data: null, error: { message: "plan boom" } }),
         }),
       });
       const supabase = makeSequencedSupabase([planChain]);
       mockedGetSupabase.mockReturnValue(supabase);
 
-      await expect(fetchUpcomingPlans()).rejects.toThrow('plan boom');
+      await expect(fetchUpcomingPlans()).rejects.toThrow("plan boom");
     });
 
-    it('tallies going responses and sorts by start time', async () => {
+    it("tallies going responses and sorts by start time", async () => {
       const planChain = createChain();
       planChain.gt.mockReturnValue({
         order: jest.fn().mockReturnValue({
           limit: jest.fn().mockResolvedValue({
             data: [
               {
-                id: 'plan-late',
-                creator_id: 'user-1',
-                title: 'Late thing',
-                kind: 'event',
-                starts_at: '2026-10-04T18:00:00Z',
+                id: "plan-late",
+                creator_id: "user-1",
+                title: "Late thing",
+                kind: "event",
+                starts_at: "2026-10-04T18:00:00Z",
                 location: null,
-                expires_at: '2026-10-05T00:00:00Z',
-                created_at: '2026-10-03T10:00:00Z',
+                expires_at: "2026-10-05T00:00:00Z",
+                created_at: "2026-10-03T10:00:00Z",
               },
               {
-                id: 'plan-soon',
-                creator_id: 'user-2',
-                title: 'Tacos at 7',
-                kind: 'meal',
-                starts_at: '2026-10-03T19:00:00Z',
-                location: 'Kilimani',
-                expires_at: '2026-10-03T23:00:00Z',
-                created_at: '2026-10-03T11:00:00Z',
+                id: "plan-soon",
+                creator_id: "user-2",
+                title: "Tacos at 7",
+                kind: "meal",
+                starts_at: "2026-10-03T19:00:00Z",
+                location: "Kilimani",
+                expires_at: "2026-10-03T23:00:00Z",
+                created_at: "2026-10-03T11:00:00Z",
               },
             ],
             error: null,
@@ -364,32 +435,36 @@ describe('pulse', () => {
       const responseChain = createChain();
       responseChain.in.mockReturnValue(
         RESOLVED([
-          { plan_id: 'plan-soon', response: 'going' },
-          { plan_id: 'plan-soon', response: 'going' },
-          { plan_id: 'plan-soon', response: 'maybe' },
-          { plan_id: 'plan-late', response: 'cant' },
+          { plan_id: "plan-soon", response: "going" },
+          { plan_id: "plan-soon", response: "going" },
+          { plan_id: "plan-soon", response: "maybe" },
+          { plan_id: "plan-late", response: "cant" },
         ]),
       );
 
       const creatorChain = createChain();
       creatorChain.in.mockReturnValue(
         RESOLVED([
-          { id: 'user-1', display_name: 'Nia' },
-          { id: 'user-2', display_name: 'Tariq' },
+          { id: "user-1", display_name: "Nia" },
+          { id: "user-2", display_name: "Tariq" },
         ]),
       );
 
-      const supabase = makeSequencedSupabase([planChain, responseChain, creatorChain]);
+      const supabase = makeSequencedSupabase([
+        planChain,
+        responseChain,
+        creatorChain,
+      ]);
       mockedGetSupabase.mockReturnValue(supabase);
 
       const result = await fetchUpcomingPlans();
 
       // Sorted soonest-first, so the 19:00 meal leads even though it was posted later.
-      expect(result.map((plan) => plan.id)).toEqual(['plan-soon', 'plan-late']);
+      expect(result.map((plan) => plan.id)).toEqual(["plan-soon", "plan-late"]);
       expect(result[0]).toMatchObject({
-        title: 'Tacos at 7',
-        creatorName: 'Tariq',
-        location: 'Kilimani',
+        title: "Tacos at 7",
+        creatorName: "Tariq",
+        location: "Kilimani",
         responseCount: 3,
         goingCount: 2,
       });
@@ -397,15 +472,15 @@ describe('pulse', () => {
     });
   });
 
-  describe('subscribeToPulse', () => {
-    it('returns a no-op when Supabase is not configured', () => {
+  describe("subscribeToPulse", () => {
+    it("returns a no-op when Supabase is not configured", () => {
       mockedGetSupabase.mockReturnValue(null);
       const unsub = subscribeToPulse({ onChange: jest.fn() });
-      expect(typeof unsub).toBe('function');
+      expect(typeof unsub).toBe("function");
       unsub();
     });
 
-    it('watches messages, plans, and plan responses', () => {
+    it("watches messages, plans, and plan responses", () => {
       const channel = createChannel();
       const supabase = makeSupabase();
       (supabase.channel as jest.Mock).mockReturnValue(channel);

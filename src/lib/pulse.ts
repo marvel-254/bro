@@ -1,4 +1,4 @@
-import { getSupabase } from './supabase';
+import { getSupabase } from "./supabase";
 
 /**
  * Data access for the Pulse screen.
@@ -23,7 +23,7 @@ export const LIVE_WINDOW_MINUTES = 15;
 
 export interface PulseLiveConversation {
   conversationId: string;
-  type: 'direct' | 'group' | 'space' | 'live';
+  type: "direct" | "group" | "space" | "live";
   name: string | null;
   /** Messages inside the live window. */
   messageCount: number;
@@ -44,7 +44,7 @@ export interface PulsePlan {
   creatorId: string;
   creatorName: string | null;
   title: string;
-  kind: 'football' | 'outing' | 'meal' | 'event' | 'other' | null;
+  kind: "football" | "outing" | "meal" | "event" | "other" | null;
   startsAt: string;
   location: string | null;
   expiresAt: string | null;
@@ -79,9 +79,9 @@ export async function fetchLiveConversations(
   }
 
   const { data: memberships, error: memberError } = await supabase
-    .from('conversation_members')
-    .select('conversation_id')
-    .eq('user_id', selfId);
+    .from("conversation_members")
+    .select("conversation_id")
+    .eq("user_id", selfId);
 
   if (memberError) {
     throw new Error(memberError.message);
@@ -97,11 +97,11 @@ export async function fetchLiveConversations(
   // Recent messages, scoped to the caller's conversations. RLS re-checks
   // membership server-side; the id filter here is just to bound the result set.
   const { data: recentRows, error: messageError } = await supabase
-    .from('messages')
-    .select('id, conversation_id, content, sender_id, created_at')
-    .in('conversation_id', conversationIds)
-    .gte('created_at', cutoffIso(windowMinutes))
-    .order('created_at', { ascending: false })
+    .from("messages")
+    .select("id, conversation_id, content, sender_id, created_at")
+    .in("conversation_id", conversationIds)
+    .gte("created_at", cutoffIso(windowMinutes))
+    .order("created_at", { ascending: false })
     .limit(200);
 
   if (messageError) {
@@ -118,7 +118,10 @@ export async function fetchLiveConversations(
 
   // Collapse to one entry per conversation, keeping the newest message. The
   // query is newest-first, so the first row seen for a conversation is its head.
-  const byConversation = new Map<string, { count: number; last: (typeof rows)[number] }>();
+  const byConversation = new Map<
+    string,
+    { count: number; last: (typeof rows)[number] }
+  >();
   for (const row of rows) {
     if (row.sender_id === selfId) continue;
     const existing = byConversation.get(row.conversation_id);
@@ -133,7 +136,9 @@ export async function fetchLiveConversations(
     .filter(([, value]) => value.count >= LIVE_MIN_MESSAGES)
     .sort((a, b) => {
       if (b[1].count !== a[1].count) return b[1].count - a[1].count;
-      return Date.parse(b[1].last.created_at) - Date.parse(a[1].last.created_at);
+      return (
+        Date.parse(b[1].last.created_at) - Date.parse(a[1].last.created_at)
+      );
     })
     .slice(0, limit);
 
@@ -144,9 +149,9 @@ export async function fetchLiveConversations(
   const liveIds = live.map(([id]) => id);
 
   const { data: conversationRows } = await supabase
-    .from('conversations')
-    .select('id, type, name')
-    .in('id', liveIds);
+    .from("conversations")
+    .select("id, type, name")
+    .in("id", liveIds);
 
   const typeById = new Map<string, string>();
   const nameById = new Map<string, string | null>();
@@ -162,17 +167,21 @@ export async function fetchLiveConversations(
   // Peers drive the avatar stack. A peer-query failure is non-fatal: the card
   // still renders, just without faces.
   const { data: peerRows } = await supabase
-    .from('conversation_members')
+    .from("conversation_members")
     .select(
-      'conversation_id, profile:profiles!conversation_members_user_id_fkey (id, display_name, avatar_url)',
+      "conversation_id, profile:profiles!conversation_members_user_id_fkey (id, display_name, avatar_url)",
     )
-    .in('conversation_id', liveIds)
-    .neq('user_id', selfId);
+    .in("conversation_id", liveIds)
+    .neq("user_id", selfId);
 
-  const peersByConversation = new Map<string, PulseLiveConversation['peers']>();
+  const peersByConversation = new Map<string, PulseLiveConversation["peers"]>();
   for (const peer of (peerRows ?? []) as unknown as Array<{
     conversation_id: string;
-    profile: { id: string; display_name: string; avatar_url: string | null } | null;
+    profile: {
+      id: string;
+      display_name: string;
+      avatar_url: string | null;
+    } | null;
   }>) {
     if (!peer.profile) continue;
     const list = peersByConversation.get(peer.conversation_id) ?? [];
@@ -186,7 +195,9 @@ export async function fetchLiveConversations(
 
   return live.map(([conversationId, value]) => ({
     conversationId,
-    type: (typeById.get(conversationId) as PulseLiveConversation['type']) ?? 'group',
+    type:
+      (typeById.get(conversationId) as PulseLiveConversation["type"]) ??
+      "group",
     name: nameById.get(conversationId) ?? null,
     messageCount: value.count,
     lastMessageAt: value.last.created_at,
@@ -199,17 +210,21 @@ export async function fetchLiveConversations(
  * Plans that have not expired yet, soonest deadline first, with a Going /
  * Maybe tally. Empty is a normal state — nobody has posted a plan.
  */
-export async function fetchUpcomingPlans(limit: number = 10): Promise<PulsePlan[]> {
+export async function fetchUpcomingPlans(
+  limit: number = 10,
+): Promise<PulsePlan[]> {
   const supabase = getSupabase();
   if (!supabase) {
     return [];
   }
 
   const { data: planRows, error } = await supabase
-    .from('plans')
-    .select('id, creator_id, title, kind, starts_at, location, expires_at, created_at')
-    .gt('expires_at', new Date().toISOString())
-    .order('created_at', { ascending: false })
+    .from("plans")
+    .select(
+      "id, creator_id, title, kind, starts_at, location, expires_at, created_at",
+    )
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false })
     .limit(limit);
 
   if (error) {
@@ -220,7 +235,7 @@ export async function fetchUpcomingPlans(limit: number = 10): Promise<PulsePlan[
     id: string;
     creator_id: string;
     title: string;
-    kind: PulsePlan['kind'];
+    kind: PulsePlan["kind"];
     starts_at: string;
     location: string | null;
     expires_at: string | null;
@@ -234,15 +249,18 @@ export async function fetchUpcomingPlans(limit: number = 10): Promise<PulsePlan[
   const planIds = plans.map((plan) => plan.id);
 
   const { data: responseRows } = await supabase
-    .from('plan_responses')
-    .select('plan_id, response')
-    .in('plan_id', planIds);
+    .from("plan_responses")
+    .select("plan_id, response")
+    .in("plan_id", planIds);
 
   const totals = new Map<string, { total: number; going: number }>();
-  for (const row of (responseRows ?? []) as Array<{ plan_id: string; response: string }>) {
+  for (const row of (responseRows ?? []) as Array<{
+    plan_id: string;
+    response: string;
+  }>) {
     const entry = totals.get(row.plan_id) ?? { total: 0, going: 0 };
     entry.total += 1;
-    if (row.response === 'going') {
+    if (row.response === "going") {
       entry.going += 1;
     }
     totals.set(row.plan_id, entry);
@@ -250,12 +268,15 @@ export async function fetchUpcomingPlans(limit: number = 10): Promise<PulsePlan[
 
   const creatorIds = [...new Set(plans.map((plan) => plan.creator_id))];
   const { data: creatorRows } = await supabase
-    .from('profiles')
-    .select('id, display_name')
-    .in('id', creatorIds);
+    .from("profiles")
+    .select("id, display_name")
+    .in("id", creatorIds);
 
   const nameById = new Map<string, string>();
-  for (const row of (creatorRows ?? []) as Array<{ id: string; display_name: string }>) {
+  for (const row of (creatorRows ?? []) as Array<{
+    id: string;
+    display_name: string;
+  }>) {
     nameById.set(row.id, row.display_name);
   }
 
@@ -282,27 +303,29 @@ export async function fetchUpcomingPlans(limit: number = 10): Promise<PulsePlan[
  * Subscribe to anything that should reorder Pulse: new messages (Live now) and
  * new plans (Tap-in). Returns a no-op unsubscribe when the backend is missing.
  */
-export function subscribeToPulse(handlers: { onChange: () => void }): () => void {
+export function subscribeToPulse(handlers: {
+  onChange: () => void;
+}): () => void {
   const supabase = getSupabase();
   if (!supabase) {
     return () => {};
   }
 
   const channel = supabase
-    .channel('pulse')
+    .channel("pulse")
     .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'messages' },
+      "postgres_changes",
+      { event: "*", schema: "public", table: "messages" },
       () => handlers.onChange(),
     )
     .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'plans' },
+      "postgres_changes",
+      { event: "*", schema: "public", table: "plans" },
       () => handlers.onChange(),
     )
     .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'plan_responses' },
+      "postgres_changes",
+      { event: "*", schema: "public", table: "plan_responses" },
       () => handlers.onChange(),
     )
     .subscribe();

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -9,14 +9,18 @@ import {
   TextInput,
   Pressable,
   Alert,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING, RADIUS, TYPOGRAPHY } from '../../theme';
-import { Avatar } from '../../components/ui/Avatar';
-import { usePeople } from '../../lib/people-context';
-import { usePresence } from '../../lib/presence-context';
-import { PRESENCE_LABELS, PRESENCE_COLORS, type Presence } from '../../lib/presence';
-import { isSupabaseConfigured } from '../../lib/supabase';
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { COLORS, SPACING, RADIUS, TYPOGRAPHY } from "../../theme";
+import { Avatar } from "../../components/ui/Avatar";
+import { usePeople } from "../../lib/people-context";
+import { usePresence } from "../../lib/presence-context";
+import {
+  PRESENCE_LABELS,
+  PRESENCE_COLORS,
+  type Presence,
+} from "../../lib/presence";
+import { isSupabaseConfigured } from "../../lib/supabase";
 import {
   fetchFriends,
   fetchFriendRequests,
@@ -26,8 +30,12 @@ import {
   subscribeToFriendships,
   type Friend,
   type FriendRequest,
-} from '../../lib/friends';
-import { LoadingState, ErrorState, EmptyState } from '../../components/feedback/States';
+} from "../../lib/friends";
+import {
+  LoadingState,
+  ErrorState,
+  EmptyState,
+} from "../../components/feedback/States";
 
 /**
  * Who's Around — the presence layer.
@@ -38,21 +46,21 @@ import { LoadingState, ErrorState, EmptyState } from '../../components/feedback/
  */
 
 const PRESENCE_OPTIONS: Presence[] = [
-  'online',
-  'busy',
-  'chilling',
-  'gaming',
-  'listening',
-  'afk',
+  "online",
+  "busy",
+  "chilling",
+  "gaming",
+  "listening",
+  "afk",
 ];
 
 const QUICK_ACTIVITIES = [
-  '💻 coding',
-  '📍 outside',
-  '🎧 listening',
-  '🎮 gaming',
-  '⚽ watching the game',
-  '😴 afk',
+  "💻 coding",
+  "📍 outside",
+  "🎧 listening",
+  "🎮 gaming",
+  "⚽ watching the game",
+  "😴 afk",
 ];
 
 export default function PeopleScreen() {
@@ -85,18 +93,23 @@ export default function PeopleScreen() {
     return subscribeToFriendships({ onChange: () => void loadFriends() });
   }, [loadFriends]);
 
-  const friendIds = useMemo(() => new Set(friends.map((friend) => friend.userId)), [friends]);
+  const friendIds = useMemo(
+    () => new Set(friends.map((friend) => friend.userId)),
+    [friends],
+  );
   const incoming = useMemo(
-    () => requests.filter((request) => request.direction === 'incoming'),
+    () => requests.filter((request) => request.direction === "incoming"),
     [requests],
   );
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [draftText, setDraftText] = useState('');
+  const [draftText, setDraftText] = useState("");
 
-  const onlineCount = people.filter((person) => person.presence === 'online').length;
+  const onlineCount = people.filter(
+    (person) => person.presence === "online",
+  ).length;
 
   const openPicker = () => {
-    setDraftText(statusText ?? '');
+    setDraftText(statusText ?? "");
     setPickerOpen(true);
   };
 
@@ -121,11 +134,13 @@ export default function PeopleScreen() {
           <Text style={styles.personName}>{item.displayName}</Text>
           {activity ? (
             <Text style={styles.personActivity}>
-              {item.emoji ? `${item.emoji} ` : ''}
-              {item.statusText ?? ''}
+              {item.emoji ? `${item.emoji} ` : ""}
+              {item.statusText ?? ""}
             </Text>
           ) : (
-            <Text style={styles.personPresence}>{PRESENCE_LABELS[item.presence]}</Text>
+            <Text style={styles.personPresence}>
+              {PRESENCE_LABELS[item.presence]}
+            </Text>
           )}
         </View>
         <View style={styles.personActions}>
@@ -133,24 +148,40 @@ export default function PeopleScreen() {
             <TouchableOpacity
               style={styles.iconBtn}
               disabled={busy}
-              onPress={() => void (async () => {
-                setBusyId(item.userId);
-                const result = await sendFriendRequest(item.userId);
-                setBusyId(null);
-                if (!result.ok) {
-                  Alert.alert('Could not send request', result.error ?? 'Try again in a bit.');
-                  return;
-                }
-                Alert.alert('Request sent', `${item.displayName} can tap in when ready.`);
-              })()}
+              onPress={() =>
+                void (async () => {
+                  setBusyId(item.userId);
+                  const result = await sendFriendRequest(item.userId);
+                  setBusyId(null);
+                  if (!result.ok) {
+                    Alert.alert(
+                      "Could not send request",
+                      result.error ?? "Try again in a bit.",
+                    );
+                    return;
+                  }
+                  Alert.alert(
+                    "Request sent",
+                    `${item.displayName} can tap in when ready.`,
+                  );
+                })()
+              }
               accessibilityRole="button"
               accessibilityLabel={`Add ${item.displayName} as a friend`}
             >
-              <Ionicons name="person-add-outline" size={18} color={COLORS.onSurface} />
+              <Ionicons
+                name="person-add-outline"
+                size={18}
+                color={COLORS.onSurface}
+              />
             </TouchableOpacity>
           ) : null}
           <TouchableOpacity style={styles.iconBtn}>
-            <Ionicons name="chatbubble-outline" size={18} color={COLORS.onSurface} />
+            <Ionicons
+              name="chatbubble-outline"
+              size={18}
+              color={COLORS.onSurface}
+            />
           </TouchableOpacity>
         </View>
       </View>
@@ -174,22 +205,31 @@ export default function PeopleScreen() {
           <Avatar
             name="You"
             size={34}
-            presence={presence === 'offline' ? null : presence}
+            presence={presence === "offline" ? null : presence}
           />
         </TouchableOpacity>
       </View>
 
       {/* Your own presence line */}
       <TouchableOpacity style={styles.selfCard} onPress={openPicker}>
-        <View style={[styles.selfDot, { backgroundColor: PRESENCE_COLORS[presence] }]} />
+        <View
+          style={[
+            styles.selfDot,
+            { backgroundColor: PRESENCE_COLORS[presence] },
+          ]}
+        />
         <View style={{ flex: 1 }}>
           <Text style={styles.selfLabel}>
             {PRESENCE_LABELS[presence]}
-            {statusText ? ` — ${emoji ? `${emoji} ` : ''}${statusText}` : ''}
+            {statusText ? ` — ${emoji ? `${emoji} ` : ""}${statusText}` : ""}
           </Text>
           <Text style={styles.selfHint}>Tap to set your status</Text>
         </View>
-        <Ionicons name="chevron-forward" size={18} color={COLORS.semantic.textDim} />
+        <Ionicons
+          name="chevron-forward"
+          size={18}
+          color={COLORS.semantic.textDim}
+        />
       </TouchableOpacity>
 
       {/* List */}
@@ -198,7 +238,11 @@ export default function PeopleScreen() {
           <Text style={styles.inboxTitle}>Friend requests</Text>
           {incoming.map((request) => (
             <View key={request.userId} style={styles.inboxRow}>
-              <Avatar name={request.displayName} uri={request.avatarUrl} size={38} />
+              <Avatar
+                name={request.displayName}
+                uri={request.avatarUrl}
+                size={38}
+              />
               <View style={styles.inboxBody}>
                 <Text style={styles.inboxName} numberOfLines={1}>
                   {request.displayName}
@@ -208,16 +252,23 @@ export default function PeopleScreen() {
               <TouchableOpacity
                 style={styles.acceptBtn}
                 disabled={busyId === request.userId}
-                onPress={() => void (async () => {
-                  setBusyId(request.userId);
-                  const result = await acceptFriendRequest(request.userId);
-                  setBusyId(null);
-                  if (!result.ok) {
-                    Alert.alert('Could not accept', result.error ?? 'Try again in a bit.');
-                    return;
-                  }
-                  setRequests((rows) => rows.filter((row) => row.userId !== request.userId));
-                })()}
+                onPress={() =>
+                  void (async () => {
+                    setBusyId(request.userId);
+                    const result = await acceptFriendRequest(request.userId);
+                    setBusyId(null);
+                    if (!result.ok) {
+                      Alert.alert(
+                        "Could not accept",
+                        result.error ?? "Try again in a bit.",
+                      );
+                      return;
+                    }
+                    setRequests((rows) =>
+                      rows.filter((row) => row.userId !== request.userId),
+                    );
+                  })()
+                }
                 accessibilityRole="button"
                 accessibilityLabel={`Accept ${request.displayName}`}
               >
@@ -226,20 +277,31 @@ export default function PeopleScreen() {
               <TouchableOpacity
                 style={styles.declineBtn}
                 disabled={busyId === request.userId}
-                onPress={() => void (async () => {
-                  setBusyId(request.userId);
-                  const result = await declineFriendRequest(request.userId);
-                  setBusyId(null);
-                  if (!result.ok) {
-                    Alert.alert('Could not decline', result.error ?? 'Try again in a bit.');
-                    return;
-                  }
-                  setRequests((rows) => rows.filter((row) => row.userId !== request.userId));
-                })()}
+                onPress={() =>
+                  void (async () => {
+                    setBusyId(request.userId);
+                    const result = await declineFriendRequest(request.userId);
+                    setBusyId(null);
+                    if (!result.ok) {
+                      Alert.alert(
+                        "Could not decline",
+                        result.error ?? "Try again in a bit.",
+                      );
+                      return;
+                    }
+                    setRequests((rows) =>
+                      rows.filter((row) => row.userId !== request.userId),
+                    );
+                  })()
+                }
                 accessibilityRole="button"
                 accessibilityLabel={`Decline ${request.displayName}`}
               >
-                <Ionicons name="close" size={18} color={COLORS.onSurfaceVariant} />
+                <Ionicons
+                  name="close"
+                  size={18}
+                  color={COLORS.onSurfaceVariant}
+                />
               </TouchableOpacity>
             </View>
           ))}
@@ -251,9 +313,7 @@ export default function PeopleScreen() {
       ) : error ? (
         <ErrorState message={error} onRetry={() => void refresh()} />
       ) : people.length === 0 ? (
-        <EmptyState
-          message="Nobody around yet. Start a conversation and the people in it will show up here."
-        />
+        <EmptyState message="Nobody around yet. Start a conversation and the people in it will show up here." />
       ) : (
         <FlatList
           data={people}
@@ -295,7 +355,9 @@ export default function PeopleScreen() {
                       { backgroundColor: PRESENCE_COLORS[option] },
                     ]}
                   />
-                  <Text style={styles.optionLabel}>{PRESENCE_LABELS[option]}</Text>
+                  <Text style={styles.optionLabel}>
+                    {PRESENCE_LABELS[option]}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -327,7 +389,9 @@ export default function PeopleScreen() {
               onPress={() => void savePresence(presence, draftText)}
               disabled={isBusy}
             >
-              <Text style={styles.saveBtnText}>{isBusy ? 'Saving...' : 'Set status'}</Text>
+              <Text style={styles.saveBtnText}>
+                {isBusy ? "Saving..." : "Set status"}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -342,22 +406,22 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.semantic.canvasRoot,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: SPACING.gutter,
     paddingTop: SPACING.spaceLg,
     paddingBottom: SPACING.spaceMd,
   },
   headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: SPACING.spaceMd,
   },
   logo: {
     ...TYPOGRAPHY.headlineMD,
     color: COLORS.semantic.textPrimary,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 1,
   },
   headerTitle: {
@@ -367,14 +431,14 @@ const styles = StyleSheet.create({
   headerSub: {
     ...TYPOGRAPHY.labelMD,
     color: COLORS.semantic.textDim,
-    fontFamily: 'monospace',
+    fontFamily: "monospace",
   },
   youBtn: {
     padding: 2,
   },
   selfCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: SPACING.spaceMd,
     marginHorizontal: SPACING.gutter,
     marginBottom: SPACING.spaceMd,
@@ -396,15 +460,15 @@ const styles = StyleSheet.create({
   selfHint: {
     ...TYPOGRAPHY.labelSM,
     color: COLORS.semantic.textDim,
-    fontFamily: 'monospace',
+    fontFamily: "monospace",
   },
   listContent: {
     paddingHorizontal: SPACING.gutter,
     paddingBottom: SPACING.spaceXl,
   },
   personRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: SPACING.spaceMd,
     paddingVertical: SPACING.spaceSm,
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -416,7 +480,7 @@ const styles = StyleSheet.create({
   personName: {
     ...TYPOGRAPHY.bodyMD,
     color: COLORS.semantic.textPrimary,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   personActivity: {
     ...TYPOGRAPHY.labelMD,
@@ -425,10 +489,10 @@ const styles = StyleSheet.create({
   personPresence: {
     ...TYPOGRAPHY.labelSM,
     color: COLORS.semantic.textDim,
-    fontFamily: 'monospace',
+    fontFamily: "monospace",
   },
   personActions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: SPACING.spaceSm,
   },
   iconBtn: {
@@ -446,12 +510,12 @@ const styles = StyleSheet.create({
   },
   inboxTitle: {
     ...TYPOGRAPHY.labelLG,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.onSurface,
   },
   inboxRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: SPACING.spaceSm,
   },
   inboxBody: {
@@ -459,7 +523,7 @@ const styles = StyleSheet.create({
   },
   inboxName: {
     ...TYPOGRAPHY.bodyMD,
-    fontWeight: '600',
+    fontWeight: "600",
     color: COLORS.onSurface,
   },
   inboxMeta: {
@@ -474,7 +538,7 @@ const styles = StyleSheet.create({
   },
   acceptText: {
     ...TYPOGRAPHY.labelMD,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.onPrimary,
   },
   declineBtn: {
@@ -482,8 +546,8 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "center",
     padding: SPACING.margin,
   },
   modalCard: {
@@ -494,9 +558,9 @@ const styles = StyleSheet.create({
     borderColor: COLORS.semantic.ghostBorder,
   },
   modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: SPACING.spaceLg,
   },
   modalTitle: {
@@ -504,14 +568,14 @@ const styles = StyleSheet.create({
     color: COLORS.semantic.textPrimary,
   },
   presenceGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: SPACING.spaceSm,
     marginBottom: SPACING.spaceLg,
   },
   presenceOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: SPACING.spaceSm,
     paddingHorizontal: SPACING.spaceMd,
     paddingVertical: SPACING.spaceSm,
@@ -535,7 +599,7 @@ const styles = StyleSheet.create({
   activityLabel: {
     ...TYPOGRAPHY.labelSM,
     color: COLORS.semantic.textDim,
-    fontFamily: 'monospace',
+    fontFamily: "monospace",
     marginBottom: SPACING.spaceSm,
   },
   activityInput: {
@@ -550,8 +614,8 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.spaceMd,
   },
   quickRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: SPACING.spaceSm,
     marginBottom: SPACING.spaceLg,
   },
@@ -570,7 +634,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surfaceTint,
     borderRadius: RADIUS.sm,
     paddingVertical: SPACING.spaceMd,
-    alignItems: 'center',
+    alignItems: "center",
   },
   saveBtnDisabled: {
     opacity: 0.5,
@@ -578,6 +642,6 @@ const styles = StyleSheet.create({
   saveBtnText: {
     ...TYPOGRAPHY.labelLG,
     color: COLORS.onPrimary,
-    fontWeight: '700',
+    fontWeight: "700",
   },
 });

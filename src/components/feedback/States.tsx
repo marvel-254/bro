@@ -1,13 +1,22 @@
-import { ReactNode } from 'react';
-import { View, ActivityIndicator, StyleSheet, Text, TouchableOpacity } from 'react-native';
-import { COLORS } from '../../theme';
+import { ReactNode } from "react";
+import {
+  View,
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+} from "react-native";
+import { COLORS } from "../../theme";
 
 interface LoadingStateProps {
   message?: string;
   onRetry?: () => void;
 }
 
-export function LoadingState({ message = 'Loading...', onRetry }: LoadingStateProps) {
+export function LoadingState({
+  message = "Loading...",
+  onRetry,
+}: LoadingStateProps) {
   return (
     <View style={styles.container}>
       <ActivityIndicator size="large" color={COLORS.primaryContainer} />
@@ -22,7 +31,7 @@ export function LoadingState({ message = 'Loading...', onRetry }: LoadingStatePr
 }
 
 export function ErrorState({
-  message = 'Something went wrong',
+  message = "Something went wrong",
   onRetry,
 }: {
   message?: string;
@@ -41,7 +50,7 @@ export function ErrorState({
 }
 
 export function EmptyState({
-  message = 'Nothing here yet',
+  message = "Nothing here yet",
   icon,
 }: {
   message?: string;
@@ -58,8 +67,8 @@ export function EmptyState({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     padding: 32,
   },
   text: {
@@ -83,6 +92,6 @@ const styles = StyleSheet.create({
   },
   retryText: {
     color: COLORS.onPrimary,
-    fontWeight: '600',
+    fontWeight: "600",
   },
 });

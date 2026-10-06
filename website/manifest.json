@@ -4,8 +4,8 @@
   "description": "A living communication environment. Pulse. People. Conversations. Branches. Spaces.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#090A0F",
-  "theme_color": "#090A0F",
+  "background_color": "#0e0318",
+  "theme_color": "#0e0318",
   "orientation": "portrait-primary",
   "categories": [
     "social",

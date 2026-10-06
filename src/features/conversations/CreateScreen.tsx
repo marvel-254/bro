@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -7,12 +7,17 @@ import {
   ScrollView,
   StyleSheet,
   Alert,
-} from 'react-native';
-import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '../../theme';
-import { createPlan, PLAN_TITLE_MAX, PLAN_LOCATION_MAX, type PlanKind } from '../../lib/plans';
+} from "react-native";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from "../../theme";
+import {
+  createPlan,
+  PLAN_TITLE_MAX,
+  PLAN_LOCATION_MAX,
+  type PlanKind,
+} from "../../lib/plans";
 
 /**
  * Create — the `+` sheet. Two taps max per the frozen dashboard spec:
@@ -23,11 +28,11 @@ import { createPlan, PLAN_TITLE_MAX, PLAN_LOCATION_MAX, type PlanKind } from '..
  */
 
 const KINDS: Array<{ value: PlanKind; label: string; icon: string }> = [
-  { value: 'meal', label: 'Eat', icon: 'restaurant-outline' },
-  { value: 'outing', label: 'Out', icon: 'walk-outline' },
-  { value: 'football', label: 'Ball', icon: 'football-outline' },
-  { value: 'event', label: 'Event', icon: 'ticket-outline' },
-  { value: 'other', label: 'Other', icon: 'ellipsis-horizontal' },
+  { value: "meal", label: "Eat", icon: "restaurant-outline" },
+  { value: "outing", label: "Out", icon: "walk-outline" },
+  { value: "football", label: "Ball", icon: "football-outline" },
+  { value: "event", label: "Event", icon: "ticket-outline" },
+  { value: "other", label: "Other", icon: "ellipsis-horizontal" },
 ];
 
 interface Preset {
@@ -50,15 +55,16 @@ function presets(now: Date): Preset[] {
 
   return [
     {
-      label: 'Tonight 7pm',
-      at: () => (tonight.getTime() > now.getTime() ? tonight : atHour(tomorrow, 19)),
+      label: "Tonight 7pm",
+      at: () =>
+        tonight.getTime() > now.getTime() ? tonight : atHour(tomorrow, 19),
     },
     {
-      label: 'Tomorrow eve',
+      label: "Tomorrow eve",
       at: () => atHour(tomorrow, 19),
     },
     {
-      label: 'Saturday',
+      label: "Saturday",
       at: () => atHour(saturday, 14),
     },
   ];
@@ -68,16 +74,16 @@ export default function CreateScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const [title, setTitle] = useState('');
-  const [kind, setKind] = useState<PlanKind>('meal');
-  const [location, setLocation] = useState('');
+  const [title, setTitle] = useState("");
+  const [kind, setKind] = useState<PlanKind>("meal");
+  const [location, setLocation] = useState("");
   const [startsAt, setStartsAt] = useState<Date | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const submit = async () => {
     if (!startsAt) {
-      setError('Pick when this is happening');
+      setError("Pick when this is happening");
       return;
     }
     setCreating(true);
@@ -96,17 +102,23 @@ export default function CreateScreen() {
       return;
     }
 
-    setTitle('');
-    setLocation('');
+    setTitle("");
+    setLocation("");
     setStartsAt(null);
-    router.push('/(tabs)');
-    Alert.alert('Bet — you made a plan', 'It is sitting in Tap-in. The squad can see it.');
+    router.push("/(tabs)");
+    Alert.alert(
+      "Bet — you made a plan",
+      "It is sitting in Tap-in. The squad can see it.",
+    );
   };
 
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + SPACING.spaceMd }]}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: insets.top + SPACING.spaceMd },
+      ]}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
@@ -139,7 +151,10 @@ export default function CreateScreen() {
         {KINDS.map((option) => (
           <TouchableOpacity
             key={option.value}
-            style={[styles.kindChip, kind === option.value && styles.kindChipActive]}
+            style={[
+              styles.kindChip,
+              kind === option.value && styles.kindChipActive,
+            ]}
             onPress={() => setKind(option.value)}
             accessibilityRole="button"
             accessibilityState={{ selected: kind === option.value }}
@@ -147,9 +162,18 @@ export default function CreateScreen() {
             <Ionicons
               name={option.icon as never}
               size={16}
-              color={kind === option.value ? COLORS.primaryContainer : COLORS.onSurfaceVariant}
+              color={
+                kind === option.value
+                  ? COLORS.primaryContainer
+                  : COLORS.onSurfaceVariant
+              }
             />
-            <Text style={[styles.kindText, kind === option.value && styles.kindTextActive]}>
+            <Text
+              style={[
+                styles.kindText,
+                kind === option.value && styles.kindTextActive,
+              ]}
+            >
               {option.label}
             </Text>
           </TouchableOpacity>
@@ -179,13 +203,22 @@ export default function CreateScreen() {
       </View>
       {startsAt ? (
         <Text style={styles.startsNote}>
-          {startsAt.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}{' '}
-          at{' '}
-          {startsAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+          {startsAt.toLocaleDateString([], {
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+          })}{" "}
+          at{" "}
+          {startsAt.toLocaleTimeString([], {
+            hour: "numeric",
+            minute: "2-digit",
+          })}
         </Text>
       ) : null}
 
-      <Text style={styles.label}>Where <Text style={styles.optional}>(optional)</Text></Text>
+      <Text style={styles.label}>
+        Where <Text style={styles.optional}>(optional)</Text>
+      </Text>
       <TextInput
         style={styles.input}
         value={location}
@@ -199,13 +232,18 @@ export default function CreateScreen() {
       {error ? <Text style={styles.formError}>{error}</Text> : null}
 
       <TouchableOpacity
-        style={[styles.submit, (creating || !title.trim()) && styles.submitDisabled]}
+        style={[
+          styles.submit,
+          (creating || !title.trim()) && styles.submitDisabled,
+        ]}
         onPress={() => void submit()}
         disabled={creating || !title.trim()}
         accessibilityRole="button"
         accessibilityLabel="Create plan"
       >
-        <Text style={styles.submitText}>{creating ? 'Setting it up...' : 'Put it on'}</Text>
+        <Text style={styles.submitText}>
+          {creating ? "Setting it up..." : "Put it on"}
+        </Text>
       </TouchableOpacity>
 
       <Text style={styles.note}>Expires on its own. No cleanup fr.</Text>
@@ -224,31 +262,31 @@ const styles = StyleSheet.create({
     gap: SPACING.spaceXs,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: SPACING.spaceSm,
   },
   closeBtn: {
     width: 40,
     height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   title: {
     ...TYPOGRAPHY.headlineSM,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.onSurface,
   },
   label: {
     ...TYPOGRAPHY.labelLG,
-    fontWeight: '600',
+    fontWeight: "600",
     color: COLORS.onSurface,
     marginTop: SPACING.spaceSm,
   },
   optional: {
     color: COLORS.onSurfaceVariant,
-    fontWeight: '400',
+    fontWeight: "400",
   },
   input: {
     ...TYPOGRAPHY.bodyMD,
@@ -261,13 +299,13 @@ const styles = StyleSheet.create({
     borderColor: COLORS.outlineVariant,
   },
   kindRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: SPACING.spaceXs,
   },
   kindChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
     paddingHorizontal: SPACING.spaceSm,
     paddingVertical: 8,
@@ -285,11 +323,11 @@ const styles = StyleSheet.create({
   },
   kindTextActive: {
     color: COLORS.primaryContainer,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   presetRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: SPACING.spaceXs,
   },
   presetChip: {
@@ -312,20 +350,20 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.spaceSm,
     borderRadius: RADIUS.sm,
     backgroundColor: COLORS.primaryContainer,
-    alignItems: 'center',
+    alignItems: "center",
   },
   submitDisabled: {
     opacity: 0.5,
   },
   submitText: {
     ...TYPOGRAPHY.labelLG,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.onPrimary,
   },
   note: {
     ...TYPOGRAPHY.labelSM,
     color: COLORS.onSurfaceVariant,
-    textAlign: 'center',
+    textAlign: "center",
     marginTop: SPACING.spaceXs,
   },
 });

@@ -1,5 +1,5 @@
-import { getSupabase } from './supabase';
-import type { Presence } from './presence';
+import { getSupabase } from "./supabase";
+import type { Presence } from "./presence";
 
 /**
  * Friendships — the real social graph behind Who's Around.
@@ -16,7 +16,7 @@ import type { Presence } from './presence';
  *     accepted/declined. The requester can only cancel by deleting.
  */
 
-export type FriendshipStatus = 'pending' | 'accepted' | 'declined';
+export type FriendshipStatus = "pending" | "accepted" | "declined";
 
 export interface Friend {
   userId: string;
@@ -25,7 +25,7 @@ export interface Friend {
   avatarUrl: string | null;
   presence: Presence | null;
   /** Which direction the accepted row points. Informational only. */
-  direction: 'outgoing' | 'incoming';
+  direction: "outgoing" | "incoming";
   friendsSince: string;
 }
 
@@ -35,7 +35,7 @@ export interface FriendRequest {
   displayName: string;
   username: string | null;
   avatarUrl: string | null;
-  direction: 'incoming' | 'outgoing';
+  direction: "incoming" | "outgoing";
   createdAt: string;
 }
 
@@ -56,7 +56,7 @@ interface ProfileStub {
 }
 
 const FALLBACK_PROFILE: ProfileStub = {
-  display_name: 'Someone',
+  display_name: "Someone",
   username: null,
   avatar_url: null,
   presence: null,
@@ -75,25 +75,27 @@ export async function fetchFriends(): Promise<Friend[]> {
   }
 
   const { data, error } = await supabase
-    .from('friendships')
+    .from("friendships")
     .select(
-      'requester_id, addressee_id, created_at, requester:profiles!friendships_requester_id_fkey (display_name, username, avatar_url, presence), addressee:profiles!friendships_addressee_id_fkey (display_name, username, avatar_url, presence)',
+      "requester_id, addressee_id, created_at, requester:profiles!friendships_requester_id_fkey (display_name, username, avatar_url, presence), addressee:profiles!friendships_addressee_id_fkey (display_name, username, avatar_url, presence)",
     )
-    .eq('status', 'accepted')
+    .eq("status", "accepted")
     .or(`requester_id.eq.${selfId},addressee_id.eq.${selfId}`)
-    .order('created_at', { ascending: false });
+    .order("created_at", { ascending: false });
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return ((data ?? []) as unknown as Array<{
-    requester_id: string;
-    addressee_id: string;
-    created_at: string;
-    requester: ProfileStub | null;
-    addressee: ProfileStub | null;
-  }>).map((row) => {
+  return (
+    (data ?? []) as unknown as Array<{
+      requester_id: string;
+      addressee_id: string;
+      created_at: string;
+      requester: ProfileStub | null;
+      addressee: ProfileStub | null;
+    }>
+  ).map((row) => {
     const outgoing = row.requester_id === selfId;
     const profile = outgoing ? row.addressee : row.requester;
     const otherId = outgoing ? row.addressee_id : row.requester_id;
@@ -104,7 +106,7 @@ export async function fetchFriends(): Promise<Friend[]> {
       username: person.username,
       avatarUrl: person.avatar_url,
       presence: person.presence,
-      direction: outgoing ? 'outgoing' : 'incoming',
+      direction: outgoing ? "outgoing" : "incoming",
       friendsSince: row.created_at,
     } as Friend;
   });
@@ -123,34 +125,40 @@ export async function fetchFriendRequests(): Promise<FriendRequest[]> {
   }
 
   const { data, error } = await supabase
-    .from('friendships')
+    .from("friendships")
     .select(
-      'requester_id, addressee_id, created_at, requester:profiles!friendships_requester_id_fkey (display_name, username, avatar_url), addressee:profiles!friendships_addressee_id_fkey (display_name, username, avatar_url)',
+      "requester_id, addressee_id, created_at, requester:profiles!friendships_requester_id_fkey (display_name, username, avatar_url), addressee:profiles!friendships_addressee_id_fkey (display_name, username, avatar_url)",
     )
-    .eq('status', 'pending')
+    .eq("status", "pending")
     .or(`requester_id.eq.${selfId},addressee_id.eq.${selfId}`)
-    .order('created_at', { ascending: false });
+    .order("created_at", { ascending: false });
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return ((data ?? []) as unknown as Array<{
-    requester_id: string;
-    addressee_id: string;
-    created_at: string;
-    requester: Omit<ProfileStub, 'presence'> | null;
-    addressee: Omit<ProfileStub, 'presence'> | null;
-  }>).map((row) => {
+  return (
+    (data ?? []) as unknown as Array<{
+      requester_id: string;
+      addressee_id: string;
+      created_at: string;
+      requester: Omit<ProfileStub, "presence"> | null;
+      addressee: Omit<ProfileStub, "presence"> | null;
+    }>
+  ).map((row) => {
     const incoming = row.addressee_id === selfId;
     const raw = incoming ? row.requester : row.addressee;
-    const person = raw ?? { display_name: 'Someone', username: null, avatar_url: null };
+    const person = raw ?? {
+      display_name: "Someone",
+      username: null,
+      avatar_url: null,
+    };
     return {
       userId: incoming ? row.requester_id : row.addressee_id,
       displayName: person.display_name,
       username: person.username,
       avatarUrl: person.avatar_url,
-      direction: incoming ? 'incoming' : 'outgoing',
+      direction: incoming ? "incoming" : "outgoing",
       createdAt: row.created_at,
     } as FriendRequest;
   });
@@ -158,34 +166,36 @@ export async function fetchFriendRequests(): Promise<FriendRequest[]> {
 
 function requireBackend(): { ok: false; error: string } | null {
   if (!getSupabase()) {
-    return { ok: false, error: 'Backend not configured' };
+    return { ok: false, error: "Backend not configured" };
   }
   return null;
 }
 
 /** Ask to be friends. A repeat request while one is pending is a quiet success. */
-export async function sendFriendRequest(addresseeId: string): Promise<FriendActionResult> {
+export async function sendFriendRequest(
+  addresseeId: string,
+): Promise<FriendActionResult> {
   const missing = requireBackend();
   if (missing) return missing;
 
   const supabase = getSupabase();
   if (!supabase) {
-    return { ok: false, error: 'Backend not configured' };
+    return { ok: false, error: "Backend not configured" };
   }
 
   const selfId = await currentUserId();
   if (!selfId) {
-    return { ok: false, error: 'Not signed in' };
+    return { ok: false, error: "Not signed in" };
   }
   if (addresseeId === selfId) {
-    return { ok: false, error: 'That is you' };
+    return { ok: false, error: "That is you" };
   }
 
   // An existing row in either direction settles this: pending stays pending,
   // accepted stays accepted, declined gets a fresh request.
   const { data: existing, error: lookupError } = await supabase
-    .from('friendships')
-    .select('requester_id, addressee_id, status')
+    .from("friendships")
+    .select("requester_id, addressee_id, status")
     .or(
       `and(requester_id.eq.${selfId},addressee_id.eq.${addresseeId}),and(requester_id.eq.${addresseeId},addressee_id.eq.${selfId})`,
     )
@@ -196,33 +206,33 @@ export async function sendFriendRequest(addresseeId: string): Promise<FriendActi
   }
 
   const row = existing as { status: FriendshipStatus } | null;
-  if (row && (row.status === 'pending' || row.status === 'accepted')) {
+  if (row && (row.status === "pending" || row.status === "accepted")) {
     return { ok: true };
   }
 
-  const { error } = await supabase.from('friendships').insert({
+  const { error } = await supabase.from("friendships").insert({
     requester_id: selfId,
     addressee_id: addresseeId,
-    status: 'pending',
+    status: "pending",
   });
 
   // A declined row still occupies the ordered pair. RLS forbids updating a row
   // back to pending (the update check only allows accepted/declined), but the
   // requester may delete and re-insert, so do exactly that.
-  if (error && error.code === '23505') {
+  if (error && error.code === "23505") {
     const { error: deleteError } = await supabase
-      .from('friendships')
+      .from("friendships")
       .delete()
-      .eq('requester_id', selfId)
-      .eq('addressee_id', addresseeId);
+      .eq("requester_id", selfId)
+      .eq("addressee_id", addresseeId);
     if (deleteError) {
       return { ok: false, error: deleteError.message };
     }
 
-    const { error: retryError } = await supabase.from('friendships').insert({
+    const { error: retryError } = await supabase.from("friendships").insert({
       requester_id: selfId,
       addressee_id: addresseeId,
-      status: 'pending',
+      status: "pending",
     });
     if (retryError) {
       return { ok: false, error: retryError.message };
@@ -237,26 +247,28 @@ export async function sendFriendRequest(addresseeId: string): Promise<FriendActi
 }
 
 /** Accept a request sent to you. */
-export async function acceptFriendRequest(requesterId: string): Promise<FriendActionResult> {
+export async function acceptFriendRequest(
+  requesterId: string,
+): Promise<FriendActionResult> {
   const missing = requireBackend();
   if (missing) return missing;
 
   const supabase = getSupabase();
   if (!supabase) {
-    return { ok: false, error: 'Backend not configured' };
+    return { ok: false, error: "Backend not configured" };
   }
 
   const selfId = await currentUserId();
   if (!selfId) {
-    return { ok: false, error: 'Not signed in' };
+    return { ok: false, error: "Not signed in" };
   }
 
   const { error } = await supabase
-    .from('friendships')
-    .update({ status: 'accepted' })
-    .eq('requester_id', requesterId)
-    .eq('addressee_id', selfId)
-    .eq('status', 'pending');
+    .from("friendships")
+    .update({ status: "accepted" })
+    .eq("requester_id", requesterId)
+    .eq("addressee_id", selfId)
+    .eq("status", "pending");
 
   if (error) {
     return { ok: false, error: error.message };
@@ -265,25 +277,27 @@ export async function acceptFriendRequest(requesterId: string): Promise<FriendAc
 }
 
 /** Decline a request sent to you. */
-export async function declineFriendRequest(requesterId: string): Promise<FriendActionResult> {
+export async function declineFriendRequest(
+  requesterId: string,
+): Promise<FriendActionResult> {
   const missing = requireBackend();
   if (missing) return missing;
 
   const supabase = getSupabase();
   if (!supabase) {
-    return { ok: false, error: 'Backend not configured' };
+    return { ok: false, error: "Backend not configured" };
   }
 
   const selfId = await currentUserId();
   if (!selfId) {
-    return { ok: false, error: 'Not signed in' };
+    return { ok: false, error: "Not signed in" };
   }
 
   const { error } = await supabase
-    .from('friendships')
+    .from("friendships")
     .delete()
-    .eq('requester_id', requesterId)
-    .eq('addressee_id', selfId);
+    .eq("requester_id", requesterId)
+    .eq("addressee_id", selfId);
 
   if (error) {
     return { ok: false, error: error.message };
@@ -292,37 +306,39 @@ export async function declineFriendRequest(requesterId: string): Promise<FriendA
 }
 
 /** End a friendship or cancel an outgoing request. Either side may do this. */
-export async function removeFriend(otherId: string): Promise<FriendActionResult> {
+export async function removeFriend(
+  otherId: string,
+): Promise<FriendActionResult> {
   const missing = requireBackend();
   if (missing) return missing;
 
   const supabase = getSupabase();
   if (!supabase) {
-    return { ok: false, error: 'Backend not configured' };
+    return { ok: false, error: "Backend not configured" };
   }
 
   const selfId = await currentUserId();
   if (!selfId) {
-    return { ok: false, error: 'Not signed in' };
+    return { ok: false, error: "Not signed in" };
   }
 
   // Deleting needs both directions covered, so this is two statements. Either
   // may match zero rows; that is fine.
   const first = await supabase
-    .from('friendships')
+    .from("friendships")
     .delete()
-    .eq('requester_id', selfId)
-    .eq('addressee_id', otherId);
+    .eq("requester_id", selfId)
+    .eq("addressee_id", otherId);
 
   if (first.error) {
     return { ok: false, error: first.error.message };
   }
 
   const second = await supabase
-    .from('friendships')
+    .from("friendships")
     .delete()
-    .eq('requester_id', otherId)
-    .eq('addressee_id', selfId);
+    .eq("requester_id", otherId)
+    .eq("addressee_id", selfId);
 
   if (second.error) {
     return { ok: false, error: second.error.message };
@@ -346,9 +362,9 @@ export async function areFriends(otherId: string): Promise<boolean> {
   }
 
   const { data } = await supabase
-    .from('friendships')
-    .select('requester_id')
-    .eq('status', 'accepted')
+    .from("friendships")
+    .select("requester_id")
+    .eq("status", "accepted")
     .or(
       `and(requester_id.eq.${selfId},addressee_id.eq.${otherId}),and(requester_id.eq.${otherId},addressee_id.eq.${selfId})`,
     )
@@ -358,17 +374,19 @@ export async function areFriends(otherId: string): Promise<boolean> {
 }
 
 /** Live updates so request badges do not go stale. */
-export function subscribeToFriendships(handlers: { onChange: () => void }): () => void {
+export function subscribeToFriendships(handlers: {
+  onChange: () => void;
+}): () => void {
   const supabase = getSupabase();
   if (!supabase) {
     return () => {};
   }
 
   const channel = supabase
-    .channel('friendships')
+    .channel("friendships")
     .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'friendships' },
+      "postgres_changes",
+      { event: "*", schema: "public", table: "friendships" },
       () => handlers.onChange(),
     )
     .subscribe();

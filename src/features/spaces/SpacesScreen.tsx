@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -9,12 +9,12 @@ import {
   RefreshControl,
   StyleSheet,
   Alert,
-} from 'react-native';
-import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '../../theme';
-import { Avatar } from '../../components/ui/Avatar';
-import { isSupabaseConfigured } from '../../lib/supabase';
+} from "react-native";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from "../../theme";
+import { Avatar } from "../../components/ui/Avatar";
+import { isSupabaseConfigured } from "../../lib/supabase";
 import {
   fetchMySpaces,
   fetchDiscoverableSpaces,
@@ -25,8 +25,12 @@ import {
   SPACE_NAME_MAX,
   SPACE_DESCRIPTION_MAX,
   type SpaceSummary,
-} from '../../lib/spaces';
-import { LoadingState, ErrorState, EmptyState } from '../../components/feedback/States';
+} from "../../lib/spaces";
+import {
+  LoadingState,
+  ErrorState,
+  EmptyState,
+} from "../../components/feedback/States";
 
 /**
  * Spaces — communities that organise conversations.
@@ -37,12 +41,12 @@ import { LoadingState, ErrorState, EmptyState } from '../../components/feedback/
  * fabricated zero.
  */
 
-type Tab = 'mine' | 'discover';
+type Tab = "mine" | "discover";
 
 export default function SpacesScreen() {
   const router = useRouter();
 
-  const [tab, setTab] = useState<Tab>('mine');
+  const [tab, setTab] = useState<Tab>("mine");
   const [mine, setMine] = useState<SpaceSummary[]>([]);
   const [discover, setDiscover] = useState<SpaceSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,8 +55,8 @@ export default function SpacesScreen() {
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const [composerOpen, setComposerOpen] = useState(false);
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [isPublic, setIsPublic] = useState(true);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -72,7 +76,7 @@ export default function SpacesScreen() {
       setDiscover(discoverable);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load spaces');
+      setError(err instanceof Error ? err.message : "Could not load spaces");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -89,37 +93,34 @@ export default function SpacesScreen() {
     return unsubscribe;
   }, [load]);
 
-  const onJoin = useCallback(
-    async (space: SpaceSummary) => {
-      setBusyId(space.id);
-      const result = await joinSpace(space.id);
-      setBusyId(null);
-      if (!result.ok) {
-        Alert.alert('Could not join', result.error ?? 'Try again in a bit.');
-        return;
-      }
-      // Moving the space from Discover into My keeps both lists honest without
-      // a full refetch.
-      setDiscover((rows) => rows.filter((row) => row.id !== space.id));
-      setMine((rows) => [{ ...space, myRole: 'member', memberCount: 1 }, ...rows]);
-    },
-    [],
-  );
+  const onJoin = useCallback(async (space: SpaceSummary) => {
+    setBusyId(space.id);
+    const result = await joinSpace(space.id);
+    setBusyId(null);
+    if (!result.ok) {
+      Alert.alert("Could not join", result.error ?? "Try again in a bit.");
+      return;
+    }
+    // Moving the space from Discover into My keeps both lists honest without
+    // a full refetch.
+    setDiscover((rows) => rows.filter((row) => row.id !== space.id));
+    setMine((rows) => [
+      { ...space, myRole: "member", memberCount: 1 },
+      ...rows,
+    ]);
+  }, []);
 
-  const onLeave = useCallback(
-    async (space: SpaceSummary) => {
-      setBusyId(space.id);
-      const result = await leaveSpace(space.id);
-      setBusyId(null);
-      if (!result.ok) {
-        Alert.alert('Could not leave', result.error ?? 'Try again in a bit.');
-        return;
-      }
-      setMine((rows) => rows.filter((row) => row.id !== space.id));
-      setDiscover((rows) => [space, ...rows]);
-    },
-    [],
-  );
+  const onLeave = useCallback(async (space: SpaceSummary) => {
+    setBusyId(space.id);
+    const result = await leaveSpace(space.id);
+    setBusyId(null);
+    if (!result.ok) {
+      Alert.alert("Could not leave", result.error ?? "Try again in a bit.");
+      return;
+    }
+    setMine((rows) => rows.filter((row) => row.id !== space.id));
+    setDiscover((rows) => [space, ...rows]);
+  }, []);
 
   const submitCreate = useCallback(async () => {
     setCreating(true);
@@ -132,13 +133,13 @@ export default function SpacesScreen() {
       return;
     }
     setComposerOpen(false);
-    setName('');
-    setDescription('');
-    setTab('mine');
+    setName("");
+    setDescription("");
+    setTab("mine");
     setMine((rows) => [result.space, ...rows]);
   }, [name, description, isPublic]);
 
-  const list = tab === 'mine' ? mine : discover;
+  const list = tab === "mine" ? mine : discover;
 
   const renderSpace = (space: SpaceSummary) => {
     const isMine = space.myRole !== null;
@@ -148,7 +149,7 @@ export default function SpacesScreen() {
       <View key={space.id} style={styles.card}>
         <TouchableOpacity
           style={styles.cardHead}
-          onPress={() => router.push('/chat')}
+          onPress={() => router.push("/chat")}
           accessibilityRole="button"
           accessibilityLabel={`Open ${space.name}`}
         >
@@ -158,9 +159,13 @@ export default function SpacesScreen() {
               {space.name}
             </Text>
             <Text style={styles.cardMeta} numberOfLines={1}>
-              {space.myRole ? `${space.myRole}` : space.isPublic ? 'Public' : 'Private'}
+              {space.myRole
+                ? `${space.myRole}`
+                : space.isPublic
+                  ? "Public"
+                  : "Private"}
               {space.memberCount === null
-                ? ' · members hidden'
+                ? " · members hidden"
                 : ` · ${space.memberCount} in`}
             </Text>
           </View>
@@ -177,17 +182,21 @@ export default function SpacesScreen() {
             <TouchableOpacity
               style={styles.secondaryBtn}
               onPress={() => void onLeave(space)}
-              disabled={busy || space.myRole === 'owner'}
+              disabled={busy || space.myRole === "owner"}
               accessibilityRole="button"
               accessibilityLabel={`Leave ${space.name}`}
             >
               <Text
                 style={[
                   styles.secondaryBtnText,
-                  space.myRole === 'owner' && styles.btnDisabled,
+                  space.myRole === "owner" && styles.btnDisabled,
                 ]}
               >
-                {space.myRole === 'owner' ? 'You own this' : busy ? '...' : 'Leave'}
+                {space.myRole === "owner"
+                  ? "You own this"
+                  : busy
+                    ? "..."
+                    : "Leave"}
               </Text>
             </TouchableOpacity>
           ) : (
@@ -198,7 +207,9 @@ export default function SpacesScreen() {
               accessibilityRole="button"
               accessibilityLabel={`Join ${space.name}`}
             >
-              <Text style={styles.primaryBtnText}>{busy ? '...' : 'Tap in'}</Text>
+              <Text style={styles.primaryBtnText}>
+                {busy ? "..." : "Tap in"}
+              </Text>
             </TouchableOpacity>
           )}
         </View>
@@ -224,7 +235,7 @@ export default function SpacesScreen() {
       </View>
 
       <View style={styles.tabs}>
-        {(['mine', 'discover'] as const).map((value) => (
+        {(["mine", "discover"] as const).map((value) => (
           <TouchableOpacity
             key={value}
             style={[styles.tab, tab === value && styles.tabActive]}
@@ -232,8 +243,10 @@ export default function SpacesScreen() {
             accessibilityRole="button"
             accessibilityState={{ selected: tab === value }}
           >
-            <Text style={[styles.tabText, tab === value && styles.tabTextActive]}>
-              {value === 'mine' ? 'Your spaces' : 'Discover'}
+            <Text
+              style={[styles.tabText, tab === value && styles.tabTextActive]}
+            >
+              {value === "mine" ? "Your spaces" : "Discover"}
             </Text>
           </TouchableOpacity>
         ))}
@@ -242,7 +255,13 @@ export default function SpacesScreen() {
       {!isSupabaseConfigured ? (
         <EmptyState
           message="Backend not configured. Set the Supabase URL and anon key to load spaces."
-          icon={<Ionicons name="cloud-offline-outline" size={36} color={COLORS.onSurfaceVariant} />}
+          icon={
+            <Ionicons
+              name="cloud-offline-outline"
+              size={36}
+              color={COLORS.onSurfaceVariant}
+            />
+          }
         />
       ) : loading ? (
         <LoadingState message="Loading spaces..." />
@@ -264,11 +283,17 @@ export default function SpacesScreen() {
           {list.length === 0 ? (
             <EmptyState
               message={
-                tab === 'mine'
-                  ? 'You are not in a space yet. Make one, or tap into Discover.'
-                  : 'Nothing public to join yet fr.'
+                tab === "mine"
+                  ? "You are not in a space yet. Make one, or tap into Discover."
+                  : "Nothing public to join yet fr."
               }
-              icon={<Ionicons name="planet-outline" size={36} color={COLORS.onSurfaceVariant} />}
+              icon={
+                <Ionicons
+                  name="planet-outline"
+                  size={36}
+                  color={COLORS.onSurfaceVariant}
+                />
+              }
             />
           ) : (
             list.map(renderSpace)
@@ -291,7 +316,11 @@ export default function SpacesScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Close"
               >
-                <Ionicons name="close" size={20} color={COLORS.onSurfaceVariant} />
+                <Ionicons
+                  name="close"
+                  size={20}
+                  color={COLORS.onSurfaceVariant}
+                />
               </TouchableOpacity>
             </View>
 
@@ -324,15 +353,23 @@ export default function SpacesScreen() {
               accessibilityRole="switch"
               accessibilityState={{ checked: isPublic }}
             >
-              <Text style={styles.toggleLabel}>Public — anyone can find and join</Text>
+              <Text style={styles.toggleLabel}>
+                Public — anyone can find and join
+              </Text>
               <View style={[styles.checkbox, isPublic && styles.checkboxOn]}>
                 {isPublic ? (
-                  <Ionicons name="checkmark" size={14} color={COLORS.onPrimary} />
+                  <Ionicons
+                    name="checkmark"
+                    size={14}
+                    color={COLORS.onPrimary}
+                  />
                 ) : null}
               </View>
             </TouchableOpacity>
 
-            {createError ? <Text style={styles.formError}>{createError}</Text> : null}
+            {createError ? (
+              <Text style={styles.formError}>{createError}</Text>
+            ) : null}
 
             <TouchableOpacity
               style={[styles.primaryBtn, styles.submitBtn]}
@@ -341,11 +378,13 @@ export default function SpacesScreen() {
               accessibilityRole="button"
             >
               <Text style={styles.primaryBtnText}>
-                {creating ? 'Setting up...' : 'Make it'}
+                {creating ? "Setting up..." : "Make it"}
               </Text>
             </TouchableOpacity>
 
-            <Text style={styles.formNote}>One field and you are in. No cleanup fr.</Text>
+            <Text style={styles.formNote}>
+              One field and you are in. No cleanup fr.
+            </Text>
           </View>
         </View>
       </Modal>
@@ -359,29 +398,29 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: SPACING.spaceMd,
     paddingTop: SPACING.spaceXs,
   },
   title: {
     ...TYPOGRAPHY.headlineMD,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.onSurface,
   },
   headerBtn: {
     width: 40,
     height: 40,
     borderRadius: RADIUS.full,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: COLORS.surfaceContainerHigh,
     borderWidth: 1,
     borderColor: COLORS.outlineVariant,
   },
   tabs: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: SPACING.spaceXs,
     paddingHorizontal: SPACING.spaceMd,
     paddingTop: SPACING.spaceSm,
@@ -403,7 +442,7 @@ const styles = StyleSheet.create({
   },
   tabTextActive: {
     color: COLORS.primaryContainer,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   list: {
     flex: 1,
@@ -422,8 +461,8 @@ const styles = StyleSheet.create({
     gap: SPACING.spaceXs,
   },
   cardHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: SPACING.spaceSm,
   },
   cardHeadBody: {
@@ -431,7 +470,7 @@ const styles = StyleSheet.create({
   },
   cardName: {
     ...TYPOGRAPHY.bodyMD,
-    fontWeight: '600',
+    fontWeight: "600",
     color: COLORS.onSurface,
   },
   cardMeta: {
@@ -444,8 +483,8 @@ const styles = StyleSheet.create({
     color: COLORS.onSurfaceVariant,
   },
   cardActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
+    flexDirection: "row",
+    justifyContent: "flex-end",
   },
   primaryBtn: {
     paddingHorizontal: SPACING.spaceSm,
@@ -455,7 +494,7 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: {
     ...TYPOGRAPHY.labelMD,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.onPrimary,
   },
   secondaryBtn: {
@@ -474,8 +513,8 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.6)",
   },
   modalSheet: {
     backgroundColor: COLORS.surfaceContainerLow,
@@ -485,14 +524,14 @@ const styles = StyleSheet.create({
     gap: SPACING.spaceXs,
   },
   modalHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: SPACING.spaceXs,
   },
   modalTitle: {
     ...TYPOGRAPHY.headlineSM,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.onSurface,
   },
   fieldLabel: {
@@ -511,12 +550,12 @@ const styles = StyleSheet.create({
   },
   inputMultiline: {
     minHeight: 72,
-    textAlignVertical: 'top',
+    textAlignVertical: "top",
   },
   toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingVertical: SPACING.spaceXs,
   },
   toggleLabel: {
@@ -530,8 +569,8 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 1,
     borderColor: COLORS.outline,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   checkboxOn: {
     backgroundColor: COLORS.primaryContainer,
@@ -543,12 +582,12 @@ const styles = StyleSheet.create({
   },
   submitBtn: {
     marginTop: SPACING.spaceXs,
-    alignItems: 'center',
+    alignItems: "center",
     paddingVertical: SPACING.spaceSm,
   },
   formNote: {
     ...TYPOGRAPHY.labelSM,
     color: COLORS.onSurfaceVariant,
-    textAlign: 'center',
+    textAlign: "center",
   },
 });

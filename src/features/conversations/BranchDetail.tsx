@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -7,14 +7,20 @@ import {
   FlatList,
   StyleSheet,
   Alert,
-} from 'react-native';
-import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { COLORS, RADIUS, SEMANTIC_COLORS, SPACING, TYPOGRAPHY } from '../../theme';
-import { Avatar } from '../../components/ui/Avatar';
-import { useAuth } from '../../lib/auth-context';
-import { isSupabaseConfigured } from '../../lib/supabase';
+} from "react-native";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  COLORS,
+  RADIUS,
+  SEMANTIC_COLORS,
+  SPACING,
+  TYPOGRAPHY,
+} from "../../theme";
+import { Avatar } from "../../components/ui/Avatar";
+import { useAuth } from "../../lib/auth-context";
+import { isSupabaseConfigured } from "../../lib/supabase";
 import {
   fetchBranch,
   fetchBranchMessages,
@@ -24,9 +30,13 @@ import {
   subscribeToBranch,
   BRANCH_TITLE_MAX,
   type BranchWithContext,
-} from '../../lib/branches';
-import type { MessageWithSender } from '../../lib/database.types';
-import { LoadingState, ErrorState, EmptyState } from '../../components/feedback/States';
+} from "../../lib/branches";
+import type { MessageWithSender } from "../../lib/database.types";
+import {
+  LoadingState,
+  ErrorState,
+  EmptyState,
+} from "../../components/feedback/States";
 
 /**
  * Branch — a room that sprouted off a message.
@@ -41,7 +51,10 @@ import { LoadingState, ErrorState, EmptyState } from '../../components/feedback/
  */
 
 function timeLabel(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export default function BranchDetail({ branchId }: { branchId: string }) {
@@ -53,10 +66,10 @@ export default function BranchDetail({ branchId }: { branchId: string }) {
   const [messages, setMessages] = useState<MessageWithSender[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [draft, setDraft] = useState('');
+  const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [renaming, setRenaming] = useState(false);
-  const [titleDraft, setTitleDraft] = useState('');
+  const [titleDraft, setTitleDraft] = useState("");
 
   const listRef = useRef<FlatList<MessageWithSender>>(null);
 
@@ -69,7 +82,7 @@ export default function BranchDetail({ branchId }: { branchId: string }) {
       // null here means either it does not exist or RLS hid it. Both are the
       // same thing to the caller: not found.
       if (!branchRow) {
-        setError('Branch not found');
+        setError("Branch not found");
         setLoading(false);
         return;
       }
@@ -77,7 +90,7 @@ export default function BranchDetail({ branchId }: { branchId: string }) {
       setMessages(branchMessages);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load branch');
+      setError(err instanceof Error ? err.message : "Could not load branch");
     } finally {
       setLoading(false);
     }
@@ -104,26 +117,28 @@ export default function BranchDetail({ branchId }: { branchId: string }) {
       Alert.alert("That didn't send ngl", result.error);
       return;
     }
-    setDraft('');
+    setDraft("");
     // The realtime subscription will deliver the row; scroll now so it does not
     // appear below the fold.
-    requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+    requestAnimationFrame(() =>
+      listRef.current?.scrollToEnd({ animated: true }),
+    );
   }, [draft, sending, branchId]);
 
   const confirmDelete = useCallback(() => {
     if (!branch) return;
     Alert.alert(
-      'Delete branch',
-      'Messages in here go back to the main chat. Nothing is lost.',
+      "Delete branch",
+      "Messages in here go back to the main chat. Nothing is lost.",
       [
-        { text: 'Keep it', style: 'cancel' },
+        { text: "Keep it", style: "cancel" },
         {
-          text: 'Delete',
-          style: 'destructive',
+          text: "Delete",
+          style: "destructive",
           onPress: async () => {
             const result = await deleteBranch(branch.id);
             if (!result.ok) {
-              Alert.alert('Could not delete', result.error);
+              Alert.alert("Could not delete", result.error);
               return;
             }
             router.replace(`/chat/${branch.conversationId}`);
@@ -137,7 +152,7 @@ export default function BranchDetail({ branchId }: { branchId: string }) {
     if (!branch) return;
     const result = await renameBranch(branch.id, titleDraft);
     if (!result.ok) {
-      Alert.alert('Could not rename', result.error);
+      Alert.alert("Could not rename", result.error);
       return;
     }
     setRenaming(false);
@@ -149,7 +164,13 @@ export default function BranchDetail({ branchId }: { branchId: string }) {
       <View style={styles.centered}>
         <EmptyState
           message="Backend not configured."
-          icon={<Ionicons name="cloud-offline-outline" size={36} color={COLORS.onSurfaceVariant} />}
+          icon={
+            <Ionicons
+              name="cloud-offline-outline"
+              size={36}
+              color={COLORS.onSurfaceVariant}
+            />
+          }
         />
       </View>
     );
@@ -162,7 +183,10 @@ export default function BranchDetail({ branchId }: { branchId: string }) {
   if (error || !branch) {
     return (
       <View style={styles.centered}>
-        <ErrorState message={error ?? 'Branch not found'} onRetry={() => void load()} />
+        <ErrorState
+          message={error ?? "Branch not found"}
+          onRetry={() => void load()}
+        />
         <TouchableOpacity
           style={styles.backFallback}
           onPress={() => router.back()}
@@ -174,12 +198,14 @@ export default function BranchDetail({ branchId }: { branchId: string }) {
     );
   }
 
-  const title = branch.title ?? 'Branch';
+  const title = branch.title ?? "Branch";
 
   return (
     <View style={styles.container}>
       {/* Header: back goes to the parent conversation, explicitly. */}
-      <View style={[styles.header, { paddingTop: insets.top + SPACING.spaceXs }]}>
+      <View
+        style={[styles.header, { paddingTop: insets.top + SPACING.spaceXs }]}
+      >
         <TouchableOpacity
           style={styles.headerBtn}
           onPress={() => router.replace(`/chat/${branch.conversationId}`)}
@@ -205,7 +231,7 @@ export default function BranchDetail({ branchId }: { branchId: string }) {
             <TouchableOpacity
               style={styles.titleRow}
               onPress={() => {
-                setTitleDraft(branch.title ?? '');
+                setTitleDraft(branch.title ?? "");
                 setRenaming(true);
               }}
               accessibilityRole="button"
@@ -214,11 +240,16 @@ export default function BranchDetail({ branchId }: { branchId: string }) {
               <Text style={styles.title} numberOfLines={1}>
                 {title}
               </Text>
-              <Ionicons name="pencil" size={12} color={COLORS.onSurfaceVariant} />
+              <Ionicons
+                name="pencil"
+                size={12}
+                color={COLORS.onSurfaceVariant}
+              />
             </TouchableOpacity>
           )}
           <Text style={styles.subtitle}>
-            {branch.messageCount} {branch.messageCount === 1 ? 'message' : 'messages'}
+            {branch.messageCount}{" "}
+            {branch.messageCount === 1 ? "message" : "messages"}
           </Text>
         </View>
 
@@ -228,7 +259,11 @@ export default function BranchDetail({ branchId }: { branchId: string }) {
           accessibilityRole="button"
           accessibilityLabel="Delete branch"
         >
-          <Ionicons name="trash-outline" size={19} color={COLORS.onSurfaceVariant} />
+          <Ionicons
+            name="trash-outline"
+            size={19}
+            color={COLORS.onSurfaceVariant}
+          />
         </TouchableOpacity>
       </View>
 
@@ -236,7 +271,11 @@ export default function BranchDetail({ branchId }: { branchId: string }) {
       {branch.rootMessage ? (
         <View style={styles.context}>
           <View style={styles.contextLabelRow}>
-            <Ionicons name="return-down-forward" size={12} color={COLORS.primaryContainer} />
+            <Ionicons
+              name="return-down-forward"
+              size={12}
+              color={COLORS.primaryContainer}
+            />
             <Text style={styles.contextLabel}>Started from</Text>
           </View>
           <View style={styles.contextBody}>
@@ -246,9 +285,11 @@ export default function BranchDetail({ branchId }: { branchId: string }) {
               size={22}
             />
             <Text style={styles.contextAuthor} numberOfLines={1}>
-              {branch.rootMessage.sender?.display_name ?? 'Someone'}
+              {branch.rootMessage.sender?.display_name ?? "Someone"}
             </Text>
-            <Text style={styles.contextTime}>{timeLabel(branch.rootMessage.created_at)}</Text>
+            <Text style={styles.contextTime}>
+              {timeLabel(branch.rootMessage.created_at)}
+            </Text>
           </View>
           <Text style={styles.contextText} numberOfLines={3}>
             {branch.rootMessage.content}
@@ -256,7 +297,9 @@ export default function BranchDetail({ branchId }: { branchId: string }) {
         </View>
       ) : (
         <View style={styles.context}>
-          <Text style={styles.contextMissing}>The original message was deleted.</Text>
+          <Text style={styles.contextMissing}>
+            The original message was deleted.
+          </Text>
         </View>
       )}
 
@@ -266,7 +309,9 @@ export default function BranchDetail({ branchId }: { branchId: string }) {
         keyExtractor={(item) => item.id}
         style={styles.list}
         contentContainerStyle={styles.listContent}
-        onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+        onContentSizeChange={() =>
+          listRef.current?.scrollToEnd({ animated: false })
+        }
         ListEmptyComponent={
           <View style={styles.emptyThread}>
             <Text style={styles.emptyThreadText}>
@@ -277,7 +322,9 @@ export default function BranchDetail({ branchId }: { branchId: string }) {
         renderItem={({ item }) => {
           const mine = item.sender_id === currentUser?.id;
           return (
-            <View style={[styles.row, mine ? styles.rowMine : styles.rowTheirs]}>
+            <View
+              style={[styles.row, mine ? styles.rowMine : styles.rowTheirs]}
+            >
               {!mine ? (
                 <Avatar
                   name={item.sender?.display_name}
@@ -287,15 +334,29 @@ export default function BranchDetail({ branchId }: { branchId: string }) {
               ) : null}
               <View style={styles.bubbleWrap}>
                 {!mine ? (
-                  <Text style={styles.senderName}>{item.sender?.display_name ?? 'Someone'}</Text>
-                ) : null}
-                <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}>
-                  <Text
-                    style={[styles.bubbleText, item.deleted_for_everyone && styles.bubbleDeleted]}
-                  >
-                    {item.deleted_for_everyone ? 'This message was deleted.' : item.content}
+                  <Text style={styles.senderName}>
+                    {item.sender?.display_name ?? "Someone"}
                   </Text>
-                  <Text style={styles.bubbleTime}>{timeLabel(item.created_at)}</Text>
+                ) : null}
+                <View
+                  style={[
+                    styles.bubble,
+                    mine ? styles.bubbleMine : styles.bubbleTheirs,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.bubbleText,
+                      item.deleted_for_everyone && styles.bubbleDeleted,
+                    ]}
+                  >
+                    {item.deleted_for_everyone
+                      ? "This message was deleted."
+                      : item.content}
+                  </Text>
+                  <Text style={styles.bubbleTime}>
+                    {timeLabel(item.created_at)}
+                  </Text>
                 </View>
               </View>
             </View>
@@ -304,7 +365,12 @@ export default function BranchDetail({ branchId }: { branchId: string }) {
       />
 
       {/* Composer */}
-      <View style={[styles.composer, { paddingBottom: insets.bottom + SPACING.spaceXs }]}>
+      <View
+        style={[
+          styles.composer,
+          { paddingBottom: insets.bottom + SPACING.spaceXs },
+        ]}
+      >
         <TextInput
           style={styles.composerInput}
           value={draft}
@@ -315,7 +381,10 @@ export default function BranchDetail({ branchId }: { branchId: string }) {
           accessibilityLabel="Message this branch"
         />
         <TouchableOpacity
-          style={[styles.sendBtn, draft.trim().length === 0 && styles.sendBtnDisabled]}
+          style={[
+            styles.sendBtn,
+            draft.trim().length === 0 && styles.sendBtnDisabled,
+          ]}
           onPress={() => void send()}
           disabled={draft.trim().length === 0 || sending}
           accessibilityRole="button"
@@ -324,7 +393,11 @@ export default function BranchDetail({ branchId }: { branchId: string }) {
           <Ionicons
             name="arrow-up"
             size={18}
-            color={draft.trim().length === 0 ? COLORS.onSurfaceVariant : COLORS.onPrimary}
+            color={
+              draft.trim().length === 0
+                ? COLORS.onSurfaceVariant
+                : COLORS.onPrimary
+            }
           />
         </TouchableOpacity>
       </View>
@@ -342,8 +415,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: SPACING.spaceSm,
     paddingHorizontal: SPACING.spaceSm,
     paddingBottom: SPACING.spaceSm,
@@ -357,19 +430,19 @@ const styles = StyleSheet.create({
     padding: SPACING.spaceXs,
   },
   titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: SPACING.spaceXs,
   },
   title: {
     ...TYPOGRAPHY.headlineSM,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.onSurface,
     flexShrink: 1,
   },
   titleInput: {
     ...TYPOGRAPHY.headlineSM,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.onSurface,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.primaryContainer,
@@ -389,25 +462,25 @@ const styles = StyleSheet.create({
     borderLeftColor: COLORS.primaryContainer,
   },
   contextLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
     marginBottom: SPACING.spaceXs,
   },
   contextLabel: {
     ...TYPOGRAPHY.labelSM,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.primaryContainer,
     letterSpacing: 0.5,
   },
   contextBody: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: SPACING.spaceXs,
   },
   contextAuthor: {
     ...TYPOGRAPHY.labelMD,
-    fontWeight: '600',
+    fontWeight: "600",
     color: COLORS.onSurface,
     flexShrink: 1,
   },
@@ -423,7 +496,7 @@ const styles = StyleSheet.create({
   contextMissing: {
     ...TYPOGRAPHY.bodySM,
     color: COLORS.onSurfaceVariant,
-    fontStyle: 'italic',
+    fontStyle: "italic",
   },
   list: {
     flex: 1,
@@ -434,26 +507,26 @@ const styles = StyleSheet.create({
   },
   emptyThread: {
     padding: SPACING.spaceLg,
-    alignItems: 'center',
+    alignItems: "center",
   },
   emptyThreadText: {
     ...TYPOGRAPHY.bodySM,
     color: COLORS.onSurfaceVariant,
   },
   row: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
+    flexDirection: "row",
+    alignItems: "flex-end",
     gap: SPACING.spaceXs,
     marginBottom: SPACING.spaceSm,
   },
   rowMine: {
-    justifyContent: 'flex-end',
+    justifyContent: "flex-end",
   },
   rowTheirs: {
-    justifyContent: 'flex-start',
+    justifyContent: "flex-start",
   },
   bubbleWrap: {
-    maxWidth: '80%',
+    maxWidth: "80%",
   },
   senderName: {
     ...TYPOGRAPHY.labelSM,
@@ -480,17 +553,17 @@ const styles = StyleSheet.create({
   },
   bubbleDeleted: {
     color: COLORS.onSurfaceVariant,
-    fontStyle: 'italic',
+    fontStyle: "italic",
   },
   bubbleTime: {
     ...TYPOGRAPHY.labelSM,
     color: SEMANTIC_COLORS.textDim,
     marginTop: 2,
-    alignSelf: 'flex-end',
+    alignSelf: "flex-end",
   },
   composer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
+    flexDirection: "row",
+    alignItems: "flex-end",
     gap: SPACING.spaceXs,
     paddingHorizontal: SPACING.spaceSm,
     paddingTop: SPACING.spaceXs,
@@ -513,8 +586,8 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: RADIUS.full,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: COLORS.primaryContainer,
   },
   sendBtnDisabled: {

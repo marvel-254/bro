@@ -1,4 +1,10 @@
-export type MessageStatus = 'pending' | 'sending' | 'sent' | 'delivered' | 'seen' | 'failed';
+export type MessageStatus =
+  | "pending"
+  | "sending"
+  | "sent"
+  | "delivered"
+  | "seen"
+  | "failed";
 
 export interface User {
   id: string;
@@ -7,14 +13,14 @@ export interface User {
   avatar?: string;
   bio?: string;
   interests?: string[];
-  status?: 'online' | 'offline' | 'away';
+  status?: "online" | "offline" | "away";
   isVerified: boolean;
   createdAt: string;
 }
 
 export interface Conversation {
   id: string;
-  type: 'direct' | 'group' | 'space' | 'live';
+  type: "direct" | "group" | "space" | "live";
   name?: string;
   avatar?: string;
   participantIds: string[];
@@ -30,7 +36,7 @@ export interface Message {
   conversationId: string;
   senderId: string;
   content: string;
-  type: 'text' | 'image' | 'file' | 'voice';
+  type: "text" | "image" | "file" | "voice";
   status: MessageStatus;
   createdAt: string;
   updatedAt: string;
@@ -62,11 +68,11 @@ export interface Attachment {
   id: string;
   messageId: string;
   uri: string;
-  type: 'image' | 'file' | 'video' | 'audio';
+  type: "image" | "file" | "video" | "audio";
   mimeType: string;
   size: number;
   name: string;
-  uploadStatus: 'pending' | 'uploading' | 'done' | 'failed';
+  uploadStatus: "pending" | "uploading" | "done" | "failed";
 }
 
 export interface Space {
@@ -84,10 +90,10 @@ export interface Space {
 
 export interface Activity {
   id: string;
-  type: 'reply' | 'mention' | 'reaction' | 'join' | 'invite' | 'follow';
+  type: "reply" | "mention" | "reaction" | "join" | "invite" | "follow";
   actorId: string;
   targetId?: string;
-  targetType?: 'conversation' | 'message' | 'space' | 'user';
+  targetType?: "conversation" | "message" | "space" | "user";
   createdAt: string;
   isRead: boolean;
 }
@@ -106,7 +112,7 @@ export interface ConversationMember {
   conversationId: string;
   userId: string;
   joinedAt: string;
-  role: 'admin' | 'member';
+  role: "admin" | "member";
   isMuted: boolean;
 }
 
@@ -114,7 +120,7 @@ export interface SpaceMember {
   spaceId: string;
   userId: string;
   joinedAt: string;
-  role: 'owner' | 'admin' | 'member';
+  role: "owner" | "admin" | "member";
 }
 
 export interface BlockedUser {

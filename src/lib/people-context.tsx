@@ -1,6 +1,13 @@
-import React, { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import { getSupabase } from './supabase';
-import type { Presence } from './presence';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
+import { getSupabase } from "./supabase";
+import type { Presence } from "./presence";
 
 /**
  * Roster of people who share a conversation with the signed-in user, along with
@@ -30,12 +37,18 @@ const PeopleContext = createContext<PeopleState | null>(null);
 export function usePeople(): PeopleState {
   const ctx = useContext(PeopleContext);
   if (!ctx) {
-    throw new Error('usePeople must be used within PeopleProvider');
+    throw new Error("usePeople must be used within PeopleProvider");
   }
   return ctx;
 }
 
-export function PeopleProvider({ userId, children }: { userId: string | null; children: ReactNode }) {
+export function PeopleProvider({
+  userId,
+  children,
+}: {
+  userId: string | null;
+  children: ReactNode;
+}) {
   const [people, setPeople] = useState<PersonPresence[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,15 +64,17 @@ export function PeopleProvider({ userId, children }: { userId: string | null; ch
     setError(null);
 
     const { data, error: queryError } = await supabase
-      .from('conversation_members')
-      .select(`
+      .from("conversation_members")
+      .select(
+        `
         user_id,
         profile:profiles!conversation_members_user_id_fkey (
           id, username, display_name, avatar_url,
           presence, presence_text, presence_emoji, last_seen_at
         )
-      `)
-      .neq('user_id', userId);
+      `,
+      )
+      .neq("user_id", userId);
 
     if (queryError) {
       setError(queryError.message);
@@ -89,7 +104,7 @@ export function PeopleProvider({ userId, children }: { userId: string | null; ch
           username: profile.username,
           displayName: profile.display_name,
           avatarUrl: profile.avatar_url,
-          presence: profile.presence ?? 'offline',
+          presence: profile.presence ?? "offline",
           statusText: profile.presence_text,
           emoji: profile.presence_emoji,
         };
@@ -113,10 +128,10 @@ export function PeopleProvider({ userId, children }: { userId: string | null; ch
     if (!supabase) return;
 
     const channel = supabase
-      .channel('people-presence')
+      .channel("people-presence")
       .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'profiles' },
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "profiles" },
         () => {
           void load();
         },
@@ -135,5 +150,7 @@ export function PeopleProvider({ userId, children }: { userId: string | null; ch
     refresh: load,
   };
 
-  return <PeopleContext.Provider value={value}>{children}</PeopleContext.Provider>;
+  return (
+    <PeopleContext.Provider value={value}>{children}</PeopleContext.Provider>
+  );
 }

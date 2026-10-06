@@ -1,4 +1,4 @@
-import { getSupabase } from './supabase';
+import { getSupabase } from "./supabase";
 
 /**
  * Plans — lightweight "tacos at 7?" proposals that Pulse's Tap-in strip reads.
@@ -9,8 +9,8 @@ import { getSupabase } from './supabase';
  * stacking a second row.
  */
 
-export type PlanKind = 'football' | 'outing' | 'meal' | 'event' | 'other';
-export type PlanResponse = 'going' | 'maybe' | 'cant';
+export type PlanKind = "football" | "outing" | "meal" | "event" | "other";
+export type PlanResponse = "going" | "maybe" | "cant";
 
 export const PLAN_TITLE_MAX = 120;
 export const PLAN_LOCATION_MAX = 120;
@@ -57,12 +57,12 @@ export function isFutureStart(iso: string, now: number = Date.now()): boolean {
 export async function createPlan(input: PlanInput): Promise<CreatePlanResult> {
   const supabase = getSupabase();
   if (!supabase) {
-    return { ok: false, error: 'Backend not configured' };
+    return { ok: false, error: "Backend not configured" };
   }
 
   const title = input.title.trim();
   if (!title) {
-    return { ok: false, error: 'Say what the plan is' };
+    return { ok: false, error: "Say what the plan is" };
   }
   if (title.length > PLAN_TITLE_MAX) {
     return { ok: false, error: `Keep it under ${PLAN_TITLE_MAX} characters` };
@@ -70,32 +70,35 @@ export async function createPlan(input: PlanInput): Promise<CreatePlanResult> {
 
   const location = input.location?.trim() || null;
   if (location && location.length > PLAN_LOCATION_MAX) {
-    return { ok: false, error: `Keep the place under ${PLAN_LOCATION_MAX} characters` };
+    return {
+      ok: false,
+      error: `Keep the place under ${PLAN_LOCATION_MAX} characters`,
+    };
   }
 
   if (!isFutureStart(input.startsAt)) {
-    return { ok: false, error: 'Pick a time in the future' };
+    return { ok: false, error: "Pick a time in the future" };
   }
 
   const selfId = await currentUserId();
   if (!selfId) {
-    return { ok: false, error: 'Not signed in' };
+    return { ok: false, error: "Not signed in" };
   }
 
   const { data, error } = await supabase
-    .from('plans')
+    .from("plans")
     .insert({
       creator_id: selfId,
       title,
-      kind: input.kind ?? 'other',
+      kind: input.kind ?? "other",
       starts_at: input.startsAt,
       location,
     })
-    .select('id')
+    .select("id")
     .single();
 
   if (error || !data) {
-    return { ok: false, error: error?.message ?? 'Could not make the plan' };
+    return { ok: false, error: error?.message ?? "Could not make the plan" };
   }
 
   return { ok: true, planId: (data as { id: string }).id };
@@ -112,18 +115,20 @@ export async function respondToPlan(
 ): Promise<{ ok: boolean; error?: string }> {
   const supabase = getSupabase();
   if (!supabase) {
-    return { ok: false, error: 'Backend not configured' };
+    return { ok: false, error: "Backend not configured" };
   }
 
   const selfId = await currentUserId();
   if (!selfId) {
-    return { ok: false, error: 'Not signed in' };
+    return { ok: false, error: "Not signed in" };
   }
 
-  const { error } = await supabase.from('plan_responses').upsert(
-    { plan_id: planId, user_id: selfId, response },
-    { onConflict: 'plan_id,user_id' },
-  );
+  const { error } = await supabase
+    .from("plan_responses")
+    .upsert(
+      { plan_id: planId, user_id: selfId, response },
+      { onConflict: "plan_id,user_id" },
+    );
 
   if (error) {
     return { ok: false, error: error.message };
@@ -132,22 +137,24 @@ export async function respondToPlan(
 }
 
 /** Withdraw your answer entirely. */
-export async function withdrawPlanResponse(planId: string): Promise<{ ok: boolean; error?: string }> {
+export async function withdrawPlanResponse(
+  planId: string,
+): Promise<{ ok: boolean; error?: string }> {
   const supabase = getSupabase();
   if (!supabase) {
-    return { ok: false, error: 'Backend not configured' };
+    return { ok: false, error: "Backend not configured" };
   }
 
   const selfId = await currentUserId();
   if (!selfId) {
-    return { ok: false, error: 'Not signed in' };
+    return { ok: false, error: "Not signed in" };
   }
 
   const { error } = await supabase
-    .from('plan_responses')
+    .from("plan_responses")
     .delete()
-    .eq('plan_id', planId)
-    .eq('user_id', selfId);
+    .eq("plan_id", planId)
+    .eq("user_id", selfId);
 
   if (error) {
     return { ok: false, error: error.message };
@@ -168,10 +175,10 @@ export async function fetchPlans(limit: number = 20): Promise<PlanSummary[]> {
   const selfId = await currentUserId();
 
   const { data, error } = await supabase
-    .from('plans')
-    .select('id, creator_id, title, kind, starts_at, location, expires_at')
-    .gt('expires_at', new Date().toISOString())
-    .order('starts_at', { ascending: true })
+    .from("plans")
+    .select("id, creator_id, title, kind, starts_at, location, expires_at")
+    .gt("expires_at", new Date().toISOString())
+    .order("starts_at", { ascending: true })
     .limit(limit);
 
   if (error) {
@@ -195,19 +202,27 @@ export async function fetchPlans(limit: number = 20): Promise<PlanSummary[]> {
   const ids = plans.map((plan) => plan.id);
 
   const { data: responseRows } = await supabase
-    .from('plan_responses')
-    .select('plan_id, user_id, response')
-    .in('plan_id', ids);
+    .from("plan_responses")
+    .select("plan_id, user_id, response")
+    .in("plan_id", ids);
 
-  const tally = new Map<string, { going: number; maybe: number; cant: number; mine: PlanResponse | null }>();
+  const tally = new Map<
+    string,
+    { going: number; maybe: number; cant: number; mine: PlanResponse | null }
+  >();
   for (const row of (responseRows ?? []) as Array<{
     plan_id: string;
     user_id: string;
     response: PlanResponse;
   }>) {
-    const entry = tally.get(row.plan_id) ?? { going: 0, maybe: 0, cant: 0, mine: null };
-    if (row.response === 'going') entry.going += 1;
-    else if (row.response === 'maybe') entry.maybe += 1;
+    const entry = tally.get(row.plan_id) ?? {
+      going: 0,
+      maybe: 0,
+      cant: 0,
+      mine: null,
+    };
+    if (row.response === "going") entry.going += 1;
+    else if (row.response === "maybe") entry.maybe += 1;
     else entry.cant += 1;
     if (selfId && row.user_id === selfId) {
       entry.mine = row.response;
@@ -217,17 +232,25 @@ export async function fetchPlans(limit: number = 20): Promise<PlanSummary[]> {
 
   const creatorIds = [...new Set(plans.map((plan) => plan.creator_id))];
   const { data: creatorRows } = await supabase
-    .from('profiles')
-    .select('id, display_name')
-    .in('id', creatorIds);
+    .from("profiles")
+    .select("id, display_name")
+    .in("id", creatorIds);
 
   const nameById = new Map<string, string>();
-  for (const row of (creatorRows ?? []) as Array<{ id: string; display_name: string }>) {
+  for (const row of (creatorRows ?? []) as Array<{
+    id: string;
+    display_name: string;
+  }>) {
     nameById.set(row.id, row.display_name);
   }
 
   return plans.map((plan) => {
-    const counts = tally.get(plan.id) ?? { going: 0, maybe: 0, cant: 0, mine: null };
+    const counts = tally.get(plan.id) ?? {
+      going: 0,
+      maybe: 0,
+      cant: 0,
+      mine: null,
+    };
     return {
       id: plan.id,
       creatorId: plan.creator_id,

@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState } from "react";
 import {
   View,
   Text,
@@ -7,14 +7,18 @@ import {
   StyleSheet,
   TextInput,
   Alert,
-} from 'react-native';
-import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING, RADIUS, TYPOGRAPHY } from '../../theme';
-import { Avatar } from '../../components/ui/Avatar';
-import { usePeople } from '../../lib/people-context';
-import { createDirectConversation } from '../../lib/conversations';
-import { LoadingState, ErrorState, EmptyState } from '../../components/feedback/States';
+} from "react-native";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { COLORS, SPACING, RADIUS, TYPOGRAPHY } from "../../theme";
+import { Avatar } from "../../components/ui/Avatar";
+import { usePeople } from "../../lib/people-context";
+import { createDirectConversation } from "../../lib/conversations";
+import {
+  LoadingState,
+  ErrorState,
+  EmptyState,
+} from "../../components/feedback/States";
 
 /**
  * New chat — pick a person from your circle to start (or resume) a direct
@@ -24,13 +28,14 @@ import { LoadingState, ErrorState, EmptyState } from '../../components/feedback/
 export default function NewChatScreen() {
   const router = useRouter();
   const { people, loading, error, refresh } = usePeople();
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState("");
   const [starting, setStarting] = useState<string | null>(null);
 
   const filtered = query.trim()
-    ? people.filter((person) =>
-        person.displayName.toLowerCase().includes(query.toLowerCase()) ||
-        (person.username ?? '').toLowerCase().includes(query.toLowerCase()),
+    ? people.filter(
+        (person) =>
+          person.displayName.toLowerCase().includes(query.toLowerCase()) ||
+          (person.username ?? "").toLowerCase().includes(query.toLowerCase()),
       )
     : people;
 
@@ -42,7 +47,7 @@ export default function NewChatScreen() {
       if (result.ok) {
         router.replace(`/chat/${result.conversationId}`);
       } else {
-        Alert.alert('Could not start chat', result.error);
+        Alert.alert("Could not start chat", result.error);
       }
     },
     [router],
@@ -64,16 +69,23 @@ export default function NewChatScreen() {
       />
       <View style={styles.rowBody}>
         <Text style={styles.rowName}>{item.displayName}</Text>
-        <Text style={styles.rowHandle}>@{item.username ?? 'user'}</Text>
+        <Text style={styles.rowHandle}>@{item.username ?? "user"}</Text>
       </View>
-      <Ionicons name="chatbubble-outline" size={20} color={COLORS.semantic.textDim} />
+      <Ionicons
+        name="chatbubble-outline"
+        size={20}
+        color={COLORS.semantic.textDim}
+      />
     </TouchableOpacity>
   );
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} accessibilityRole="button">
+        <TouchableOpacity
+          onPress={() => router.back()}
+          accessibilityRole="button"
+        >
           <Ionicons name="arrow-back" size={24} color={COLORS.onSurface} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>New chat</Text>
@@ -98,7 +110,13 @@ export default function NewChatScreen() {
       ) : filtered.length === 0 ? (
         <EmptyState
           message="Nobody in your circle yet. Start a conversation from a profile to add people."
-          icon={<Ionicons name="people-outline" size={40} color={COLORS.semantic.textDim} />}
+          icon={
+            <Ionicons
+              name="people-outline"
+              size={40}
+              color={COLORS.semantic.textDim}
+            />
+          }
         />
       ) : (
         <FlatList
@@ -118,8 +136,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.semantic.canvasRoot,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: SPACING.spaceMd,
     paddingHorizontal: SPACING.gutter,
     paddingTop: SPACING.spaceLg,
@@ -130,8 +148,8 @@ const styles = StyleSheet.create({
     color: COLORS.semantic.textPrimary,
   },
   searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: SPACING.spaceSm,
     marginHorizontal: SPACING.gutter,
     marginBottom: SPACING.spaceMd,
@@ -152,8 +170,8 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.spaceXl,
   },
   row: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: SPACING.spaceMd,
     paddingVertical: SPACING.spaceMd,
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -165,11 +183,11 @@ const styles = StyleSheet.create({
   rowName: {
     ...TYPOGRAPHY.bodyMD,
     color: COLORS.semantic.textPrimary,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   rowHandle: {
     ...TYPOGRAPHY.labelSM,
     color: COLORS.semantic.textDim,
-    fontFamily: 'monospace',
+    fontFamily: "monospace",
   },
 });

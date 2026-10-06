@@ -7,11 +7,15 @@ import React, {
   useRef,
   useState,
   type ReactNode,
-} from 'react';
-import { AppState, DeviceEventEmitter, type AppStateStatus } from 'react-native';
-import { getSupabase } from './supabase';
-import { persistPresence, type Presence } from './presence';
-import type { User } from '../types';
+} from "react";
+import {
+  AppState,
+  DeviceEventEmitter,
+  type AppStateStatus,
+} from "react-native";
+import { getSupabase } from "./supabase";
+import { persistPresence, type Presence } from "./presence";
+import type { User } from "../types";
 
 /**
  * Owns the caller's presence for the whole app session.
@@ -35,7 +39,10 @@ interface PresenceState {
   presence: Presence;
   statusText: string | null;
   emoji: string | null;
-  setPresence: (presence: Presence, options?: { text?: string; emoji?: string }) => Promise<void>;
+  setPresence: (
+    presence: Presence,
+    options?: { text?: string; emoji?: string },
+  ) => Promise<void>;
   isBusy: boolean;
 }
 
@@ -44,7 +51,7 @@ const PresenceContext = createContext<PresenceState | null>(null);
 export function usePresence(): PresenceState {
   const ctx = useContext(PresenceContext);
   if (!ctx) {
-    throw new Error('usePresence must be used within PresenceProvider');
+    throw new Error("usePresence must be used within PresenceProvider");
   }
   return ctx;
 }
@@ -56,7 +63,7 @@ export function PresenceProvider({
   user: User | null;
   children: ReactNode;
 }) {
-  const [presence, setPresenceState] = useState<Presence>('offline');
+  const [presence, setPresenceState] = useState<Presence>("offline");
   const [statusText, setStatusText] = useState<string | null>(null);
   const [emoji, setEmoji] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
@@ -72,7 +79,11 @@ export function PresenceProvider({
       setPresenceState(next);
       if (text !== undefined) setStatusText(text);
       if (nextEmoji !== undefined) setEmoji(nextEmoji);
-      await persistPresence(next, text ?? statusText ?? undefined, nextEmoji ?? emoji ?? undefined);
+      await persistPresence(
+        next,
+        text ?? statusText ?? undefined,
+        nextEmoji ?? emoji ?? undefined,
+      );
     },
     [statusText, emoji],
   );
@@ -86,8 +97,8 @@ export function PresenceProvider({
       return;
     }
     idleTimer.current = setTimeout(() => {
-      if (manual.current === null && AppState.currentState === 'active') {
-        void applyPresence('afk');
+      if (manual.current === null && AppState.currentState === "active") {
+        void applyPresence("afk");
       }
     }, IDLE_AFTER_MS);
   }, [user, applyPresence]);
@@ -96,7 +107,7 @@ export function PresenceProvider({
   useEffect(() => {
     if (!user) {
       manual.current = null;
-      setPresenceState('offline');
+      setPresenceState("offline");
       setStatusText(null);
       setEmoji(null);
       return;
@@ -108,9 +119,9 @@ export function PresenceProvider({
       if (!supabase || cancelled) return;
 
       const { data } = await supabase
-        .from('profiles')
-        .select('presence, presence_text, presence_emoji')
-        .eq('id', user.id)
+        .from("profiles")
+        .select("presence, presence_text, presence_emoji")
+        .eq("id", user.id)
         .maybeSingle<{
           presence: Presence;
           presence_text: string | null;
@@ -122,9 +133,13 @@ export function PresenceProvider({
       setEmoji(data.presence_emoji);
 
       // Coming back to a backgrounded session always resumes as online.
-      if (AppState.currentState === 'active') {
-        setPresenceState('online');
-        void persistPresence('online', data.presence_text ?? undefined, data.presence_emoji ?? undefined);
+      if (AppState.currentState === "active") {
+        setPresenceState("online");
+        void persistPresence(
+          "online",
+          data.presence_text ?? undefined,
+          data.presence_emoji ?? undefined,
+        );
       }
     })();
 
@@ -146,10 +161,10 @@ export function PresenceProvider({
         backgroundTimer.current = null;
       }
 
-      if (next === 'active') {
+      if (next === "active") {
         lastInteraction.current = Date.now();
         manual.current = null;
-        void applyPresence('online');
+        void applyPresence("online");
         armIdleTimer();
         return;
       }
@@ -158,11 +173,11 @@ export function PresenceProvider({
       // prompt, control centre) should not flip the dot.
       backgroundTimer.current = setTimeout(() => {
         manual.current = null;
-        void applyPresence('offline');
+        void applyPresence("offline");
       }, BACKGROUND_GRACE_MS);
     };
 
-    const subscription = AppState.addEventListener('change', onChange);
+    const subscription = AppState.addEventListener("change", onChange);
     return () => {
       subscription.remove();
       if (backgroundTimer.current) {
@@ -186,14 +201,14 @@ export function PresenceProvider({
         clearTimeout(idleTimer.current);
         idleTimer.current = null;
       }
-      if (presence === 'afk' && manual.current === null) {
-        void applyPresence('online');
+      if (presence === "afk" && manual.current === null) {
+        void applyPresence("online");
       }
       armIdleTimer();
     };
 
     const emitter = DeviceEventEmitter;
-    const subscription = emitter.addListener('presenceActivity', markActive);
+    const subscription = emitter.addListener("presenceActivity", markActive);
     return () => subscription.remove();
   }, [user, presence, applyPresence, armIdleTimer]);
 
@@ -202,9 +217,13 @@ export function PresenceProvider({
       setIsBusy(true);
       try {
         // Choosing a non-default state pins it until the app is backgrounded.
-        manual.current = next === 'online' ? null : next;
-        await applyPresence(next, options?.text ?? null, options?.emoji ?? null);
-        if (next === 'online') {
+        manual.current = next === "online" ? null : next;
+        await applyPresence(
+          next,
+          options?.text ?? null,
+          options?.emoji ?? null,
+        );
+        if (next === "online") {
           armIdleTimer();
         }
       } finally {
@@ -219,5 +238,9 @@ export function PresenceProvider({
     [presence, statusText, emoji, setPresence, isBusy],
   );
 
-  return <PresenceContext.Provider value={value}>{children}</PresenceContext.Provider>;
+  return (
+    <PresenceContext.Provider value={value}>
+      {children}
+    </PresenceContext.Provider>
+  );
 }
