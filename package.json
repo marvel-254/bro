@@ -28,7 +28,7 @@
     "expo-secure-store": "~14.2.4",
     "expo-splash-screen": "~0.30.0",
     "expo-status-bar": "~2.2.3",
-    "query-string": "^9.5.1",
+    "query-string": "7.1.1",
     "react": "19.0.0",
     "react-native": "0.79.6",
     "react-native-gesture-handler": "~2.24.0",

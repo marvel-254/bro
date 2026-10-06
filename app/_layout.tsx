@@ -1,3 +1,4 @@
+import { Slot } from 'expo-router';
 import { COLORS } from '../src/theme';
 import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
@@ -28,11 +29,14 @@ function AppProviders({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       {/* Outermost on purpose: a throw inside any provider below would
-          otherwise take the whole tree down and render nothing at all. */}
+          otherwise take the whole tree down and render nothing at all.
+          `<Slot />` (not `children`) is what mounts the matched route --
+          expo-router v5 does not hand the root layout a `children` prop, so
+          rendering it produced an empty tree and a black screen. */}
       <ErrorBoundary>
         <SafeAreaProvider>
           <InviteProvider>
@@ -40,7 +44,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <AppProviders>
                 <View style={{ flex: 1, backgroundColor: COLORS.semantic.canvasRoot }}>
                   <StatusBar style="light" />
-                  {children}
+                  <Slot />
                 </View>
               </AppProviders>
             </AuthProvider>
