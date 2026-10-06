@@ -10,6 +10,7 @@ import IncomingCallOverlay from '../src/features/calls/IncomingCallOverlay';
 import { InviteProvider } from '../src/lib/invite-context';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import ErrorBoundary from '../src/components/feedback/ErrorBoundary';
 
 function AppProviders({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
@@ -36,7 +37,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <AppProviders>
               <View style={{ flex: 1, backgroundColor: COLORS.semantic.canvasRoot }}>
                 <StatusBar style="light" />
-                {children}
+                <ErrorBoundary>{children}</ErrorBoundary>
               </View>
             </AppProviders>
           </AuthProvider>
