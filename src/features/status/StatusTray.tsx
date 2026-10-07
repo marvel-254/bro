@@ -8,6 +8,9 @@ import type { StatusGroup } from "../../lib/statuses";
 type Props = {
   groups: StatusGroup[];
   viewerId: string | null;
+  /** The viewer's own name and picture, for the compose tile. */
+  viewerName: string | null;
+  viewerAvatar: string | null;
   onOpen: (authorId: string) => void;
   onCompose: () => void;
   loading?: boolean;
@@ -23,10 +26,20 @@ type Props = {
 export default function StatusTray({
   groups,
   viewerId,
+  viewerName,
+  viewerAvatar,
   onOpen,
   onCompose,
   loading,
 }: Props) {
+  // The compose tile already represents the viewer, so their own group would
+  // otherwise render a second "Your story" beside it. The tile also used to
+  // borrow groups[0]'s avatar, which before you had posted anything was a
+  // stranger's face under your own name.
+  const others = viewerId
+    ? groups.filter((group) => group.authorId !== viewerId)
+    : groups;
+
   if (loading && groups.length === 0) return null;
 
   return (
@@ -43,7 +56,7 @@ export default function StatusTray({
           accessibilityLabel="Add your status"
         >
           <View>
-            <Avatar name="You" uri={groups[0]?.authorAvatar} size={48} />
+            <Avatar name={viewerName ?? "You"} uri={viewerAvatar} size={48} />
             <View style={styles.addBadge}>
               <Ionicons name="add" size={13} color={COLORS.onPrimary} />
             </View>
@@ -53,7 +66,7 @@ export default function StatusTray({
           </Text>
         </Pressable>
 
-        {groups.map((group) => (
+        {others.map((group) => (
           <Pressable
             key={group.authorId}
             onPress={() => onOpen(group.authorId)}
@@ -74,12 +87,12 @@ export default function StatusTray({
               />
             </View>
             <Text style={styles.name} numberOfLines={1}>
-              {group.authorId === viewerId ? "Your story" : group.authorName}
+              {group.authorName}
             </Text>
           </Pressable>
         ))}
 
-        {groups.length === 0 && !loading ? (
+        {others.length === 0 && !loading ? (
           <View style={styles.empty}>
             <Text style={styles.emptyText}>
               No statuses yet. Yours is one tap away.

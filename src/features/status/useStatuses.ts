@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchStatuses, groupStatuses, type StatusGroup } from "../../lib/statuses";
 
@@ -36,16 +37,21 @@ export function useStatuses({ viewerId, enabled = true }: Args): StatusState {
 
   useEffect(() => {
     let cancelled = false;
-    try {
-      const raw = globalThis.localStorage?.getItem(STORAGE_KEY);
-      const parsed = raw ? (JSON.parse(raw) as string[]) : [];
-      if (!cancelled && Array.isArray(parsed)) {
-        setSeenIds(new Set(parsed));
+    void (async () => {
+      try {
+        // AsyncStorage, not `globalThis.localStorage`: Hermes has no `window`,
+        // so the optional chains on the web API silently no-op and every launch
+        // resets the tray to "everything unseen".
+        const raw = await AsyncStorage.getItem(STORAGE_KEY);
+        const parsed = raw ? (JSON.parse(raw) as string[]) : [];
+        if (!cancelled && Array.isArray(parsed)) {
+          setSeenIds(new Set(parsed));
+        }
+      } catch {
+        // A corrupt cache is not worth surfacing; start unseen.
       }
-    } catch {
-      // A corrupt cache is not worth surfacing; start unseen.
-    }
-    hydrated.current = true;
+      hydrated.current = true;
+    })();
     return () => {
       cancelled = true;
     };
@@ -74,11 +80,11 @@ export function useStatuses({ viewerId, enabled = true }: Args): StatusState {
     setSeenIds((prev) => {
       const next = new Set(prev);
       for (const id of ids) next.add(id);
-      try {
-        globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify([...next]));
-      } catch {
-        // Best effort: seen state is a nicety, never a correctness issue.
-      }
+      void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([...next])).catch(
+        () => {
+          // Best effort: seen state is a nicety, never a correctness issue.
+        },
+      );
       return next;
     });
   }, []);

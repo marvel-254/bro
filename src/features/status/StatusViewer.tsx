@@ -34,8 +34,20 @@ type Props = {
   onSeen: (statusIds: string[]) => void;
 };
 
-/** Seconds each item holds the screen, like a story. */
-const DWELL_MS = 6000;
+/**
+ * How long each item holds the screen before it advances, like a story.
+ *
+ * Text gets longer than a photo because reading is slower than glancing, and
+ * a viewer who cannot finish a sentence before it vanishes will just tap
+ * through. The kinds this screen cannot render yet (video, voice, location)
+ * get the text duration rather than an infinite stall.
+ */
+const DWELL_MS = 8000;
+const PHOTO_DWELL_MS = 6000;
+
+function dwellMsFor(kind: StatusUpdate["kind"]): number {
+  return kind === "photo" ? PHOTO_DWELL_MS : DWELL_MS;
+}
 
 export default function StatusViewer({
   visible,
@@ -117,16 +129,19 @@ export default function StatusViewer({
   // Dwell timer. Pauses while the composer is open so typing is not eaten.
   useEffect(() => {
     if (!visible || !item || composerOpen) return;
-    if (item.kind !== "photo") return;
 
+    // Every kind is marked seen as it is shown. Gating this on media meant
+    // text statuses — the cheap, common case — left their author's ring blue
+    // forever, so "unseen" never meant anything.
     markSeen(item);
     setProgress(0);
 
+    const duration = dwellMsFor(item.kind);
     const startedAt = Date.now();
     timer.current = setInterval(() => {
       const elapsed = Date.now() - startedAt;
-      setProgress(Math.min(1, elapsed / DWELL_MS));
-      if (elapsed >= DWELL_MS) {
+      setProgress(Math.min(1, elapsed / duration));
+      if (elapsed >= duration) {
         if (timer.current) clearInterval(timer.current);
         advance();
       }

@@ -160,6 +160,8 @@ export default function PulseScreen() {
         <StatusTray
           groups={statuses.groups}
           viewerId={user?.id ?? null}
+          viewerName={user?.displayName ?? null}
+          viewerAvatar={user?.avatar ?? null}
           loading={statuses.loading}
           onOpen={(authorId) => setStatusViewer({ authorId })}
           onCompose={() => setComposingStatus(true)}

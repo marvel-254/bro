@@ -61,6 +61,10 @@ export type SearchGifsOptions = {
  * Search the library. With no query this lists what's curated; with one it
  * matches title or tags. Trigram matching handles typos, and the ilike
  * fallback keeps it working if pg_trgm is unavailable.
+ *
+ * Throws when the query itself fails. Returning `[]` on a dropped request is
+ * what let the picker tell the user the library was empty when it was not.
+ * A missing backend still returns `[]` — that is genuinely an empty library.
  */
 export async function searchGifs(
   query: string,
@@ -79,6 +83,11 @@ export async function searchGifs(
     .from("gif_library")
     .select("id, storage_path, title, tags, width, height, size_bytes")
     .eq("is_listed", true)
+    // Newest first, so "browse" is stable instead of reshuffling between
+    // queries. An unordered LIMIT has no guaranteed order in Postgres, and
+    // gif_library_listed_idx is on (is_listed, created_at desc), so this is
+    // also the order the index already serves.
+    .order("created_at", { ascending: false })
     .limit(limit);
 
   if (cleaned.length > 0) {
@@ -89,7 +98,8 @@ export async function searchGifs(
   }
 
   const { data, error } = await builder;
-  if (error || !data) return [];
+  if (error) throw new Error(error.message);
+  if (!data) return [];
 
   return (data as unknown as GifRow[])
     .filter((row) => isSafeGifPath(row.storage_path))

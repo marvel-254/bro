@@ -36,14 +36,19 @@ export default function GifPicker({ visible, onClose, onPick }: Props) {
   const [gifs, setGifs] = useState<Gif[]>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  /** Set only by a failed request, so "empty" stays a real answer. */
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async (q: string) => {
     setLoading(true);
+    setError(null);
     try {
-      const rows = await searchGifs(q, { limit: PAGE_SIZE });
-      setGifs(rows);
-    } catch {
+      setGifs(await searchGifs(q, { limit: PAGE_SIZE }));
+    } catch (err) {
       setGifs([]);
+      setError(
+        err instanceof Error ? err.message : "Could not reach the library",
+      );
     } finally {
       setLoading(false);
       setLoaded(true);
@@ -62,6 +67,7 @@ export default function GifPicker({ visible, onClose, onPick }: Props) {
       setQuery("");
       setGifs([]);
       setLoaded(false);
+      setError(null);
     }
   }, [visible]);
 
@@ -103,6 +109,24 @@ export default function GifPicker({ visible, onClose, onPick }: Props) {
           {loading && gifs.length === 0 ? (
             <View style={styles.center}>
               <ActivityIndicator color={COLORS.primaryContainer} />
+            </View>
+          ) : error && gifs.length === 0 ? (
+            <View style={styles.center}>
+              <Ionicons
+                name="cloud-offline-outline"
+                size={36}
+                color={COLORS.semantic.textDim}
+              />
+              <Text style={styles.emptyTitle}>Could not load GIFs</Text>
+              <Text style={styles.emptyBody}>{error}</Text>
+              <Pressable
+                onPress={() => void load(query)}
+                style={styles.retry}
+                accessibilityRole="button"
+                accessibilityLabel="Try loading GIFs again"
+              >
+                <Text style={styles.retryText}>Try again</Text>
+              </Pressable>
             </View>
           ) : loaded && gifs.length === 0 ? (
             <View style={styles.center}>
@@ -215,5 +239,17 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.bodyMD,
     color: COLORS.semantic.textDim,
     textAlign: "center",
+  },
+  retry: {
+    marginTop: SPACING.spaceMd,
+    paddingHorizontal: SPACING.spaceLg,
+    paddingVertical: SPACING.spaceSm,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: COLORS.outline,
+  },
+  retryText: {
+    ...TYPOGRAPHY.labelLG,
+    color: COLORS.primaryContainer,
   },
 });
