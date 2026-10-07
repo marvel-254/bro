@@ -1,5 +1,6 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from "../../theme";
 
 type Props = {
@@ -21,8 +22,11 @@ type Props = {
  * same place, at the same height, with the same type scale.
  */
 export default function AppBar({ title, subtitle, left, right }: Props) {
+  // The bar is the topmost thing on the page, so it has to clear the status
+  // bar itself rather than relying on an enclosing SafeAreaView.
+  const insets = useSafeAreaInsets();
   return (
-    <View style={styles.bar}>
+    <View style={[styles.bar, { paddingTop: insets.top + SPACING.spaceSm }]}>
       {left ? <View style={styles.side}>{left}</View> : null}
       <View style={styles.titles}>
         <Text style={styles.title} numberOfLines={1} accessibilityRole="header">
@@ -43,9 +47,9 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: "row",
     alignItems: "center",
-    minHeight: 56,
+    minHeight: 68,
     paddingHorizontal: SPACING.gutter,
-    paddingVertical: SPACING.spaceSm,
+    paddingBottom: SPACING.spaceMd,
     backgroundColor: COLORS.semantic.surfaceLevel1,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: COLORS.semantic.ghostBorderLight,
@@ -56,12 +60,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   title: {
-    ...TYPOGRAPHY.headlineSM,
+    ...TYPOGRAPHY.headlineMD,
     color: COLORS.semantic.textPrimary,
   },
   subtitle: {
     ...TYPOGRAPHY.bodySM,
     color: COLORS.semantic.textSecondary,
+    marginTop: 2,
   },
   side: {
     flexDirection: "row",

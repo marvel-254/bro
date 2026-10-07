@@ -1,4 +1,5 @@
-import { View, Text, StyleSheet } from "react-native";
+import { useEffect, useState } from "react";
+import { Image, View, Text, StyleSheet } from "react-native";
 import { COLORS } from "../../theme";
 import { PRESENCE_COLORS, type Presence } from "../../lib/presence";
 
@@ -31,42 +32,38 @@ function initialsOf(name?: string): string {
 export function Avatar({ uri, name, size = 40, presence, style }: AvatarProps) {
   const initials = initialsOf(name);
   const dot = Math.max(10, Math.round(size * 0.26));
+  const [failed, setFailed] = useState(false);
+
+  // A changed uri must retry, so drop the failure when the source changes.
+  useEffect(() => {
+    setFailed(false);
+  }, [uri]);
+
+  const circle = {
+    width: size,
+    height: size,
+    borderRadius: size / 2,
+  } as const;
+
+  const face =
+    uri && !failed ? (
+      <Image
+        source={{ uri }}
+        style={[styles.circle, circle]}
+        onError={() => setFailed(true)}
+        accessibilityIgnoresInvertColors
+      />
+    ) : (
+      <View style={[styles.circle, circle]}>
+        <Text style={[styles.text, { fontSize: size * 0.36 }]}>
+          {initials}
+        </Text>
+      </View>
+    );
 
   return (
     <View style={[styles.container, { width: size, height: size }, style]}>
-      {uri ? (
-        // Remote avatars are wired up in the media tranche; until then the
-        // initials block stands in so layout does not shift later.
-        <View
-          style={[
-            styles.circle,
-            {
-              width: size,
-              height: size,
-              borderRadius: size / 2,
-            },
-          ]}
-        >
-          <Text style={[styles.text, { fontSize: size * 0.36 }]}>
-            {initials}
-          </Text>
-        </View>
-      ) : (
-        <View
-          style={[
-            styles.circle,
-            {
-              width: size,
-              height: size,
-              borderRadius: size / 2,
-            },
-          ]}
-        >
-          <Text style={[styles.text, { fontSize: size * 0.36 }]}>
-            {initials}
-          </Text>
-        </View>
-      )}
+      {face}
 
       {presence ? (
         <View

@@ -1,9 +1,19 @@
 import * as FileSystem from "expo-file-system";
-import { base64ToBytes, MAX_IMAGE_BYTES } from "./media";
+import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
+import { base64ToBytes } from "./media";
 import { getSupabase } from "./supabase";
 
 const AVATAR_BUCKET = "avatars";
+
+/** Long edge of the stored picture. Avatars are displayed small; 512 is ample. */
 const AVATAR_MAX_EDGE = 512;
+
+/**
+ * Matches the `file_size_limit` on the `avatars` bucket. Uploading anything
+ * larger is rejected by storage, so we downscale first and keep the client
+ * ceiling aligned with the bucket.
+ */
+const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 
 /** Signed-in user id, or undefined when the session is gone. */
 async function currentUserId(): Promise<string | undefined> {
@@ -41,23 +51,35 @@ export async function uploadAvatar(localUri: string): Promise<AvatarUpload> {
   if (!info.exists) {
     throw new Error("That picture is gone. Pick it again.");
   }
-  const size = typeof info.size === "number" ? info.size : 0;
-  if (size > MAX_IMAGE_BYTES) {
-    throw new Error("That picture is over 10MB. Pick a smaller one.");
+
+  // Downscale and re-encode as JPEG: keeps us inside the bucket's size limit
+  // and its allowed mime types in one step, whatever the source format was.
+  const prepared = await manipulateAsync(localUri, [{ resize: { width: AVATAR_MAX_EDGE } }], {
+    compress: 0.85,
+    format: SaveFormat.JPEG,
+  });
+
+  const preparedInfo = await FileSystem.getInfoAsync(prepared.uri);
+  // FileInfo narrows on `exists`; the size field only exists on the true case.
+  if (!preparedInfo.exists) {
+    throw new Error("Could not prepare that picture. Pick it again.");
+  }
+  if (preparedInfo.size > AVATAR_MAX_BYTES) {
+    throw new Error(
+      "That picture is over 2MB even after resizing. Pick a smaller one.",
+    );
   }
 
-  const base64 = await FileSystem.readAsStringAsync(localUri, {
+  const base64 = await FileSystem.readAsStringAsync(prepared.uri, {
     encoding: FileSystem.EncodingType.Base64,
   });
   const bytes = base64ToBytes(base64);
-  const extension = localUri.split(".").pop()?.toLowerCase() ?? "jpg";
-  const safeExt = /^[a-z0-9]{2,5}$/.test(extension) ? extension : "jpg";
-  const path = `${userId}/avatar.${safeExt}`;
+  const path = `${userId}/avatar.jpg`;
 
   const { error } = await supabase.storage
     .from(AVATAR_BUCKET)
     .upload(path, bytes, {
-      contentType: `image/${safeExt === "jpg" ? "jpeg" : safeExt}`,
+      contentType: "image/jpeg",
       upsert: true,
     });
 

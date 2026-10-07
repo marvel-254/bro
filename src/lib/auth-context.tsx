@@ -224,14 +224,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Both writes are checked. The old code destructured nothing, so an
         // RLS rejection affected zero rows invisibly and the screen navigated
         // on as if the save had worked.
+        // Only send keys the caller actually set. Sending the rest as
+        // undefined risks blanking a field the caller never meant to touch
+        // (picking a new avatar must not clear the display name).
+        const metaPatch: Record<string, unknown> = {};
+        if (profileData.displayName !== undefined)
+          metaPatch.display_name = profileData.displayName;
+        if (profileData.username !== undefined)
+          metaPatch.username = profileData.username;
+        if (profileData.avatar !== undefined) metaPatch.avatar_url = profileData.avatar;
+        if (profileData.bio !== undefined) metaPatch.bio = profileData.bio;
+        if (profileData.interests !== undefined)
+          metaPatch.interests = profileData.interests;
+
         const { error: metadataError } = await supabase.auth.updateUser({
-          data: {
-            display_name: profileData.displayName,
-            username: profileData.username,
-            avatar_url: profileData.avatar,
-            bio: profileData.bio,
-            interests: profileData.interests,
-          },
+          data: metaPatch,
         });
         if (metadataError) {
           setError(metadataError.message);
@@ -240,19 +247,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const uid = session?.user?.id;
         if (uid) {
+          const rowPatch: Record<string, unknown> = {};
+          if (profileData.displayName !== undefined)
+            rowPatch.display_name = profileData.displayName;
+          if (profileData.username !== undefined)
+            rowPatch.username = profileData.username;
+          if (profileData.avatar !== undefined) rowPatch.avatar_url = profileData.avatar;
+          if (profileData.bio !== undefined) rowPatch.bio = profileData.bio;
+          // interests live here, not just in auth metadata, so a profiles
+          // read sees what the wizard saved.
+          if (profileData.interests !== undefined)
+            rowPatch.interests = profileData.interests;
+
           const { error: profileError } = await supabase
             .from("profiles")
-            .update({
-              display_name: profileData.displayName,
-              username: profileData.username,
-              avatar_url: profileData.avatar,
-              bio: profileData.bio,
-              // interests live here, not just in auth metadata, so a profiles
-              // read sees what the wizard saved.
-              ...(profileData.interests !== undefined
-                ? { interests: profileData.interests }
-                : {}),
-            })
+            .update(rowPatch)
             .eq("id", uid);
           if (profileError) {
             setError(profileError.message);
