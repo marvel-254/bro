@@ -60,7 +60,9 @@ export interface MessageRow {
   conversation_id: string;
   sender_id: string;
   content: string;
-  type: "text" | "image" | "file" | "voice";
+  type: "text" | "image" | "file" | "voice" | "gif";
+  /** Self-hosted library entry; non-null only on "gif" messages. */
+  gif_id: string | null;
   status: "pending" | "sending" | "sent" | "delivered" | "seen" | "failed";
   reply_to_message_id: string | null;
   branch_id: string | null;

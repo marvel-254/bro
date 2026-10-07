@@ -54,6 +54,8 @@ import {
   signedChatUrl,
   type AttachmentRef,
 } from "../../lib/media";
+import GifPicker from "../gifs/GifPicker";
+import type { Gif } from "../../lib/gifs";
 import type {
   MessageReactionRow,
   MessageWithSender,
@@ -210,6 +212,8 @@ export default function ConversationDetail({ conversationId, title }: Props) {
     {},
   );
   const [sendingImage, setSendingImage] = useState(false);
+  const [gifPickerOpen, setGifPickerOpen] = useState(false);
+  const [sendingGif, setSendingGif] = useState(false);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [viewerLoading, setViewerLoading] = useState(false);
   const [readCursors, setReadCursors] = useState<Record<string, string | null>>(
@@ -475,6 +479,7 @@ export default function ConversationDetail({ conversationId, title }: Props) {
           sender_id: currentUser?.id ?? "",
           content: draft.trim(),
           type: "image",
+          gif_id: null,
           status: "sent",
           reply_to_message_id: null,
           branch_id: null,
@@ -496,6 +501,64 @@ export default function ConversationDetail({ conversationId, title }: Props) {
     const attached = await fetchMessageAttachments([result.messageId]);
     setAttachments((current) => ({ ...current, ...attached }));
   }, [conversationId, currentUser, draft, sendingImage]);
+
+  /**
+   * Send a GIF from the self-hosted library. No upload happens: the message
+   * points at a catalogue row, so this is one insert and nothing else.
+   */
+  const sendGif = useCallback(
+    async (gif: Gif) => {
+      if (sendingGif) return;
+      setGifPickerOpen(false);
+      setSendingGif(true);
+      const caption = draft.trim();
+
+      const result = await sendMessage(conversationId, caption, {
+        messageType: "gif",
+        gifId: gif.id,
+      });
+      setSendingGif(false);
+
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+
+      setDraft("");
+      const now = new Date().toISOString();
+      setMessages((current) => {
+        if (current.some((message) => message.id === result.message.id)) {
+          return current;
+        }
+        return [
+          ...current,
+          {
+            id: result.message.id,
+            conversation_id: conversationId,
+            sender_id: currentUser?.id ?? "",
+            content: caption,
+            type: "gif",
+            gif_id: gif.id,
+            status: "sent",
+            reply_to_message_id: null,
+            branch_id: null,
+            created_at: now,
+            updated_at: now,
+            sender: currentUser
+              ? {
+                  id: currentUser.id,
+                  username: currentUser.username,
+                  display_name: currentUser.displayName,
+                  avatar_url: currentUser.avatar ?? null,
+                  status: currentUser.status ?? null,
+                }
+              : null,
+          } as MessageWithSender,
+        ];
+      });
+    },
+    [conversationId, currentUser, draft, sendingGif],
+  );
 
   const openViewer = useCallback(async (fullPath: string) => {
     setViewerLoading(true);
@@ -815,6 +878,31 @@ export default function ConversationDetail({ conversationId, title }: Props) {
           { paddingBottom: Math.max(insets.bottom, SPACING.spaceMd) },
         ]}
       >
+        <GifPicker
+          visible={gifPickerOpen}
+          onClose={() => setGifPickerOpen(false)}
+          onPick={(gif) => void sendGif(gif)}
+        />
+        <Pressable
+          style={[
+            styles.gifButton,
+            sendingGif && styles.imageButtonDisabled,
+          ]}
+          onPress={() => setGifPickerOpen(true)}
+          disabled={sendingGif || sending}
+          accessibilityRole="button"
+          accessibilityLabel="Send a GIF"
+        >
+          {sendingGif ? (
+            <ActivityIndicator size="small" color={SEMANTIC_COLORS.textDim} />
+          ) : (
+            <Ionicons
+              name="happy-outline"
+              size={22}
+              color={SEMANTIC_COLORS.textDim}
+            />
+          )}
+        </Pressable>
         <Pressable
           style={[
             styles.imageButton,
@@ -1033,6 +1121,12 @@ const styles = StyleSheet.create({
   photoPlaceholderText: {
     ...TYPOGRAPHY.labelSM,
     color: SEMANTIC_COLORS.textDim,
+  },
+  gifButton: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
   },
   imageButton: {
     padding: SPACING.spaceSm,

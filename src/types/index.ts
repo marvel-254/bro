@@ -36,7 +36,9 @@ export interface Message {
   conversationId: string;
   senderId: string;
   content: string;
-  type: "text" | "image" | "file" | "voice";
+  type: "text" | "image" | "file" | "voice" | "gif";
+  /** Set only on "gif" messages: the self-hosted library entry. */
+  gifId?: string | null;
   status: MessageStatus;
   createdAt: string;
   updatedAt: string;

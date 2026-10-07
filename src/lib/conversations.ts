@@ -62,7 +62,7 @@ export async function fetchMessages(
   let query = supabase
     .from("messages")
     .select(
-      "id, conversation_id, sender_id, content, type, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone, sender:profiles!messages_sender_id_fkey (id, username, display_name, avatar_url, status, presence, presence_text, presence_emoji)",
+      "id, conversation_id, sender_id, content, type, gif_id, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone, sender:profiles!messages_sender_id_fkey (id, username, display_name, avatar_url, status, presence, presence_text, presence_emoji)",
     )
     .eq("conversation_id", conversationId)
     .is("branch_id", null)
@@ -104,7 +104,9 @@ export async function sendMessage(
      * the attachments table and may have an empty caption, so the empty-content
      * check is skipped for them.
      */
-    messageType?: "text" | "image" | "file" | "voice";
+    messageType?: "text" | "image" | "file" | "voice" | "gif";
+    /** Self-hosted library entry, required when messageType is "gif". */
+    gifId?: string | null;
   } = {},
 ): Promise<SendResult> {
   const supabase = getSupabase();
@@ -114,6 +116,16 @@ export async function sendMessage(
 
   const trimmed = content.trim();
   const messageType = options.messageType ?? "text";
+  const gifId = options.gifId ?? null;
+  // A gif carries no text of its own: the caption is optional and the database
+  // carries the shape check, so we mirror it here to fail fast with a clear
+  // message rather than an RLS error.
+  if (messageType === "gif" && !gifId) {
+    return { ok: false, error: "Pick a gif first" };
+  }
+  if (messageType !== "gif" && gifId) {
+    return { ok: false, error: "A gif id only belongs on a gif message" };
+  }
   if (!trimmed && messageType === "text") {
     return { ok: false, error: "Message cannot be empty" };
   }
@@ -130,6 +142,7 @@ export async function sendMessage(
       sender_id: userData.user.id,
       content: trimmed,
       type: messageType,
+      gif_id: gifId,
       status: "sent",
       reply_to_message_id: options.replyToMessageId ?? null,
       branch_id: options.branchId ?? null,
@@ -141,7 +154,7 @@ export async function sendMessage(
             ).toISOString(),
     })
     .select(
-      "id, conversation_id, sender_id, content, type, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone",
+      "id, conversation_id, sender_id, content, type, gif_id, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone",
     )
     .single();
 
@@ -457,7 +470,7 @@ export async function editMessage(
     .update({ content: trimmed, edited_at: new Date().toISOString() })
     .eq("id", messageId)
     .select(
-      "id, conversation_id, sender_id, content, type, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone",
+      "id, conversation_id, sender_id, content, type, gif_id, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone",
     )
     .single();
 
@@ -487,7 +500,7 @@ export async function deleteMessage(messageId: string): Promise<SendResult> {
     })
     .eq("id", messageId)
     .select(
-      "id, conversation_id, sender_id, content, type, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone",
+      "id, conversation_id, sender_id, content, type, gif_id, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone",
     )
     .single();
 
