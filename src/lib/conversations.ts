@@ -662,6 +662,52 @@ export async function createDirectConversation(
 }
 
 /**
+ * Create a group conversation with the given members.
+ *
+ * Goes through the `create_group_conversation` RPC rather than inserting
+ * membership rows client-side, for the same reason as the direct path: the
+ * memberships table must stay unreachable to arbitrary writes. The RPC also
+ * enforces that you can only add people you already share a friendship, Space
+ * or conversation with, which is what stops group creation being used to pull
+ * strangers into a chat.
+ */
+export async function createGroupConversation(
+  title: string,
+  memberIds: string[],
+): Promise<{ ok: true; conversationId: string } | { ok: false; error: string }> {
+  const trimmed = title.trim();
+  if (trimmed.length === 0 || trimmed.length > 80) {
+    return { ok: false, error: "Give the group a name (1-80 characters)" };
+  }
+
+  const unique = [
+    ...new Set(memberIds.filter((id) => typeof id === "string" && id.length > 0)),
+  ];
+  if (unique.length === 0) {
+    return { ok: false, error: "Pick at least one other bro" };
+  }
+
+  const supabase = getSupabase();
+  if (!supabase) {
+    return { ok: false, error: "Backend not configured" };
+  }
+
+  const { data, error } = await supabase.rpc("create_group_conversation", {
+    group_title: trimmed,
+    member_ids: unique,
+  });
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+  if (typeof data !== "string" || data.length === 0) {
+    return { ok: false, error: "Could not create the group" };
+  }
+
+  return { ok: true, conversationId: data };
+}
+
+/**
  * Subscribe to any new message in any conversation the caller belongs to, so
  * the conversation list can reorder and update unread counts live.
  */
