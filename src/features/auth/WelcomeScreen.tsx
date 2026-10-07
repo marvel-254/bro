@@ -1,62 +1,93 @@
-import { View, Text, ScrollView, StyleSheet, Pressable } from "react-native";
+import { useEffect } from "react";
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withRepeat,
-  withSequence,
-  withTiming,
   Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withTiming,
 } from "react-native-reanimated";
-import { COLORS, SPACING, RADIUS } from "../../theme";
+import { useRouter } from "expo-router";
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from "../../theme";
 import { useAuth } from "../../lib/auth-context";
 import { useInvites } from "../../lib/invite-context";
-import { useRouter } from "expo-router";
-import { useEffect } from "react";
+import { useReducedMotion } from "../../hooks/useReducedMotion";
+import AmbientBackdrop from "./components/AmbientBackdrop";
+import BrandMark from "./components/BrandMark";
+
+/**
+ * First run.
+ *
+ * Copy is the locked Welcome lines from `docs/research/bro-voice-guide.md`
+ * (1-4) rather than the generic register this screen used to carry, plus the
+ * one honest architecture line from `docs/research/welcome-bros-me.md`.
+ *
+ * Two things were removed on purpose rather than restyled:
+ *   * the fabricated telemetry ("98.4k ONLINE") — the project's own design
+ *     rules ban fake stats, and handoff.md records the same numbers being
+ *     deleted from the Me tab for the same reason;
+ *   * "Secured via decentralized node mesh", which is false: this app runs on
+ *     a hosted Postgres. A claim about where your data lives is the last place
+ *     to be aspirational.
+ */
+
+const WORDMARK = "#EAFBFF";
+const MONO = Platform.select({
+  ios: "Menlo",
+  android: "monospace",
+  default: "monospace",
+});
+
+/** Mirrors package.json. Hardcoded because expo-constants is not a dependency. */
+const APP_VERSION = "0.1.0";
+
+/** One shared entrance, staggered by section. */
+function useIntro(delay: number) {
+  const reduced = useReducedMotion();
+  const progress = useSharedValue(reduced ? 1 : 0);
+
+  useEffect(() => {
+    progress.value = reduced
+      ? 1
+      : withDelay(
+          delay,
+          withTiming(1, { duration: 720, easing: Easing.out(Easing.cubic) }),
+        );
+  }, [delay, progress, reduced]);
+
+  return useAnimatedStyle(() => ({
+    opacity: progress.value,
+    transform: [{ translateY: (1 - progress.value) * 18 }],
+  }));
+}
 
 export default function WelcomeScreen() {
   const { isAuthenticated, isLoading } = useAuth();
   const { pendingInvite, setPendingInvite, clearInvite } = useInvites();
   const router = useRouter();
 
-  // Subtle breathing pulse animation for the ambient core glow
-  const pulseScale = useSharedValue(1);
-  const pulseOpacity = useSharedValue(0.4);
-
-  // Micro-interaction scaling for buttons
   const primaryScale = useSharedValue(1);
   const secondaryScale = useSharedValue(1);
 
-  useEffect(() => {
-    pulseScale.value = withRepeat(
-      withSequence(
-        withTiming(1.18, { duration: 2600, easing: Easing.inOut(Easing.ease) }),
-        withTiming(1, { duration: 2600, easing: Easing.inOut(Easing.ease) }),
-      ),
-      -1,
-      true,
-    );
-    pulseOpacity.value = withRepeat(
-      withSequence(
-        withTiming(0.65, { duration: 2600, easing: Easing.inOut(Easing.ease) }),
-        withTiming(0.35, { duration: 2600, easing: Easing.inOut(Easing.ease) }),
-      ),
-      -1,
-      true,
-    );
-  }, [pulseScale, pulseOpacity]);
+  const heroIntro = useIntro(60);
+  const copyIntro = useIntro(180);
+  const actionsIntro = useIntro(320);
+  const footIntro = useIntro(460);
 
-  const animatedGlowStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pulseScale.value }],
-    opacity: pulseOpacity.value,
-  }));
-
-  const primaryAnimatedStyle = useAnimatedStyle(() => ({
+  const primaryStyle = useAnimatedStyle(() => ({
     transform: [{ scale: primaryScale.value }],
   }));
-
-  const secondaryAnimatedStyle = useAnimatedStyle(() => ({
+  const secondaryStyle = useAnimatedStyle(() => ({
     transform: [{ scale: secondaryScale.value }],
   }));
 
@@ -66,15 +97,12 @@ export default function WelcomeScreen() {
     }
   }, [isAuthenticated, isLoading, router]);
 
-  if (isLoading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Loading...</Text>
-      </View>
-    );
-  }
-
-  const handleSimulateInvite = () => {
+  /**
+   * Manual invite trigger, kept from the old screen for testing without an
+   * external intent — but only in development builds, so a shipped app never
+   * offers a button that fabricates an invitation out of nothing.
+   */
+  const simulateInvite = () => {
     setPendingInvite({
       code: "MESH-7701",
       inviterName: "Sarah",
@@ -85,571 +113,429 @@ export default function WelcomeScreen() {
     });
   };
 
+  if (isLoading) {
+    return (
+      <View style={styles.loadingRoot}>
+        <AmbientBackdrop />
+        <BrandMark size={140} />
+        <Text style={styles.loadingText}>starting up</Text>
+      </View>
+    );
+  }
+
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-        bounces={false}
-      >
-        {/* Top Status / Network Connectivity Beacon */}
-        <View style={styles.topBar}>
-          <Pressable
-            style={styles.statusBadge}
-            onPress={handleSimulateInvite}
-            accessibilityHint="Tap to simulate invite reception"
-          >
-            <View style={styles.statusDotWrapper}>
-              <View style={styles.statusDotGlow} />
-              <View style={styles.statusDot} />
-            </View>
-            <Text style={styles.statusText}>MESH SYNCHRONIZED</Text>
-          </Pressable>
+    <View style={styles.root}>
+      <AmbientBackdrop />
 
-          <View style={styles.liveBadge}>
-            <Ionicons
-              name="radio-outline"
-              size={12}
-              color={COLORS.primaryContainer}
-              style={styles.liveIcon}
-            />
-            <Text style={styles.liveText}>98.4k ONLINE</Text>
-          </View>
-        </View>
-
-        {/* Incoming Transmission Holographic Card (Deep Link / Invite Awareness) */}
-        {pendingInvite ? (
-          <View style={styles.inviteCard}>
-            <View style={styles.inviteCardHeader}>
-              <View style={styles.inviteCardBeacon}>
-                <View style={styles.invitePulseDot} />
-                <Text style={styles.inviteCardBadgeText}>
-                  INCOMING TRANSMISSION DETECTED
-                </Text>
-              </View>
-              <Pressable onPress={() => clearInvite()} hitSlop={10}>
-                <Ionicons name="close" size={16} color={COLORS.outline} />
-              </Pressable>
-            </View>
-
-            <View style={styles.inviteBody}>
-              <View style={styles.invitePlanetBox}>
-                <Ionicons
-                  name="planet"
-                  size={24}
-                  color={COLORS.primaryContainer}
-                />
-              </View>
-              <View style={styles.inviteTextWrapper}>
-                <Text style={styles.inviteTitle}>
-                  {pendingInvite.inviterName ? (
-                    <Text style={styles.inviteHighlight}>
-                      {pendingInvite.inviterName}{" "}
-                    </Text>
-                  ) : (
-                    "A node operator "
-                  )}
-                  invited you to enter
-                </Text>
-                <Text style={styles.inviteTargetName}>
-                  {pendingInvite.spaceName || "the BRO communication network"}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.inviteFooter}>
-              <View style={styles.tokenPill}>
-                <Text style={styles.tokenPillText}>
-                  Invite from {pendingInvite.inviterName ?? "a bro"}
-                </Text>
-              </View>
-              <Pressable
-                style={styles.acceptInviteBtn}
-                onPress={() => router.push("/(auth)/sign-up")}
-              >
-                <Text style={styles.acceptInviteText}>ACCEPT TRANSMISSION</Text>
-                <Ionicons name="arrow-forward" size={12} color="#00363a" />
-              </Pressable>
-            </View>
-          </View>
-        ) : null}
-
-        {/* Center Stage: Ambient Glow & Brand Emblem */}
-        <View style={styles.heroSection}>
-          <View style={styles.ambientWrapper}>
-            <Animated.View style={[styles.ambientGlow, animatedGlowStyle]} />
-            <View style={styles.outerRing} />
-            <View style={styles.innerRing} />
-
-            {/* Geometric Brand Emblem */}
-            <View style={styles.emblemBox}>
-              <Text style={styles.emblemText}>BRO</Text>
-            </View>
-          </View>
-
-          {/* Tagline Motto Pill */}
-          <View style={styles.mottoPill}>
-            <Text style={styles.mottoPrimary}>TALK</Text>
-            <View style={styles.mottoDot} />
-            <Text style={styles.mottoSecondary}>CONNECT</Text>
-            <View style={styles.mottoDot} />
-            <Text style={styles.mottoTertiary}>EXIST</Text>
-          </View>
-        </View>
-
-        {/* Polished Typography Deck */}
-        <View style={styles.copySection}>
-          <Text style={styles.headline}>
-            Communication,
-            {"\n"}
-            <Text style={styles.headlineAccent}>reimagined.</Text>
-          </Text>
-          <Text style={styles.subtitle}>
-            A living communication environment for active conversations,
-            branches, and spaces.
-          </Text>
-        </View>
-
-        {/* Glowing Action Buttons Deck */}
-        <View style={styles.actionsDeck}>
-          {/* Primary Glowing Action Button */}
-          <Pressable
-            onPressIn={() => {
-              primaryScale.value = withTiming(0.97, { duration: 100 });
-            }}
-            onPressOut={() => {
-              primaryScale.value = withTiming(1, { duration: 150 });
-            }}
-            onPress={() => router.push("/(auth)/sign-up")}
-          >
-            <Animated.View style={[styles.primaryBtn, primaryAnimatedStyle]}>
-              <Text style={styles.primaryBtnText}>Create Account</Text>
-              <Ionicons
-                name="arrow-forward"
-                size={18}
-                color={COLORS.onPrimary}
-                style={styles.btnIcon}
-              />
-            </Animated.View>
-          </Pressable>
-
-          {/* Secondary Glassmorphic Button */}
-          <Pressable
-            onPressIn={() => {
-              secondaryScale.value = withTiming(0.97, { duration: 100 });
-            }}
-            onPressOut={() => {
-              secondaryScale.value = withTiming(1, { duration: 150 });
-            }}
-            onPress={() => router.push("/(auth)/sign-in")}
-          >
-            <Animated.View
-              style={[styles.secondaryBtn, secondaryAnimatedStyle]}
-            >
-              <Ionicons
-                name="key-outline"
-                size={17}
-                color={COLORS.onSurfaceVariant}
-                style={styles.btnIconLeft}
-              />
-              <Text style={styles.secondaryBtnText}>Sign In</Text>
-            </Animated.View>
-          </Pressable>
-
-          {/* Protocol Security Footnote */}
-          <View style={styles.footnote}>
-            <Ionicons
-              name="shield-checkmark-outline"
-              size={13}
-              color={COLORS.semantic.textDim}
-            />
-            <Text style={styles.footnoteText}>
-              Secured via decentralized node mesh • v0.1.0
+      <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          <View style={styles.topBar}>
+            <Text style={styles.buildChip}>
+              v{APP_VERSION} · ANDROID
             </Text>
           </View>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+
+          {pendingInvite ? (
+            <Animated.View style={[styles.inviteCard, copyIntro]}>
+              <LinearGradient
+                colors={["rgba(0,240,255,0.5)", "rgba(0,240,255,0)"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.inviteRule}
+              />
+
+              <View style={styles.inviteHeader}>
+                <Text style={styles.inviteEyebrow}>INVITE</Text>
+                <Pressable
+                  onPress={clearInvite}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel="Dismiss invite"
+                >
+                  <Ionicons
+                    name="close"
+                    size={16}
+                    color={COLORS.semantic.textDim}
+                  />
+                </Pressable>
+              </View>
+
+              <Text style={styles.inviteLine}>
+                yoh bruv —{" "}
+                <Text style={styles.inviteName}>
+                  {pendingInvite.inviterName ?? "a bro"}
+                </Text>
+                {" "}says pull up
+              </Text>
+              <Text style={styles.inviteTarget}>
+                {pendingInvite.spaceName ?? "the BRO network"}
+              </Text>
+
+              <View style={styles.inviteFooter}>
+                <Text style={styles.inviteCode}>
+                  {pendingInvite.code ?? "NO CODE"}
+                </Text>
+                <Pressable
+                  onPress={() => router.push("/(auth)/sign-up")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Accept invite and claim your spot"
+                  style={({ pressed }) => [
+                    styles.inviteButton,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={styles.inviteButtonText}>Tap in</Text>
+                  <Ionicons name="arrow-forward" size={13} color="#00363A" />
+                </Pressable>
+              </View>
+            </Animated.View>
+          ) : null}
+
+          <Animated.View style={[styles.hero, heroIntro]}>
+            <BrandMark size={230} />
+            <View style={styles.mottoRow}>
+              <Text style={styles.motto}>TALK</Text>
+              <View style={styles.mottoRule} />
+              <Text style={styles.motto}>CONNECT</Text>
+              <View style={styles.mottoRule} />
+              <Text style={styles.motto}>EXIST</Text>
+            </View>
+          </Animated.View>
+
+          <Animated.View style={[styles.copy, copyIntro]}>
+            <Text style={styles.headline}>Yoh. Tsup bruv?</Text>
+            <Text style={styles.subtitle}>
+              Uko wapi msee? Your people are already inside. Pull up.
+            </Text>
+          </Animated.View>
+
+          <Animated.View style={[styles.actions, actionsIntro]}>
+            <Pressable
+              onPressIn={() => {
+                primaryScale.value = withTiming(0.975, { duration: 110 });
+              }}
+              onPressOut={() => {
+                primaryScale.value = withTiming(1, { duration: 160 });
+              }}
+              onPress={() => router.push("/(auth)/sign-up")}
+              accessibilityRole="button"
+              accessibilityLabel="Claim your spot — create an account"
+            >
+              <Animated.View style={[styles.primaryWrap, primaryStyle]}>
+                <LinearGradient
+                  colors={["#7DF4FF", COLORS.primaryContainer, "#00C9DA"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.primaryButton}
+                >
+                  {/* Specular edge: what a real surface does under light. */}
+                  <LinearGradient
+                    colors={["rgba(255,255,255,0.55)", "transparent"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 0, y: 1 }}
+                    style={styles.primarySheen}
+                  />
+                  <Text style={styles.primaryText}>Claim your spot</Text>
+                  <Ionicons
+                    name="arrow-forward"
+                    size={18}
+                    color={COLORS.onPrimary}
+                    style={styles.primaryIcon}
+                  />
+                </LinearGradient>
+              </Animated.View>
+            </Pressable>
+
+            <View style={styles.secondaryRow}>
+              <Text style={styles.secondaryPrompt}>already one of us?</Text>
+              <Pressable
+                onPressIn={() => {
+                  secondaryScale.value = withTiming(0.975, { duration: 110 });
+                }}
+                onPressOut={() => {
+                  secondaryScale.value = withTiming(1, { duration: 160 });
+                }}
+                onPress={() => router.push("/(auth)/sign-in")}
+                accessibilityRole="button"
+                accessibilityLabel="Already have an account — sign in"
+              >
+                <Animated.View style={[styles.secondaryButton, secondaryStyle]}>
+                  <Ionicons
+                    name="key-outline"
+                    size={16}
+                    color={WORDMARK}
+                    style={styles.secondaryIcon}
+                  />
+                  <Text style={styles.secondaryText}>slide in</Text>
+                </Animated.View>
+              </Pressable>
+            </View>
+          </Animated.View>
+
+          <Animated.View style={[styles.footer, footIntro]}>
+            <Text style={styles.promise}>no ads tbh. just talk fr.</Text>
+            <Text style={styles.footnote}>
+              Open-source · No tracking · Built for Android
+            </Text>
+
+            {__DEV__ ? (
+              <Pressable
+                onPress={simulateInvite}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Simulate an incoming invite"
+              >
+                <Text style={styles.devTrigger}>dev · simulate invite</Text>
+              </Pressable>
+            ) : null}
+          </Animated.View>
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  root: {
     flex: 1,
     backgroundColor: COLORS.semantic.canvasRoot,
   },
-  loadingContainer: {
+  safeArea: {
     flex: 1,
-    justifyContent: "center",
+  },
+  loadingRoot: {
+    flex: 1,
     alignItems: "center",
+    justifyContent: "center",
+    gap: SPACING.spaceLg,
     backgroundColor: COLORS.semantic.canvasRoot,
   },
   loadingText: {
-    fontSize: 14,
-    color: COLORS.semantic.textSecondary,
-    letterSpacing: 1,
-  },
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.semantic.canvasRoot,
+    fontFamily: MONO,
+    fontSize: 11,
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    color: COLORS.semantic.textDim,
   },
   content: {
     flexGrow: 1,
     justifyContent: "space-between",
     paddingHorizontal: SPACING.margin,
-    paddingTop: SPACING.spaceMd,
+    paddingTop: SPACING.spaceSm,
     paddingBottom: SPACING.spaceLg,
   },
   topBar: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    width: "100%",
+    justifyContent: "flex-end",
   },
-  statusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(25, 27, 35, 0.85)",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.05)",
-  },
-  statusDotWrapper: {
-    width: 10,
-    height: 10,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 7,
-  },
-  statusDotGlow: {
-    position: "absolute",
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: COLORS.tertiaryContainer,
-    opacity: 0.4,
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.tertiaryContainer,
-  },
-  statusText: {
+  buildChip: {
+    fontFamily: MONO,
     fontSize: 10,
-    fontWeight: "700",
-    color: COLORS.onSurfaceVariant,
-    letterSpacing: 1.2,
+    letterSpacing: 1.6,
+    color: COLORS.semantic.textDim,
   },
-  liveBadge: {
+  hero: {
+    alignItems: "center",
+    marginTop: SPACING.spaceXl,
+  },
+  mottoRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(25, 27, 35, 0.6)",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.04)",
-  },
-  liveIcon: {
-    marginRight: 5,
-  },
-  liveText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: COLORS.onSurfaceVariant,
-    letterSpacing: 0.5,
-  },
-  heroSection: {
-    alignItems: "center",
-    justifyContent: "center",
-    marginVertical: SPACING.spaceLg,
-  },
-  ambientWrapper: {
-    width: 240,
-    height: 240,
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
-  },
-  ambientGlow: {
-    position: "absolute",
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: "rgba(0, 240, 255, 0.16)",
-    shadowColor: COLORS.primaryContainer,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 40,
-  },
-  outerRing: {
-    position: "absolute",
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    borderWidth: 1,
-    borderColor: "rgba(0, 240, 255, 0.08)",
-    borderStyle: "dashed",
-  },
-  innerRing: {
-    position: "absolute",
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    borderWidth: 1,
-    borderColor: "rgba(222, 183, 255, 0.12)",
-  },
-  emblemBox: {
-    width: 96,
-    height: 96,
-    borderRadius: 28,
-    backgroundColor: "rgba(29, 32, 39, 0.85)",
-    borderWidth: 1.5,
-    borderColor: "rgba(0, 240, 255, 0.35)",
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: COLORS.primaryContainer,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 20,
-    elevation: 8,
-  },
-  emblemText: {
-    fontSize: 28,
-    fontWeight: "900",
-    color: COLORS.primaryContainer,
-    letterSpacing: 4,
-  },
-  mottoPill: {
+    gap: SPACING.spaceMd,
     marginTop: SPACING.spaceLg,
-    flexDirection: "row",
+  },
+  motto: {
+    fontFamily: MONO,
+    fontSize: 10,
+    letterSpacing: 3,
+    color: COLORS.semantic.textSecondary,
+  },
+  mottoRule: {
+    width: 14,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: COLORS.semantic.ghostBorderLight,
+  },
+  copy: {
     alignItems: "center",
-    backgroundColor: "rgba(25, 27, 35, 0.8)",
-    paddingHorizontal: 16,
-    paddingVertical: 7,
-    borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.06)",
-  },
-  mottoPrimary: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: COLORS.primaryContainer,
-    letterSpacing: 2,
-  },
-  mottoSecondary: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: COLORS.secondary,
-    letterSpacing: 2,
-  },
-  mottoTertiary: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: COLORS.onSurface,
-    letterSpacing: 2,
-  },
-  mottoDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: "rgba(255, 255, 255, 0.25)",
-    marginHorizontal: 10,
-  },
-  copySection: {
-    alignItems: "center",
+    gap: SPACING.spaceMd,
     paddingHorizontal: SPACING.spaceSm,
-    marginVertical: SPACING.spaceMd,
+    marginTop: SPACING.spaceXl,
   },
   headline: {
-    fontSize: 34,
+    ...TYPOGRAPHY.headlineXL,
+    fontSize: 38,
+    lineHeight: 44,
     fontWeight: "800",
+    letterSpacing: -1.3,
     color: COLORS.semantic.textPrimary,
     textAlign: "center",
-    letterSpacing: -0.8,
-    lineHeight: 42,
-  },
-  headlineAccent: {
-    color: COLORS.primaryContainer,
   },
   subtitle: {
-    marginTop: 12,
-    fontSize: 14,
-    fontWeight: "400",
+    ...TYPOGRAPHY.bodyLG,
     color: COLORS.semantic.textSecondary,
     textAlign: "center",
-    lineHeight: 22,
     maxWidth: 320,
   },
-  actionsDeck: {
-    width: "100%",
-    gap: 12,
-    marginTop: SPACING.spaceMd,
+  actions: {
+    marginTop: SPACING.spaceXl,
+    gap: SPACING.spaceMd,
   },
-  primaryBtn: {
+  primaryWrap: {
+    borderRadius: RADIUS.full,
+    shadowColor: COLORS.primaryContainer,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.45,
+    shadowRadius: 26,
+    elevation: 8,
+  },
+  primaryButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     height: 56,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.primaryContainer,
-    shadowColor: COLORS.primaryContainer,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 22,
-    elevation: 8,
+    overflow: "hidden",
   },
-  primaryBtnText: {
+  primarySheen: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 1,
+  },
+  primaryText: {
+    ...TYPOGRAPHY.labelLG,
     fontSize: 15,
     fontWeight: "800",
+    letterSpacing: 0.8,
     color: COLORS.onPrimary,
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
   },
-  btnIcon: {
-    marginLeft: 8,
+  primaryIcon: {
+    marginLeft: SPACING.spaceSm,
   },
-  secondaryBtn: {
+  secondaryRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    height: 54,
+    gap: SPACING.spaceSm,
+  },
+  secondaryPrompt: {
+    ...TYPOGRAPHY.bodyMD,
+    color: COLORS.semantic.textDim,
+  },
+  secondaryButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 44,
+    paddingHorizontal: SPACING.spaceLg,
     borderRadius: RADIUS.full,
-    backgroundColor: "rgba(29, 32, 39, 0.7)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
+    backgroundColor: "rgba(22,27,38,0.72)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.14)",
   },
-  secondaryBtnText: {
-    fontSize: 14,
+  secondaryIcon: {
+    marginRight: SPACING.spaceSm,
+  },
+  secondaryText: {
+    ...TYPOGRAPHY.labelMD,
     fontWeight: "700",
-    color: COLORS.onSurface,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
+    letterSpacing: 1,
+    color: WORDMARK,
   },
-  btnIconLeft: {
-    marginRight: 8,
+  pressed: {
+    opacity: 0.85,
+  },
+  footer: {
+    alignItems: "center",
+    gap: SPACING.spaceSm,
+    marginTop: SPACING.spaceXl,
+  },
+  promise: {
+    ...TYPOGRAPHY.bodySM,
+    color: COLORS.semantic.textSecondary,
   },
   footnote: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 6,
-    gap: 6,
-  },
-  footnoteText: {
-    fontSize: 11,
-    fontWeight: "500",
+    fontFamily: MONO,
+    fontSize: 10,
+    letterSpacing: 0.6,
     color: COLORS.semantic.textDim,
-    letterSpacing: 0.3,
+  },
+  devTrigger: {
+    fontFamily: MONO,
+    fontSize: 10,
+    letterSpacing: 1,
+    color: COLORS.outlineVariant,
+    marginTop: SPACING.spaceSm,
   },
   inviteCard: {
     marginTop: SPACING.spaceMd,
-    backgroundColor: "rgba(16, 23, 34, 0.95)",
+    padding: SPACING.gutter,
     borderRadius: RADIUS.DEFAULT,
-    borderWidth: 1,
-    borderColor: "rgba(0, 240, 255, 0.35)",
-    padding: 14,
-    shadowColor: COLORS.primaryContainer,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    elevation: 8,
+    backgroundColor: "rgba(14,17,24,0.94)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.semantic.ghostBorder,
+    overflow: "hidden",
+    gap: SPACING.spaceXs,
   },
-  inviteCardHeader: {
+  inviteRule: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 1,
+  },
+  inviteHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 10,
   },
-  inviteCardBeacon: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  invitePulseDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.tertiaryContainer,
-  },
-  inviteCardBadgeText: {
+  inviteEyebrow: {
+    fontFamily: MONO,
     fontSize: 10,
-    fontWeight: "800",
+    letterSpacing: 2,
     color: COLORS.primaryContainer,
-    letterSpacing: 1.5,
   },
-  inviteBody: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginVertical: 4,
+  inviteLine: {
+    ...TYPOGRAPHY.bodyMD,
+    color: COLORS.semantic.textSecondary,
   },
-  invitePlanetBox: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: "rgba(0, 240, 255, 0.1)",
-    borderWidth: 1,
-    borderColor: "rgba(0, 240, 255, 0.25)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  inviteTextWrapper: {
-    flex: 1,
-  },
-  inviteTitle: {
-    fontSize: 12,
-    color: COLORS.onSurfaceVariant,
-  },
-  inviteHighlight: {
+  inviteName: {
+    color: WORDMARK,
     fontWeight: "700",
-    color: COLORS.primaryContainer,
   },
-  inviteTargetName: {
-    fontSize: 15,
-    fontWeight: "800",
+  inviteTarget: {
+    ...TYPOGRAPHY.headlineSM,
     color: COLORS.semantic.textPrimary,
-    marginTop: 2,
-    letterSpacing: -0.2,
   },
   inviteFooter: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 12,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.06)",
+    marginTop: SPACING.spaceSm,
   },
-  tokenPill: {
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  tokenPillText: {
+  inviteCode: {
+    fontFamily: MONO,
     fontSize: 10,
-    fontWeight: "700",
+    letterSpacing: 1.2,
     color: COLORS.semantic.textDim,
-    letterSpacing: 0.8,
   },
-  acceptInviteBtn: {
+  inviteButton: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: COLORS.primaryContainer,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    gap: SPACING.spaceXs,
+    paddingHorizontal: SPACING.spaceMd,
+    height: 38,
     borderRadius: RADIUS.full,
-    gap: 4,
+    backgroundColor: COLORS.primaryContainer,
   },
-  acceptInviteText: {
-    fontSize: 11,
+  inviteButtonText: {
+    ...TYPOGRAPHY.labelMD,
     fontWeight: "800",
-    color: "#00363a",
-    letterSpacing: 0.8,
+    color: COLORS.onPrimary,
   },
 });

@@ -21,7 +21,7 @@ const STATUS_MAX_EDGE = 1280;
 const STATUS_MAX_BYTES = 8 * 1024 * 1024;
 
 /** How long a status stays up. Matches the column default in the schema. */
-const STATUS_TTL_HOURS = 24;
+const STATUS_TTL_HOURS = 48;
 
 const SIGNED_URL_TTL_SECONDS = 3600;
 const SIGNED_URL_CACHE_MAX = 200;

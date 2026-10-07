@@ -21,6 +21,9 @@ module.exports = [
       globals: {
         ...globals.browser,
         ...globals.node,
+        // Injected by the React Native runtime and replaced by Metro at build
+        // time, so it exists in the app but not in any globals preset.
+        __DEV__: 'readonly',
       },
     },
     plugins: {

@@ -13,7 +13,7 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from "../../theme";
-import { postStatus } from "../../lib/statuses";
+import { postStatus, STATUS_TTL_HOURS } from "../../lib/statuses";
 
 type Props = {
   visible: boolean;
@@ -154,7 +154,9 @@ export default function StatusComposer({ visible, onClose, onPosted }: Props) {
             </Pressable>
           </View>
 
-          <Text style={styles.note}>Statuses disappear after 24 hours.</Text>
+          <Text style={styles.note}>
+            Statuses disappear after {STATUS_TTL_HOURS} hours.
+          </Text>
         </View>
       </View>
     </Modal>

@@ -52,6 +52,8 @@ export default function StatusViewer({
   const [progress, setProgress] = useState(0);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [mediaLoading, setMediaLoading] = useState(false);
+  const [mediaFailed, setMediaFailed] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
   const [composerOpen, setComposerOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [replies, setReplies] = useState<string[]>([]);
@@ -140,18 +142,29 @@ export default function StatusViewer({
     let cancelled = false;
     if (!item || item.kind !== "photo" || !item.mediaPath) {
       setMediaUrl(null);
+      setMediaLoading(false);
+      setMediaFailed(Boolean(item) && item.kind === "photo");
       return;
     }
     setMediaLoading(true);
-    void statusMediaUrl(item.mediaPath).then((url) => {
-      if (cancelled) return;
-      setMediaUrl(url);
-      setMediaLoading(false);
-    });
+    setMediaFailed(false);
+    void statusMediaUrl(item.mediaPath)
+      .then((url) => {
+        if (cancelled) return;
+        setMediaUrl(url);
+        setMediaFailed(!url);
+        setMediaLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setMediaUrl(null);
+        setMediaFailed(true);
+        setMediaLoading(false);
+      });
     return () => {
       cancelled = true;
     };
-  }, [item]);
+  }, [item, retryToken]);
 
   useEffect(() => {
     if (!visible || !item) {
@@ -235,8 +248,22 @@ export default function StatusViewer({
 
           <View style={[styles.stage, { width }]}>
             {item.kind === "photo" ? (
-              mediaLoading || !mediaUrl ? (
+              mediaLoading ? (
                 <ActivityIndicator color={COLORS.primaryContainer} />
+              ) : mediaFailed || !mediaUrl ? (
+                <View style={styles.mediaFallback}>
+                  <Ionicons name="image-outline" size={30} color="#9CA3AF" />
+                  <Text style={styles.mediaFallbackText}>
+                    Could not load this status
+                  </Text>
+                  <Pressable
+                    onPress={() => setRetryToken((n) => n + 1)}
+                    style={styles.retryButton}
+                    accessibilityLabel="Retry loading status"
+                  >
+                    <Text style={styles.retryText}>Try again</Text>
+                  </Pressable>
+                </View>
               ) : (
                 <Image
                   source={{ uri: mediaUrl }}
@@ -244,13 +271,20 @@ export default function StatusViewer({
                   resizeMode="contain"
                 />
               )
-            ) : (
+            ) : item.body?.trim() ? (
               <ScrollView
                 contentContainerStyle={styles.textStage}
                 showsVerticalScrollIndicator={false}
               >
                 <Text style={styles.statusText}>{item.body}</Text>
               </ScrollView>
+            ) : (
+              <View style={styles.mediaFallback}>
+                <Ionicons name="chatbubble-outline" size={30} color="#9CA3AF" />
+                <Text style={styles.mediaFallbackText}>
+                  This status has no content
+                </Text>
+              </View>
             )}
           </View>
 
@@ -394,6 +428,30 @@ const styles = StyleSheet.create({
   },
   stage: {
     flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mediaFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: SPACING.spaceSm,
+    paddingHorizontal: SPACING.spaceXl,
+  },
+  mediaFallbackText: {
+    ...TYPOGRAPHY.bodyMD,
+    color: "#9CA3AF",
+    textAlign: "center",
+  },
+  retryButton: {
+    marginTop: SPACING.spaceXs,
+    paddingHorizontal: SPACING.spaceLg,
+    paddingVertical: SPACING.spaceSm,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primaryContainer,
+  },
+  retryText: {
+    ...TYPOGRAPHY.labelMD,
+    color: COLORS.onSurface,
   },
   photo: {
     flex: 1,
