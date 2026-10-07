@@ -17,17 +17,38 @@ page are all live.
 **Incident:** the APK published on the download page (`/download.html`) opens to
 a **blank black screen** on a phone and nothing else.
 
-**Root cause (confirmed):** the published artifact is a **debug** build
-(`app-debug.apk`, ~203 MB). Debug builds of React Native / Expo apps do **not**
-embed the JavaScript bundle in the APK — they load it at runtime from the Metro
-dev server (`localhost:8081`). On a phone with no Metro running, the native
-shell starts, cannot find the bundle, and renders a blank black screen. CI never
-catches this because it only builds and uploads the APK; it never launches it
-standalone.
+**Root cause (corrected 2026-10-07):** there were **three** independent faults,
+not one. The first was diagnosed here originally; the other two only surfaced
+once the release build was actually launched on a device.
 
-**Fix:** build and publish a **release** APK (`./gradlew assembleRelease`),
-which embeds the JS bundle (Hermes bytecode) and runs standalone. Details in
-§6.
+1. **The published artifact was a debug build.** Debug builds do **not** embed
+   the JS bundle — they load it at runtime from the Metro dev server. On a
+   phone with no Metro running, the native shell starts, cannot find the
+   bundle, and renders a blank black screen. CI never caught this because it
+   only builds and uploads the APK; it never launches it.
+2. **The release build could not bundle at all.** Four latent defects, each
+   invisible to a debug build because debug never bundles:
+   `package.json` `main` pointed at a missing `App.js` (should be
+   `expo-router/entry`); 15 route files imported `../../../src/...` from
+   two-deep routes, escaping the project root; three route files used a `@/`
+   alias with no resolver configured; and `expo-linking`,
+   `react-native-screens`, `query-string` and `use-latest-callback` were never
+   installed (`npm install --legacy-peer-deps` skipped them).
+3. **The app rendered an empty tree even once bundled.** This was the real
+   cause of the black screen and it was silent:
+   - `app/_layout.tsx` rendered `{children}`. expo-router v5 does not hand the
+     root layout a `children` prop, so it arrived `undefined` and nothing
+     mounted — no crash, no error. The root layout must render `<Slot />`.
+   - `query-string` had resolved to 9.x, which is **ESM-only**
+   (`"type": "module"`) and exposes only a default export. expo-router's fork
+     does `__importStar(require("query-string")).stringify`, which threw
+     `queryString.stringify is not a function` while building the bottom tab
+     bar. Pinned to 7.1.1, the last CommonJS line with named exports.
+
+**Lesson:** every one of these was invisible until the app was *run*. The
+release build is now gated by a fast `expo export` bundling check, and the root
+layout is wrapped in an error boundary that renders failures on screen instead
+of a silent blank.
 
 ---
 
