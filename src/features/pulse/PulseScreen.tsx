@@ -11,6 +11,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from "../../theme";
 import { Avatar } from "../../components/ui/Avatar";
+import AppBar from "../../components/layout/AppBar";
 import { usePeople } from "../../lib/people-context";
 import { useAuth } from "../../lib/auth-context";
 import { isSupabaseConfigured } from "../../lib/supabase";
@@ -127,6 +128,20 @@ export default function PulseScreen() {
         />
       }
     >
+      <AppBar
+        title="Home"
+        right={
+          <TouchableOpacity
+            style={styles.iconCircle}
+            onPress={() => router.push("/search")}
+            accessibilityRole="button"
+            accessibilityLabel="Search BRO"
+          >
+            <Ionicons name="search" size={20} color={COLORS.primaryContainer} />
+          </TouchableOpacity>
+        }
+      />
+
       <View style={styles.header}>
         <View style={styles.headerText}>
           <Text style={styles.greeting}>
@@ -134,14 +149,6 @@ export default function PulseScreen() {
           </Text>
           <Text style={styles.subtitle}>What's happening right now</Text>
         </View>
-        <TouchableOpacity
-          style={styles.iconCircle}
-          onPress={() => router.push("/search")}
-          accessibilityRole="button"
-          accessibilityLabel="Search BRO"
-        >
-          <Ionicons name="search" size={20} color={COLORS.primaryContainer} />
-        </TouchableOpacity>
       </View>
 
       {!isSupabaseConfigured ? (

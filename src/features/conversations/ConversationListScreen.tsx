@@ -11,6 +11,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS, SPACING, TYPOGRAPHY } from "../../theme";
 import { Avatar } from "../../components/ui/Avatar";
+import AppBar from "../../components/layout/AppBar";
 import {
   fetchConversationSummaries,
   subscribeToConversationList,
@@ -155,41 +156,44 @@ export default function ConversationListScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.logo}>BRO</Text>
-        <TouchableOpacity
-          style={styles.headerBtn}
-          onPress={() => {
-            router.push("/activity");
-            // Opening the screen is the natural moment to clear the badge.
-            void refreshActivityBadge();
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Activity"
-        >
-          <Ionicons
-            name="notifications-outline"
-            size={22}
-            color={COLORS.onSurface}
-          />
-          {unreadActivity > 0 ? (
-            <View style={styles.activityBadge}>
-              <Text style={styles.activityBadgeText}>
-                {unreadActivity > 9 ? "9+" : unreadActivity}
-              </Text>
-            </View>
-          ) : null}
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Chats</Text>
-        <TouchableOpacity
-          style={styles.newBtn}
-          onPress={() => router.push("/new-chat")}
-          accessibilityRole="button"
-          accessibilityLabel="New chat"
-        >
-          <Ionicons name="create-outline" size={22} color={COLORS.onSurface} />
-        </TouchableOpacity>
-      </View>
+      <AppBar
+        title="Chats"
+        left={
+          <TouchableOpacity
+            style={styles.headerBtn}
+            onPress={() => {
+              router.push("/activity");
+              // Opening the screen is the natural moment to clear the badge.
+              void refreshActivityBadge();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Activity"
+          >
+            <Ionicons
+              name="notifications-outline"
+              size={22}
+              color={COLORS.onSurface}
+            />
+            {unreadActivity > 0 ? (
+              <View style={styles.activityBadge}>
+                <Text style={styles.activityBadgeText}>
+                  {unreadActivity > 9 ? "9+" : unreadActivity}
+                </Text>
+              </View>
+            ) : null}
+          </TouchableOpacity>
+        }
+        right={
+          <TouchableOpacity
+            style={styles.newBtn}
+            onPress={() => router.push("/new-chat")}
+            accessibilityRole="button"
+            accessibilityLabel="New chat"
+          >
+            <Ionicons name="create-outline" size={22} color={COLORS.onSurface} />
+          </TouchableOpacity>
+        }
+      />
 
       {loading ? (
         <LoadingState message="Loading conversations..." />

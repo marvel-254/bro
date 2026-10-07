@@ -13,6 +13,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS, SPACING, RADIUS, TYPOGRAPHY } from "../../theme";
 import { Avatar } from "../../components/ui/Avatar";
+import AppBar from "../../components/layout/AppBar";
 import { usePeople } from "../../lib/people-context";
 import { usePresence } from "../../lib/presence-context";
 import {
@@ -191,24 +192,19 @@ export default function PeopleScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.logo}>BRO</Text>
-          <View>
-            <Text style={styles.headerTitle}>Who's Around</Text>
-            <Text style={styles.headerSub}>
-              {onlineCount} online · {people.length} in your circle
-            </Text>
-          </View>
-        </View>
-        <TouchableOpacity style={styles.youBtn} onPress={openPicker}>
-          <Avatar
-            name="You"
-            size={34}
-            presence={presence === "offline" ? null : presence}
-          />
-        </TouchableOpacity>
-      </View>
+      <AppBar
+        title="Who's Around"
+        subtitle={`${onlineCount} online · ${people.length} in your circle`}
+        right={
+          <TouchableOpacity style={styles.youBtn} onPress={openPicker}>
+            <Avatar
+              name="You"
+              size={34}
+              presence={presence === "offline" ? null : presence}
+            />
+          </TouchableOpacity>
+        }
+      />
 
       {/* Your own presence line */}
       <TouchableOpacity style={styles.selfCard} onPress={openPicker}>

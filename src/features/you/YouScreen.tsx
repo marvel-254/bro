@@ -10,8 +10,12 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { COLORS, SPACING, TYPOGRAPHY } from "../../theme";
 import { Avatar } from "../../components/ui/Avatar";
+import AppBar from "../../components/layout/AppBar";
+import EditProfileSheet from "./EditProfileSheet";
+import { uploadAvatar } from "../../lib/avatar";
 import { useAuth } from "../../lib/auth-context";
 import { usePresence } from "../../lib/presence-context";
 import { PRESENCE_LABELS } from "../../lib/presence";
@@ -38,7 +42,7 @@ import {
 
 export default function YouScreen() {
   const router = useRouter();
-  const { user, signOut } = useAuth();
+  const { user, signOut, updateProfile } = useAuth();
   const { presence } = usePresence();
 
   const [spaces, setSpaces] = useState<SpaceSummary[]>([]);
@@ -47,6 +51,8 @@ export default function YouScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [changingPicture, setChangingPicture] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const load = useCallback(
     async (asRefresh = false) => {
@@ -128,6 +134,39 @@ export default function YouScreen() {
     );
   }, []);
 
+  const onChangePicture = useCallback(async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(
+        "Permission needed",
+        "Allow photo access to change your profile picture.",
+      );
+      return;
+    }
+
+    const picked = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (picked.canceled) return;
+
+    const asset = picked.assets[0];
+    setChangingPicture(true);
+    try {
+      const { url } = await uploadAvatar(asset.uri);
+      await updateProfile({ avatar: url });
+    } catch (error) {
+      Alert.alert(
+        "Could not update picture",
+        error instanceof Error ? error.message : "Try again.",
+      );
+    } finally {
+      setChangingPicture(false);
+    }
+  }, [updateProfile]);
+
   if (!user) {
     return (
       <View style={styles.centered}>
@@ -158,25 +197,38 @@ export default function YouScreen() {
         />
       }
     >
-      <View style={styles.header}>
-        <Text style={styles.title}>Me</Text>
-        <TouchableOpacity
-          onPress={onSignOut}
-          disabled={signingOut}
-          accessibilityRole="button"
-          accessibilityLabel="Sign out"
-        >
-          <Text style={styles.signOut}>{signingOut ? "..." : "Sign out"}</Text>
-        </TouchableOpacity>
-      </View>
+      <AppBar
+        title="Me"
+        right={
+          <TouchableOpacity
+            onPress={onSignOut}
+            disabled={signingOut}
+            accessibilityRole="button"
+            accessibilityLabel="Sign out"
+          >
+            <Text style={styles.signOut}>{signingOut ? "..." : "Sign out"}</Text>
+          </TouchableOpacity>
+        }
+      />
 
       <View style={styles.profile}>
-        <Avatar
-          name={user.displayName}
-          uri={user.avatar}
-          size={64}
-          presence={presence === "offline" ? null : presence}
-        />
+        <TouchableOpacity
+          onPress={onChangePicture}
+          disabled={changingPicture}
+          accessibilityRole="button"
+          accessibilityLabel="Change profile picture"
+          style={styles.avatarButton}
+        >
+          <Avatar
+            name={user.displayName}
+            uri={user.avatar}
+            size={64}
+            presence={presence === "offline" ? null : presence}
+          />
+          <View style={styles.avatarBadge}>
+            <Ionicons name="camera" size={12} color={COLORS.onPrimary} />
+          </View>
+        </TouchableOpacity>
         <View style={styles.profileBody}>
           <Text style={styles.displayName} numberOfLines={1}>
             {user.displayName}
@@ -185,8 +237,23 @@ export default function YouScreen() {
             @{user.username}
           </Text>
           <Text style={styles.presence}>{PRESENCE_LABELS[presence]}</Text>
+          <TouchableOpacity
+            onPress={() => setEditing(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Edit your name and username"
+            style={styles.editLink}
+          >
+            <Text style={styles.editLinkText}>Edit profile</Text>
+          </TouchableOpacity>
         </View>
       </View>
+
+      <EditProfileSheet
+        visible={editing}
+        displayName={user.displayName}
+        username={user.username}
+        onClose={() => setEditing(false)}
+      />
 
       {loading ? (
         <LoadingState message="Loading your stuff..." />
@@ -274,6 +341,31 @@ export default function YouScreen() {
 }
 
 const styles = StyleSheet.create({
+  avatarButton: {
+    position: "relative",
+  },
+  avatarBadge: {
+    position: "absolute",
+    right: -2,
+    bottom: -2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.primaryContainer,
+    borderWidth: 2,
+    borderColor: COLORS.semantic.canvasRoot,
+  },
+  editLink: {
+    marginTop: SPACING.spaceXs,
+    alignSelf: "flex-start",
+  },
+  editLinkText: {
+    ...TYPOGRAPHY.labelMD,
+    color: COLORS.primaryContainer,
+  },
+
   container: {
     flex: 1,
     backgroundColor: COLORS.surface,

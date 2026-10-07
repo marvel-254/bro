@@ -64,6 +64,13 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="create"
+        options={{
+          title: 'Create',
+          tabBarButton: () => <CreateAction />,
+        }}
+      />
+      <Tabs.Screen
         name="people"
         options={{
           title: 'Bros',
@@ -82,16 +89,10 @@ export default function TabsLayout() {
         }}
       />
       {/* v1 nav is frozen at Home / Chats / Bros / Me. Spaces stays routable
-          but hidden. Create is the raised center `+`, a button rather than a
-          tab, so it never reads as a fifth destination. */}
+          but hidden. Create sits between Chats and Bros as a raised `+` --
+          a button rather than a tab, so it never reads as a fifth
+          destination. Order below is the tab bar order: it follows the JSX. */}
       <Tabs.Screen name="spaces" options={{ href: null }} />
-      <Tabs.Screen
-        name="create"
-        options={{
-          title: 'Create',
-          tabBarButton: () => <CreateAction />,
-        }}
-      />
     </Tabs>
   );
 }
