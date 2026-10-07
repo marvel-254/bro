@@ -12,6 +12,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from "../../theme";
 import { Avatar } from "../../components/ui/Avatar";
 import AppBar from "../../components/layout/AppBar";
+import MemeCard from "../memes/MemeCard";
+import StatusTray from "../status/StatusTray";
+import StatusViewer from "../status/StatusViewer";
+import StatusComposer from "../status/StatusComposer";
+import { useStatuses } from "../status/useStatuses";
 import { usePeople } from "../../lib/people-context";
 import { useAuth } from "../../lib/auth-context";
 import { isSupabaseConfigured } from "../../lib/supabase";
@@ -70,6 +75,11 @@ function titleFor(live: PulseLiveConversation): string {
 export default function PulseScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const statuses = useStatuses({ viewerId: user?.id ?? null });
+  const [statusViewer, setStatusViewer] = useState<{
+    authorId: string;
+  } | null>(null);
+  const [composingStatus, setComposingStatus] = useState(false);
   const { people } = usePeople();
 
   const [live, setLive] = useState<PulseLiveConversation[]>([]);
@@ -116,199 +126,234 @@ export default function PulseScreen() {
     live.length === 0 && plans.length === 0 && around.length === 0;
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => void load(true)}
-          tintColor={COLORS.primaryContainer}
-        />
-      }
-    >
-      <AppBar
-        title="Home"
-        right={
-          <TouchableOpacity
-            style={styles.iconCircle}
-            onPress={() => router.push("/search")}
-            accessibilityRole="button"
-            accessibilityLabel="Search BRO"
-          >
-            <Ionicons name="search" size={20} color={COLORS.primaryContainer} />
-          </TouchableOpacity>
+    <>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void load(true)}
+            tintColor={COLORS.primaryContainer}
+          />
         }
-      />
-
-      <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text style={styles.greeting}>
-            {firstName ? `Yoh, ${firstName}` : "Yoh, tsup bruv?"}
-          </Text>
-          <Text style={styles.subtitle}>What's happening right now</Text>
-        </View>
-      </View>
-
-      {!isSupabaseConfigured ? (
-        <EmptyState
-          message="Backend not configured. Pull up EXPO_PUBLIC_SUPABASE_URL and the anon key to see what's live."
-          icon={
-            <Ionicons
-              name="cloud-offline-outline"
-              size={36}
-              color={COLORS.onSurfaceVariant}
-            />
+      >
+        <AppBar
+          title="Home"
+          right={
+            <TouchableOpacity
+              style={styles.iconCircle}
+              onPress={() => router.push("/search")}
+              accessibilityRole="button"
+              accessibilityLabel="Search BRO"
+            >
+              <Ionicons
+                name="search"
+                size={20}
+                color={COLORS.primaryContainer}
+              />
+            </TouchableOpacity>
           }
         />
-      ) : loading ? (
-        <LoadingState message="Checking what's live..." />
-      ) : error ? (
-        <ErrorState message={error} onRetry={() => void load()} />
-      ) : (
-        <>
-          {/* Strip 1 — Live now */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Live now</Text>
-              <Text style={styles.sectionMeta}>{live.length || ""}</Text>
-            </View>
-            {live.length === 0 ? (
-              <Text style={styles.stripEmpty}>Quiet fr. Nothing cooking.</Text>
-            ) : (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.rail}
-              >
-                {live.map((item) => (
-                  <TouchableOpacity
-                    key={item.conversationId}
-                    style={styles.liveCard}
-                    onPress={() => router.push(`/chat/${item.conversationId}`)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Open ${titleFor(item)}, ${item.messageCount} messages`}
-                  >
-                    <View style={styles.liveCardTop}>
-                      <Text style={styles.liveBadge}>LIVE</Text>
-                      <Text style={styles.liveCount}>
-                        {item.messageCount} in{" "}
-                        {relativeLabel(item.lastMessageAt)}
+
+        <StatusTray
+          groups={statuses.groups}
+          viewerId={user?.id ?? null}
+          loading={statuses.loading}
+          onOpen={(authorId) => setStatusViewer({ authorId })}
+          onCompose={() => setComposingStatus(true)}
+        />
+
+        <View style={styles.header}>
+          <View style={styles.headerText}>
+            <Text style={styles.greeting}>
+              {firstName ? `Yoh, ${firstName}` : "Yoh, tsup bruv?"}
+            </Text>
+            <Text style={styles.subtitle}>What's happening right now</Text>
+          </View>
+        </View>
+
+        {!isSupabaseConfigured ? (
+          <EmptyState
+            message="Backend not configured. Pull up EXPO_PUBLIC_SUPABASE_URL and the anon key to see what's live."
+            icon={
+              <Ionicons
+                name="cloud-offline-outline"
+                size={36}
+                color={COLORS.onSurfaceVariant}
+              />
+            }
+          />
+        ) : loading ? (
+          <LoadingState message="Checking what's live..." />
+        ) : error ? (
+          <ErrorState message={error} onRetry={() => void load()} />
+        ) : (
+          <>
+            <MemeCard />
+
+            {/* Strip 1 — Live now */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Live now</Text>
+                <Text style={styles.sectionMeta}>{live.length || ""}</Text>
+              </View>
+              {live.length === 0 ? (
+                <Text style={styles.stripEmpty}>
+                  Quiet fr. Nothing cooking.
+                </Text>
+              ) : (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.rail}
+                >
+                  {live.map((item) => (
+                    <TouchableOpacity
+                      key={item.conversationId}
+                      style={styles.liveCard}
+                      onPress={() =>
+                        router.push(`/chat/${item.conversationId}`)
+                      }
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open ${titleFor(item)}, ${item.messageCount} messages`}
+                    >
+                      <View style={styles.liveCardTop}>
+                        <Text style={styles.liveBadge}>LIVE</Text>
+                        <Text style={styles.liveCount}>
+                          {item.messageCount} in{" "}
+                          {relativeLabel(item.lastMessageAt)}
+                        </Text>
+                      </View>
+                      <Text style={styles.liveTitle} numberOfLines={1}>
+                        {titleFor(item)}
                       </Text>
-                    </View>
-                    <Text style={styles.liveTitle} numberOfLines={1}>
-                      {titleFor(item)}
-                    </Text>
-                    {item.lastMessagePreview ? (
-                      <Text style={styles.liveSnippet} numberOfLines={2}>
-                        {item.lastMessagePreview}
-                      </Text>
-                    ) : null}
-                    <View style={styles.avatarRow}>
-                      {item.peers.slice(0, 4).map((peer) => (
-                        <Avatar
-                          key={peer.userId}
-                          name={peer.displayName}
-                          uri={peer.avatarUrl}
-                          size={22}
-                          style={styles.stackedAvatar}
-                        />
-                      ))}
-                      {item.peers.length > 4 ? (
-                        <Text style={styles.avatarOverflow}>
-                          +{item.peers.length - 4}
+                      {item.lastMessagePreview ? (
+                        <Text style={styles.liveSnippet} numberOfLines={2}>
+                          {item.lastMessagePreview}
                         </Text>
                       ) : null}
+                      <View style={styles.avatarRow}>
+                        {item.peers.slice(0, 4).map((peer) => (
+                          <Avatar
+                            key={peer.userId}
+                            name={peer.displayName}
+                            uri={peer.avatarUrl}
+                            size={22}
+                            style={styles.stackedAvatar}
+                          />
+                        ))}
+                        {item.peers.length > 4 ? (
+                          <Text style={styles.avatarOverflow}>
+                            +{item.peers.length - 4}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+
+            {/* Strip 2 — Tap-in */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Tap in</Text>
+                <Text style={styles.sectionMeta}>{plans.length || ""}</Text>
+              </View>
+              {plans.length === 0 ? (
+                <Text style={styles.stripEmpty}>
+                  Nothing on. Make something happen.
+                </Text>
+              ) : (
+                plans.map((plan) => (
+                  <View key={plan.id} style={styles.planRow}>
+                    <View style={styles.planMain}>
+                      <Text style={styles.planTitle} numberOfLines={1}>
+                        {plan.title}
+                      </Text>
+                      <Text style={styles.planMeta}>
+                        {plan.creatorName ? `${plan.creatorName} · ` : ""}
+                        {startsLabel(plan.startsAt)}
+                        {plan.location ? ` · ${plan.location}` : ""}
+                      </Text>
                     </View>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            )}
-          </View>
-
-          {/* Strip 2 — Tap-in */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Tap in</Text>
-              <Text style={styles.sectionMeta}>{plans.length || ""}</Text>
-            </View>
-            {plans.length === 0 ? (
-              <Text style={styles.stripEmpty}>
-                Nothing on. Make something happen.
-              </Text>
-            ) : (
-              plans.map((plan) => (
-                <View key={plan.id} style={styles.planRow}>
-                  <View style={styles.planMain}>
-                    <Text style={styles.planTitle} numberOfLines={1}>
-                      {plan.title}
-                    </Text>
-                    <Text style={styles.planMeta}>
-                      {plan.creatorName ? `${plan.creatorName} · ` : ""}
-                      {startsLabel(plan.startsAt)}
-                      {plan.location ? ` · ${plan.location}` : ""}
-                    </Text>
+                    <View style={styles.planTally}>
+                      <Text style={styles.planGoing}>{plan.goingCount} in</Text>
+                      <Text style={styles.planMeta}>
+                        {plan.responseCount} said
+                      </Text>
+                    </View>
                   </View>
-                  <View style={styles.planTally}>
-                    <Text style={styles.planGoing}>{plan.goingCount} in</Text>
-                    <Text style={styles.planMeta}>
-                      {plan.responseCount} said
-                    </Text>
-                  </View>
-                </View>
-              ))
-            )}
-          </View>
-
-          {/* Strip 3 — Around */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Around</Text>
-              <Text style={styles.sectionMeta}>{around.length || ""}</Text>
+                ))
+              )}
             </View>
-            {around.length === 0 ? (
-              <Text style={styles.stripEmpty}>
-                Uko solo msee. No bros around.
-              </Text>
-            ) : (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.rail}
-              >
-                {around.map((person) => (
-                  <TouchableOpacity
-                    key={person.userId}
-                    style={styles.aroundItem}
-                    onPress={() => router.push("/new-chat")}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Message ${person.displayName}`}
-                  >
-                    <Avatar
-                      name={person.displayName}
-                      uri={person.avatarUrl}
-                      presence={person.presence}
-                      size={44}
-                    />
-                    <Text style={styles.aroundName} numberOfLines={1}>
-                      {person.displayName.split(" ")[0]}
-                    </Text>
-                    <Text style={styles.aroundState} numberOfLines={1}>
-                      {person.presence}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            )}
-          </View>
 
-          {isQuiet ? (
-            <Text style={styles.quietNote}>Quiet fr. Drop a vibe cuz.</Text>
-          ) : null}
-        </>
-      )}
-    </ScrollView>
+            {/* Strip 3 — Around */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Around</Text>
+                <Text style={styles.sectionMeta}>{around.length || ""}</Text>
+              </View>
+              {around.length === 0 ? (
+                <Text style={styles.stripEmpty}>
+                  Uko solo msee. No bros around.
+                </Text>
+              ) : (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.rail}
+                >
+                  {around.map((person) => (
+                    <TouchableOpacity
+                      key={person.userId}
+                      style={styles.aroundItem}
+                      onPress={() => router.push("/new-chat")}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Message ${person.displayName}`}
+                    >
+                      <Avatar
+                        name={person.displayName}
+                        uri={person.avatarUrl}
+                        presence={person.presence}
+                        size={44}
+                      />
+                      <Text style={styles.aroundName} numberOfLines={1}>
+                        {person.displayName.split(" ")[0]}
+                      </Text>
+                      <Text style={styles.aroundState} numberOfLines={1}>
+                        {person.presence}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+
+            {isQuiet ? (
+              <Text style={styles.quietNote}>Quiet fr. Drop a vibe cuz.</Text>
+            ) : null}
+          </>
+        )}
+      </ScrollView>
+
+      <StatusViewer
+        visible={statusViewer !== null}
+        groups={statuses.groups}
+        startAuthorId={statusViewer?.authorId ?? ""}
+        viewerId={user?.id ?? null}
+        onClose={() => setStatusViewer(null)}
+        onSeen={statuses.markSeen}
+      />
+
+      <StatusComposer
+        visible={composingStatus}
+        onClose={() => setComposingStatus(false)}
+        onPosted={() => void statuses.reload()}
+      />
+    </>
   );
 }
 

@@ -15,6 +15,10 @@ import { COLORS, SPACING, TYPOGRAPHY } from "../../theme";
 import { Avatar } from "../../components/ui/Avatar";
 import AppBar from "../../components/layout/AppBar";
 import EditProfileSheet from "./EditProfileSheet";
+import EditAboutSheet from "./EditAboutSheet";
+import StatusViewer from "../status/StatusViewer";
+import StatusComposer from "../status/StatusComposer";
+import { useStatuses } from "../status/useStatuses";
 import { uploadAvatar } from "../../lib/avatar";
 import { useAuth } from "../../lib/auth-context";
 import { usePresence } from "../../lib/presence-context";
@@ -53,6 +57,15 @@ export default function YouScreen() {
   const [signingOut, setSigningOut] = useState(false);
   const [changingPicture, setChangingPicture] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [editingAbout, setEditingAbout] = useState(false);
+  const [statusViewer, setStatusViewer] = useState<{ authorId: string } | null>(
+    null,
+  );
+  const [composingStatus, setComposingStatus] = useState(false);
+  const statuses = useStatuses({ viewerId: user?.id ?? null });
+  const myStatusCount = statuses.groups.find(
+    (group) => group.authorId === user?.id,
+  )?.updates.length ?? 0;
 
   const load = useCallback(
     async (asRefresh = false) => {
@@ -255,6 +268,105 @@ export default function YouScreen() {
         onClose={() => setEditing(false)}
       />
 
+      <EditAboutSheet
+        visible={editingAbout}
+        bio={user.bio ?? ""}
+        onClose={() => setEditingAbout(false)}
+      />
+
+      <StatusViewer
+        visible={statusViewer !== null}
+        groups={statuses.groups}
+        startAuthorId={statusViewer?.authorId ?? user.id}
+        viewerId={user.id}
+        onClose={() => setStatusViewer(null)}
+        onSeen={statuses.markSeen}
+      />
+
+      <StatusComposer
+        visible={composingStatus}
+        onClose={() => setComposingStatus(false)}
+        onPosted={() => void statuses.reload()}
+      />
+
+      <View style={styles.quickList}>
+        <TouchableOpacity
+          style={styles.quickRow}
+          onPress={() => setComposingStatus(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Add status"
+        >
+          <View style={[styles.quickIcon, styles.quickIconCyan]}>
+            <Ionicons name="ellipse-outline" size={18} color={COLORS.onPrimary} />
+          </View>
+          <View style={styles.quickBody}>
+            <Text style={styles.quickTitle}>Status</Text>
+            <Text style={styles.quickSub} numberOfLines={1}>
+              {myStatusCount > 0
+                ? `${myStatusCount} active now`
+                : "Tap to add one for 24h"}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={COLORS.outline} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.quickRow}
+          onPress={() => setEditingAbout(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Edit your about"
+        >
+          <View style={[styles.quickIcon, styles.quickIconMagenta]}>
+            <Ionicons name="information-circle-outline" size={18} color={COLORS.onPrimary} />
+          </View>
+          <View style={styles.quickBody}>
+            <Text style={styles.quickTitle}>About</Text>
+            <Text style={styles.quickSub} numberOfLines={1}>
+              {user.bio?.trim() || "Add a line about yourself"}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={COLORS.outline} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.quickRow}
+          onPress={() => setEditing(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Edit profile"
+        >
+          <View style={[styles.quickIcon, styles.quickIconAmber]}>
+            <Ionicons name="pencil-outline" size={18} color={COLORS.onPrimary} />
+          </View>
+          <View style={styles.quickBody}>
+            <Text style={styles.quickTitle}>Edit profile</Text>
+            <Text style={styles.quickSub} numberOfLines={1}>
+              Name, username and picture
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={COLORS.outline} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.quickRow}
+          onPress={() => void statuses.reload()}
+          accessibilityRole="button"
+          accessibilityLabel="Open your status history"
+        >
+          <View style={[styles.quickIcon, styles.quickIconViolet]}>
+            <Ionicons name="play-circle-outline" size={18} color={COLORS.onPrimary} />
+          </View>
+          <View style={styles.quickBody}>
+            <Text style={styles.quickTitle}>Your status history</Text>
+            <Text style={styles.quickSub} numberOfLines={1}>
+              {statuses.groups.length === 0
+                ? "Nothing live right now"
+                : `${statuses.groups.length} ${statuses.groups.length === 1 ? "person" : "people"} with status`}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={COLORS.outline} />
+        </TouchableOpacity>
+      </View>
+
       {loading ? (
         <LoadingState message="Loading your stuff..." />
       ) : error ? (
@@ -341,6 +453,54 @@ export default function YouScreen() {
 }
 
 const styles = StyleSheet.create({
+  quickList: {
+    marginTop: SPACING.spaceMd,
+    backgroundColor: COLORS.semantic.surfaceLevel1,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.semantic.ghostBorderLight,
+  },
+  quickRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.spaceMd,
+    paddingHorizontal: SPACING.spaceMd,
+    paddingVertical: SPACING.spaceMd,
+    minHeight: 60,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.semantic.ghostBorderLight,
+  },
+  quickIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  quickIconCyan: {
+    backgroundColor: COLORS.primaryContainer,
+  },
+  quickIconMagenta: {
+    backgroundColor: COLORS.secondary,
+  },
+  quickIconAmber: {
+    backgroundColor: COLORS.tertiaryContainer,
+  },
+  quickIconViolet: {
+    backgroundColor: COLORS.secondaryContainer,
+  },
+  quickBody: {
+    flex: 1,
+  },
+  quickTitle: {
+    ...TYPOGRAPHY.labelLG,
+    color: COLORS.onSurface,
+  },
+  quickSub: {
+    ...TYPOGRAPHY.bodySM,
+    color: COLORS.outline,
+  },
+
   avatarButton: {
     position: "relative",
   },
