@@ -40,6 +40,17 @@ export default function StatusTray({
     ? groups.filter((group) => group.authorId !== viewerId)
     : groups;
 
+  /**
+   * Your own group, which is rendered as the leading tile rather than being
+   * listed alongside everyone else — that duplication was the original bug.
+   * The tile opens your story when you have one and the composer when you do
+   * not, so filtering it out of the list never makes your own status
+   * unreachable.
+   */
+  const mine = viewerId
+    ? groups.find((group) => group.authorId === viewerId)
+    : undefined;
+
   if (loading && groups.length === 0) return null;
 
   return (
@@ -50,15 +61,34 @@ export default function StatusTray({
         contentContainerStyle={styles.rail}
       >
         <Pressable
-          onPress={onCompose}
+          onPress={() => (mine ? onOpen(mine.authorId) : onCompose())}
           style={styles.item}
           accessibilityRole="button"
-          accessibilityLabel="Add your status"
+          accessibilityLabel={
+            mine ? "Your status" : "Add your status"
+          }
         >
           <View>
-            <Avatar name={viewerName ?? "You"} uri={viewerAvatar} size={48} />
-            <View style={styles.addBadge}>
-              <Ionicons name="add" size={13} color={COLORS.onPrimary} />
+            <View
+              style={[
+                styles.ring,
+                mine
+                  ? mine.unseen
+                    ? styles.ringUnseen
+                    : styles.ringSeen
+                  : null,
+              ]}
+            >
+              <Avatar
+                name={viewerName ?? "You"}
+                uri={viewerAvatar ?? mine?.authorAvatar ?? null}
+                size={44}
+              />
+              {!mine ? (
+                <View style={styles.addBadge}>
+                  <Ionicons name="add" size={13} color={COLORS.onPrimary} />
+                </View>
+              ) : null}
             </View>
           </View>
           <Text style={styles.name} numberOfLines={1}>
@@ -92,7 +122,7 @@ export default function StatusTray({
           </Pressable>
         ))}
 
-        {others.length === 0 && !loading ? (
+        {groups.length === 0 && !loading ? (
           <View style={styles.empty}>
             <Text style={styles.emptyText}>
               No statuses yet. Yours is one tap away.

@@ -109,6 +109,18 @@ type AuthorRecord = {
   status: string | null;
 };
 
+type StatusViewRow = {
+  viewer_id: string;
+  last_viewed_at: string;
+  viewer:
+    | {
+        display_name: string | null;
+        username: string | null;
+        avatar_url: string | null;
+      }
+    | null;
+};
+
 async function loadAuthors(ids: string[]): Promise<Map<string, AuthorRecord>> {
   const supabase = getSupabase();
   const out = new Map<string, AuthorRecord>();
@@ -259,6 +271,65 @@ export async function fetchStatusReplies(
   return (data as unknown as { body: string; created_at: string }[]).map(
     (row) => ({ body: row.body, createdAt: row.created_at }),
   );
+}
+
+export interface StatusView {
+  viewerId: string;
+  name: string;
+  username: string;
+  avatarUrl: string | null;
+  viewedAt: string;
+}
+
+/**
+ * Record that the signed-in user opened this status.
+ *
+ * Best effort by design: a failed view write must never interrupt the story,
+ * so this resolves rather than throws. Re-opening updates the timestamp
+ * instead of adding a row, so the count stays "people", not "opens".
+ */
+export async function recordStatusView(statusId: string): Promise<void> {
+  const supabase = getSupabase();
+  if (!supabase || !statusId) return;
+
+  const { error } = await supabase
+    .from("status_views")
+    .upsert({ status_id: statusId }, { onConflict: "status_id,viewer_id" });
+  if (error) return;
+}
+
+/**
+ * Who has opened a status, newest first.
+ *
+ * Returns `[]` rather than throwing for the same reason `searchGifs` throws
+ * and this does not: a viewer list is an extra, and failing to load it should
+ * leave the story readable rather than blank it.
+ */
+export async function fetchStatusViews(
+  statusId: string,
+): Promise<StatusView[]> {
+  const supabase = getSupabase();
+  if (!supabase || !statusId) return [];
+
+  const { data, error } = await supabase
+    .from("status_views")
+    .select(
+      "viewer_id, last_viewed_at, viewer:profiles!status_views_viewer_id_fkey (display_name, username, avatar_url)",
+    )
+    .eq("status_id", statusId)
+    .order("last_viewed_at", { ascending: false })
+    .limit(200);
+  if (error || !data) return [];
+
+  return (data as unknown as StatusViewRow[])
+    .filter((row) => row.viewer !== null && row.viewer !== undefined)
+    .map((row) => ({
+      viewerId: row.viewer_id,
+      name: row.viewer?.display_name || row.viewer?.username || "Someone",
+      username: row.viewer?.username ?? "",
+      avatarUrl: row.viewer?.avatar_url ?? null,
+      viewedAt: row.last_viewed_at,
+    }));
 }
 
 export { STATUS_TTL_HOURS };

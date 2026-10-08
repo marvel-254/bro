@@ -19,10 +19,13 @@ import { formatRelativeTime } from "../../lib/utils";
 import {
   deleteStatus,
   fetchStatusReplies,
+  fetchStatusViews,
+  recordStatusView,
   replyToStatus,
   statusMediaUrl,
   type StatusGroup,
   type StatusUpdate,
+  type StatusView,
 } from "../../lib/statuses";
 
 type Props = {
@@ -69,6 +72,8 @@ export default function StatusViewer({
   const [composerOpen, setComposerOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [replies, setReplies] = useState<string[]>([]);
+  const [views, setViews] = useState<StatusView[]>([]);
+  const [showViews, setShowViews] = useState(false);
   const [sending, setSending] = useState(false);
 
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -77,9 +82,25 @@ export default function StatusViewer({
   const group = groups[authorIndex];
   const item: StatusUpdate | undefined = group?.updates[itemIndex];
 
-  // Opening on a specific author: find them, or fall back to the first.
+  /**
+   * Opening on a specific author: find them, or fall back to the first.
+   *
+   * This must NOT re-run whenever `groups` changes identity. `groups` is
+   * memoised over `seenIds`, so marking a status seen rebuilds it — and a reset
+   * effect keyed on that would yank the viewer back to item 1 and restart the
+   * dwell timer on every item, which reads as "the story never advances".
+   * Instead we reset only when the viewer is opened on a different author,
+   * tracked by the author we last opened for.
+   */
+  const openedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      openedFor.current = null;
+      return;
+    }
+    if (openedFor.current === startAuthorId) return;
+    openedFor.current = startAuthorId;
+
     const found = groups.findIndex((entry) => entry.authorId === startAuthorId);
     setAuthorIndex(found >= 0 ? found : 0);
     setItemIndex(0);
@@ -89,9 +110,9 @@ export default function StatusViewer({
   }, [visible, startAuthorId, groups]);
 
   const markSeen = useCallback(
-    (status: StatusUpdate) => {
-      if (seen.current.has(status.id)) return;
-      seen.current.add(status.id);
+    (statusId: string) => {
+      if (seen.current.has(statusId)) return;
+      seen.current.add(statusId);
       onSeen([...seen.current]);
     },
     [onSeen],
@@ -127,16 +148,26 @@ export default function StatusViewer({
   }, [authorIndex, itemIndex, groups]);
 
   // Dwell timer. Pauses while the composer is open so typing is not eaten.
+  // Keyed on the item id rather than the item object: the object is rebuilt
+  // every time `groups` is, so depending on it restarted the timer mid-read.
+  const itemId = item?.id ?? null;
+  const itemKind = item?.kind ?? null;
+  const itemMine = item?.mine ?? false;
   useEffect(() => {
-    if (!visible || !item || composerOpen) return;
+    if (!visible || !itemId || itemKind === null || composerOpen) return;
 
     // Every kind is marked seen as it is shown. Gating this on media meant
     // text statuses — the cheap, common case — left their author's ring blue
     // forever, so "unseen" never meant anything.
-    markSeen(item);
+    markSeen(itemId);
     setProgress(0);
 
-    const duration = dwellMsFor(item.kind);
+    // A view is only recorded for someone else's status, and only once per
+    // open. Writing your own would put yourself in your own viewer list, and
+    // the RLS hides self-rows anyway — so skipping it saves the round trip.
+    if (!itemMine) void recordStatusView(itemId);
+
+    const duration = dwellMsFor(itemKind);
     const startedAt = Date.now();
     timer.current = setInterval(() => {
       const elapsed = Date.now() - startedAt;
@@ -150,7 +181,7 @@ export default function StatusViewer({
     return () => {
       if (timer.current) clearInterval(timer.current);
     };
-  }, [visible, item, composerOpen, advance, markSeen]);
+  }, [visible, itemId, itemKind, itemMine, composerOpen, advance, markSeen]);
 
   // Resolve the signed URL for the current photo.
   useEffect(() => {
@@ -190,6 +221,27 @@ export default function StatusViewer({
     void fetchStatusReplies(item.id).then((rows) => {
       if (cancelled) return;
       setReplies(rows.map((row) => row.body));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, item]);
+
+  /**
+   * Who has watched this status. Only fetched for your own statuses, because
+   * that is the only place WhatsApp-style view counts are shown — everyone else
+   * already knows they watched it.
+   */
+  useEffect(() => {
+    if (!visible || !item || !item.mine) {
+      setViews([]);
+      setShowViews(false);
+      return;
+    }
+    let cancelled = false;
+    void fetchStatusViews(item.id).then((rows) => {
+      if (cancelled) return;
+      setViews(rows);
     });
     return () => {
       cancelled = true;
@@ -302,6 +354,53 @@ export default function StatusViewer({
               </View>
             )}
           </View>
+
+          {item.mine && views.length > 0 ? (
+            <View style={styles.viewedWrap}>
+              <Pressable
+                onPress={() => setShowViews((open) => !open)}
+                style={styles.viewedToggle}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  showViews
+                    ? "Hide who viewed this status"
+                    : `Viewed by ${views.length}. Show who`
+                }
+              >
+                <Ionicons
+                  name={showViews ? "eye-off-outline" : "eye-outline"}
+                  size={15}
+                  color={COLORS.semantic.textDim}
+                />
+                <Text style={styles.viewedToggleText}>
+                  {showViews ? "Hide viewers" : `Viewed by ${views.length}`}
+                </Text>
+                <Ionicons
+                  name={showViews ? "chevron-down" : "chevron-forward"}
+                  size={13}
+                  color={COLORS.semantic.textDim}
+                />
+              </Pressable>
+
+              {showViews
+                ? views.map((view) => (
+                    <View key={view.viewerId} style={styles.viewedRow}>
+                      <Avatar
+                        name={view.name}
+                        uri={view.avatarUrl}
+                        size={28}
+                      />
+                      <Text style={styles.viewedName} numberOfLines={1}>
+                        {view.name}
+                      </Text>
+                      <Text style={styles.viewedAt}>
+                        {formatRelativeTime(view.viewedAt)}
+                      </Text>
+                    </View>
+                  ))
+                : null}
+            </View>
+          ) : null}
 
           {replies.length > 0 ? (
             <ScrollView
@@ -484,6 +583,37 @@ const styles = StyleSheet.create({
     gap: SPACING.spaceXs,
     paddingHorizontal: SPACING.gutter,
     paddingBottom: SPACING.spaceSm,
+  },
+  viewedWrap: {
+    paddingHorizontal: SPACING.gutter,
+    paddingBottom: SPACING.spaceSm,
+    gap: SPACING.spaceXs,
+  },
+  viewedToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.spaceXs,
+    alignSelf: "flex-start",
+    paddingVertical: SPACING.spaceXs,
+  },
+  viewedToggleText: {
+    ...TYPOGRAPHY.labelMD,
+    color: COLORS.semantic.textDim,
+  },
+  viewedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.spaceSm,
+    paddingVertical: SPACING.spaceXs,
+  },
+  viewedName: {
+    ...TYPOGRAPHY.bodyMD,
+    color: COLORS.onSurface,
+    flex: 1,
+  },
+  viewedAt: {
+    ...TYPOGRAPHY.bodySM,
+    color: COLORS.semantic.textDim,
   },
   replyPill: {
     backgroundColor: "rgba(255,255,255,0.16)",
