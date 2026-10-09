@@ -10,6 +10,7 @@ env:
   EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
   EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
   EXPO_PUBLIC_R2_MEDIA_URL: ${{ secrets.EXPO_PUBLIC_R2_MEDIA_URL }}
+  EXPO_PUBLIC_MEME_UPLOAD_URL: ${{ secrets.EXPO_PUBLIC_MEME_UPLOAD_URL }}
   EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
 
 jobs:
@@ -60,6 +61,7 @@ jobs:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
           EXPO_PUBLIC_R2_MEDIA_URL: ${{ secrets.EXPO_PUBLIC_R2_MEDIA_URL }}
+          EXPO_PUBLIC_MEME_UPLOAD_URL: ${{ secrets.EXPO_PUBLIC_MEME_UPLOAD_URL }}
           EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
 
       # F-Droid handles release signing and publishing. This workflow builds a
@@ -72,6 +74,7 @@ jobs:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
           EXPO_PUBLIC_R2_MEDIA_URL: ${{ secrets.EXPO_PUBLIC_R2_MEDIA_URL }}
+          EXPO_PUBLIC_MEME_UPLOAD_URL: ${{ secrets.EXPO_PUBLIC_MEME_UPLOAD_URL }}
           EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
         timeout-minutes: 30
 

@@ -11,10 +11,13 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from "../../theme";
+import * as ImagePicker from "expo-image-picker";
 import {
   fetchMemesPage,
   isMemeLibraryConfigured,
+  isMemeUploadConfigured,
   reportMeme,
+  uploadMeme,
   MEME_PAGE_SIZE,
   type Meme,
 } from "../../lib/memes";
@@ -23,6 +26,8 @@ import { hasMoreMemes, mergeMemePage } from "../../lib/meme-queries";
 type Props = {
   /** Called with the chosen meme, for "use this in a chat". */
   onUseMeme?: (meme: Meme) => void;
+  /** Called after an upload lands, so the parent can refetch. */
+  onChanged?: () => void;
 };
 
 const REASONS = [
@@ -40,7 +45,7 @@ const REASONS = [
  * you are scrolling, so offset paging can repeat a row, and a feed that shows
  * the same meme twice looks broken.
  */
-export default function MemeFeed({ onUseMeme }: Props) {
+export default function MemeFeed({ onUseMeme, onChanged }: Props) {
   const [memes, setMemes] = useState<Meme[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -49,6 +54,8 @@ export default function MemeFeed({ onUseMeme }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [reporting, setReporting] = useState<Meme | null>(null);
   const [reported, setReported] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const seen = useRef(new Set<string>());
   // Guards against two onEndReached calls racing: FlatList fires it repeatedly
@@ -111,6 +118,49 @@ export default function MemeFeed({ onUseMeme }: Props) {
     const handle = setTimeout(() => void loadFirstPage(query), query ? 300 : 0);
     return () => clearTimeout(handle);
   }, [query, loadFirstPage]);
+
+  /**
+   * Pick an image and send it to the Worker.
+   *
+   * The picked file is not added to the list optimistically: the Worker
+   * decides the storage key and writes the catalogue row, so guessing at a row
+   * here would show a meme that might have been rejected or rate-limited.
+   */
+  const onUpload = useCallback(async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setUploadError("BRO needs permission to reach your photos.");
+      return;
+    }
+
+    const picked = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.9,
+    });
+    if (picked.canceled) return;
+
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const asset = picked.assets[0];
+      const result = await uploadMeme(
+        { uri: asset.uri, type: asset.mimeType },
+        asset.fileName?.replace(/\.[^.]+$/, "") ?? "",
+      );
+      if (!result.ok) {
+        setUploadError(result.error);
+        return;
+      }
+      await loadFirstPage(query);
+      onChanged?.();
+    } catch (err) {
+      setUploadError(
+        err instanceof Error ? err.message : "Could not upload that.",
+      );
+    } finally {
+      setUploading(false);
+    }
+  }, [loadFirstPage, query, onChanged]);
 
   const onReport = useCallback(async (reason: (typeof REASONS)[number]["value"]) => {
     if (!reporting) return;
@@ -188,7 +238,25 @@ export default function MemeFeed({ onUseMeme }: Props) {
     <View style={styles.section}>
       <View style={styles.head}>
         <Text style={styles.title}>Memes</Text>
+        {isMemeUploadConfigured() ? (
+          <Pressable
+            onPress={() => void onUpload()}
+            disabled={uploading}
+            hitSlop={10}
+            style={styles.uploadButton}
+            accessibilityRole="button"
+            accessibilityLabel="Upload a meme"
+          >
+            {uploading ? (
+              <ActivityIndicator size="small" color={COLORS.onPrimary} />
+            ) : (
+              <Ionicons name="add" size={16} color={COLORS.onPrimary} />
+            )}
+          </Pressable>
+        ) : null}
       </View>
+
+      {uploadError ? <Text style={styles.uploadError}>{uploadError}</Text> : null}
 
       <View style={styles.searchRow}>
         <Ionicons name="search" size={16} color={COLORS.outline} />
@@ -290,6 +358,18 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+  },
+  uploadButton: {
+    width: 32,
+    height: 32,
+    borderRadius: RADIUS.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.primary,
+  },
+  uploadError: {
+    ...TYPOGRAPHY.bodySM,
+    color: COLORS.error,
   },
   title: {
     ...TYPOGRAPHY.headlineSM,

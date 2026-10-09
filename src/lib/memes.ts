@@ -105,6 +105,74 @@ export async function fetchMemesPage(
   return { memes: rows.map(toMeme), hasMore: rows.length === limit };
 }
 
+/**
+ * Public base of the upload Worker. Separate from the read base on purpose:
+ * reads come from the R2 bucket, writes go through the Worker that holds the
+ * credential, and the client never holds one.
+ */
+function uploadEndpoint(): string {
+  return (process.env.EXPO_PUBLIC_MEME_UPLOAD_URL ?? "").replace(/\/$/, "");
+}
+
+export function isMemeUploadConfigured(): boolean {
+  return uploadEndpoint().length > 0;
+}
+
+export type UploadMemeResult =
+  | { ok: true; url: string }
+  | { ok: false; error: string; rateLimited?: boolean };
+
+/**
+ * Upload an image as a meme.
+ *
+ * Reads the file and posts the bytes; the Worker verifies who sent them,
+ * enforces the daily quota, and decides the key. Quota and file-type errors
+ * come back as plain messages rather than a generic failure, because "you
+ * have used your 30 for today" and "that is not an image" need different
+ * responses from the user.
+ */
+export async function uploadMeme(
+  file: { uri: string; name?: string; type?: string },
+  title: string,
+): Promise<UploadMemeResult> {
+  const endpoint = uploadEndpoint();
+  if (!endpoint) {
+    return { ok: false, error: "Uploads are not configured." };
+  }
+
+  const blob = await (await fetch(file.uri)).blob();
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${(await getSupabase()?.auth.getSession())?.data.session?.access_token ?? ""}`,
+      // The Worker sniffs the bytes; this is only a cheap first pass.
+      "Content-Type": file.type ?? blob.type ?? "image/jpeg",
+      "x-meme-title": title.slice(0, 140),
+    },
+    body: blob,
+  });
+
+  const payload = (await response.json().catch(() => ({}))) as {
+    error?: string;
+    url?: string;
+  };
+
+  if (response.status === 429) {
+    return {
+      ok: false,
+      rateLimited: true,
+      error: payload.error ?? "You have used your uploads for today.",
+    };
+  }
+  if (!response.ok) {
+    return { ok: false, error: payload.error ?? "Could not upload that." };
+  }
+  if (!payload.url) {
+    return { ok: false, error: "The upload worked but came back unusable." };
+  }
+  return { ok: true, url: payload.url };
+}
+
 export type ReportReason =
   | "spam"
   | "abusive"
