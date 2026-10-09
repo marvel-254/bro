@@ -26,10 +26,10 @@ import { PRESENCE_LABELS } from "../../lib/presence";
 import { isSupabaseConfigured } from "../../lib/supabase";
 import { fetchMySpaces, type SpaceSummary } from "../../lib/spaces";
 import {
-  fetchPlans,
-  withdrawPlanResponse,
-  type PlanSummary,
-} from "../../lib/plans";
+  fetchDiscussions,
+  withdrawContribution,
+  type Discussion,
+} from "../../lib/discussions";
 import {
   LoadingState,
   ErrorState,
@@ -37,7 +37,7 @@ import {
 } from "../../components/feedback/States";
 
 /**
- * Me — your profile, presence, spaces and plans.
+ * Me — your profile, presence, spaces and discussions.
  *
  * Everything here is read from the signed-in session and the backend. There is
  * deliberately no follower count, no "neural sync" percentage, and no other
@@ -50,7 +50,7 @@ export default function YouScreen() {
   const { presence } = usePresence();
 
   const [spaces, setSpaces] = useState<SpaceSummary[]>([]);
-  const [plans, setPlans] = useState<PlanSummary[]>([]);
+  const [discussions, setDiscussions] = useState<Discussion[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,12 +75,14 @@ export default function YouScreen() {
         setLoading(true);
       }
       try {
-        const [mySpaces, allPlans] = await Promise.all([
+        const [mySpaces, allDiscussions] = await Promise.all([
           fetchMySpaces(),
-          fetchPlans(),
+          fetchDiscussions(100),
         ]);
         setSpaces(mySpaces);
-        setPlans(allPlans.filter((plan) => plan.creatorId === user?.id));
+        setDiscussions(
+          allDiscussions.filter((row) => row.creatorId === user?.id),
+        );
         setError(null);
       } catch (err) {
         setError(
@@ -125,24 +127,28 @@ export default function YouScreen() {
     ]);
   }, [signOut]);
 
-  const onWithdrawPlan = useCallback(async (plan: PlanSummary) => {
-    const result = await withdrawPlanResponse(plan.id);
+  /**
+   * Withdraw your contribution. Deleting a discussion you started is a
+   * separate, destructive action, so this only ever removes your own words.
+   */
+  const onWithdrawContribution = useCallback(async (row: Discussion) => {
+    const result = await withdrawContribution(row.id);
     if (!result.ok) {
       Alert.alert("Could not remove", result.error ?? "Try again in a bit.");
       return;
     }
-    setPlans((rows) =>
-      rows.map((row) =>
-        row.id === plan.id
+    setDiscussions((rows) =>
+      rows.map((entry) =>
+        entry.id === row.id
           ? {
-              ...row,
-              myResponse: null,
-              goingCount: Math.max(
+              ...entry,
+              myContribution: null,
+              contributionCount: Math.max(
                 0,
-                row.goingCount - (row.myResponse === "going" ? 1 : 0),
+                entry.contributionCount - 1,
               ),
             }
-          : row,
+          : entry,
       ),
     );
   }, []);
@@ -412,36 +418,41 @@ export default function YouScreen() {
 
           <View style={styles.section}>
             <View style={styles.sectionHead}>
-              <Text style={styles.sectionTitle}>Your plans</Text>
-              <Text style={styles.sectionMeta}>{plans.length || ""}</Text>
+              <Text style={styles.sectionTitle}>Your discussions</Text>
+              <Text style={styles.sectionMeta}>
+                {discussions.length || ""}
+              </Text>
             </View>
-            {plans.length === 0 ? (
+            {discussions.length === 0 ? (
               <Text style={styles.stripEmpty}>
-                No plans yet. Hit + and make one happen.
+                None yet. Hit + and put an idea out there.
               </Text>
             ) : (
-              plans.map((plan) => (
-                <View key={plan.id} style={styles.row}>
+              discussions.map((row) => (
+                <View key={row.id} style={styles.row}>
                   <View style={styles.rowBody}>
                     <Text style={styles.rowTitle} numberOfLines={1}>
-                      {plan.title}
+                      {row.title}
                     </Text>
                     <Text style={styles.rowMeta}>
-                      {plan.goingCount} in
-                      {plan.location ? ` · ${plan.location}` : ""}
+                      {row.contributionCount} contributed
+                      {row.myContribution ? " \u00b7 you added to it" : ""}
+                      {row.isClosed ? " \u00b7 closed" : ""}
                     </Text>
                   </View>
-                  <TouchableOpacity
-                    onPress={() => void onWithdrawPlan(plan)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Remove ${plan.title}`}
-                  >
-                    <Ionicons
-                      name="trash-outline"
-                      size={18}
-                      color={COLORS.onSurfaceVariant}
-                    />
-                  </TouchableOpacity>
+                  {row.myContribution ? (
+                    <TouchableOpacity
+                      onPress={() => void onWithdrawContribution(row)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove your contribution to ${row.title}`}
+                    >
+                      <Ionicons
+                        name="trash-outline"
+                        size={18}
+                        color={COLORS.onSurfaceVariant}
+                      />
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               ))
             )}

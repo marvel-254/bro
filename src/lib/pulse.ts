@@ -7,7 +7,7 @@ import { getSupabase } from "./supabase";
  * here is time-bounded rather than a feed. Three strips:
  *
  *   1. Live now    — conversations with a message burst inside a short window.
- *   2. Tap-in      — plans that have not expired, soonest first.
+ *   2. Discussions — open threads anyone can contribute to.
  *   3. Around      — peers with presence; served by people-context, not here.
  *
  * Nothing here is personalised by rank or score: results are ordered by time so
@@ -206,102 +206,10 @@ export async function fetchLiveConversations(
   }));
 }
 
-/**
- * Plans that have not expired yet, soonest deadline first, with a Going /
- * Maybe tally. Empty is a normal state — nobody has posted a plan.
- */
-export async function fetchUpcomingPlans(
-  limit: number = 10,
-): Promise<PulsePlan[]> {
-  const supabase = getSupabase();
-  if (!supabase) {
-    return [];
-  }
-
-  const { data: planRows, error } = await supabase
-    .from("plans")
-    .select(
-      "id, creator_id, title, kind, starts_at, location, expires_at, created_at",
-    )
-    .gt("expires_at", new Date().toISOString())
-    .order("created_at", { ascending: false })
-    .limit(limit);
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  const plans = (planRows ?? []) as Array<{
-    id: string;
-    creator_id: string;
-    title: string;
-    kind: PulsePlan["kind"];
-    starts_at: string;
-    location: string | null;
-    expires_at: string | null;
-    created_at: string;
-  }>;
-
-  if (plans.length === 0) {
-    return [];
-  }
-
-  const planIds = plans.map((plan) => plan.id);
-
-  const { data: responseRows } = await supabase
-    .from("plan_responses")
-    .select("plan_id, response")
-    .in("plan_id", planIds);
-
-  const totals = new Map<string, { total: number; going: number }>();
-  for (const row of (responseRows ?? []) as Array<{
-    plan_id: string;
-    response: string;
-  }>) {
-    const entry = totals.get(row.plan_id) ?? { total: 0, going: 0 };
-    entry.total += 1;
-    if (row.response === "going") {
-      entry.going += 1;
-    }
-    totals.set(row.plan_id, entry);
-  }
-
-  const creatorIds = [...new Set(plans.map((plan) => plan.creator_id))];
-  const { data: creatorRows } = await supabase
-    .from("profiles")
-    .select("id, display_name")
-    .in("id", creatorIds);
-
-  const nameById = new Map<string, string>();
-  for (const row of (creatorRows ?? []) as Array<{
-    id: string;
-    display_name: string;
-  }>) {
-    nameById.set(row.id, row.display_name);
-  }
-
-  return plans
-    .map((plan) => {
-      const tally = totals.get(plan.id) ?? { total: 0, going: 0 };
-      return {
-        id: plan.id,
-        creatorId: plan.creator_id,
-        creatorName: nameById.get(plan.creator_id) ?? null,
-        title: plan.title,
-        kind: plan.kind,
-        startsAt: plan.starts_at,
-        location: plan.location,
-        expiresAt: plan.expires_at,
-        responseCount: tally.total,
-        goingCount: tally.going,
-      };
-    })
-    .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
-}
 
 /**
  * Subscribe to anything that should reorder Pulse: new messages (Live now) and
- * new plans (Tap-in). Returns a no-op unsubscribe when the backend is missing.
+ * new discussions. Returns a no-op unsubscribe when the backend is missing.
  */
 export function subscribeToPulse(handlers: {
   onChange: () => void;

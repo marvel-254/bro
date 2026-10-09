@@ -2,7 +2,6 @@ import {
   LIVE_MIN_MESSAGES,
   LIVE_WINDOW_MINUTES,
   fetchLiveConversations,
-  fetchUpcomingPlans,
   subscribeToPulse,
 } from "../pulse";
 import { getSupabase } from "../supabase";
@@ -366,111 +365,6 @@ describe("pulse", () => {
     });
   });
 
-  describe("fetchUpcomingPlans", () => {
-    it("returns an empty array when Supabase is not configured", async () => {
-      mockedGetSupabase.mockReturnValue(null);
-      expect(await fetchUpcomingPlans()).toEqual([]);
-    });
-
-    it("returns an empty array when nobody has posted a plan", async () => {
-      const planChain = createChain();
-      planChain.gt.mockReturnValue({
-        order: jest.fn().mockReturnValue({
-          limit: jest.fn().mockResolvedValue({ data: [], error: null }),
-        }),
-      });
-      const supabase = makeSequencedSupabase([planChain]);
-      mockedGetSupabase.mockReturnValue(supabase);
-
-      expect(await fetchUpcomingPlans()).toEqual([]);
-    });
-
-    it("throws when the plans query fails", async () => {
-      const planChain = createChain();
-      planChain.gt.mockReturnValue({
-        order: jest.fn().mockReturnValue({
-          limit: jest
-            .fn()
-            .mockResolvedValue({ data: null, error: { message: "plan boom" } }),
-        }),
-      });
-      const supabase = makeSequencedSupabase([planChain]);
-      mockedGetSupabase.mockReturnValue(supabase);
-
-      await expect(fetchUpcomingPlans()).rejects.toThrow("plan boom");
-    });
-
-    it("tallies going responses and sorts by start time", async () => {
-      const planChain = createChain();
-      planChain.gt.mockReturnValue({
-        order: jest.fn().mockReturnValue({
-          limit: jest.fn().mockResolvedValue({
-            data: [
-              {
-                id: "plan-late",
-                creator_id: "user-1",
-                title: "Late thing",
-                kind: "event",
-                starts_at: "2026-10-04T18:00:00Z",
-                location: null,
-                expires_at: "2026-10-05T00:00:00Z",
-                created_at: "2026-10-03T10:00:00Z",
-              },
-              {
-                id: "plan-soon",
-                creator_id: "user-2",
-                title: "Tacos at 7",
-                kind: "meal",
-                starts_at: "2026-10-03T19:00:00Z",
-                location: "Kilimani",
-                expires_at: "2026-10-03T23:00:00Z",
-                created_at: "2026-10-03T11:00:00Z",
-              },
-            ],
-            error: null,
-          }),
-        }),
-      });
-
-      const responseChain = createChain();
-      responseChain.in.mockReturnValue(
-        RESOLVED([
-          { plan_id: "plan-soon", response: "going" },
-          { plan_id: "plan-soon", response: "going" },
-          { plan_id: "plan-soon", response: "maybe" },
-          { plan_id: "plan-late", response: "cant" },
-        ]),
-      );
-
-      const creatorChain = createChain();
-      creatorChain.in.mockReturnValue(
-        RESOLVED([
-          { id: "user-1", display_name: "Nia" },
-          { id: "user-2", display_name: "Tariq" },
-        ]),
-      );
-
-      const supabase = makeSequencedSupabase([
-        planChain,
-        responseChain,
-        creatorChain,
-      ]);
-      mockedGetSupabase.mockReturnValue(supabase);
-
-      const result = await fetchUpcomingPlans();
-
-      // Sorted soonest-first, so the 19:00 meal leads even though it was posted later.
-      expect(result.map((plan) => plan.id)).toEqual(["plan-soon", "plan-late"]);
-      expect(result[0]).toMatchObject({
-        title: "Tacos at 7",
-        creatorName: "Tariq",
-        location: "Kilimani",
-        responseCount: 3,
-        goingCount: 2,
-      });
-      expect(result[1]).toMatchObject({ responseCount: 1, goingCount: 0 });
-    });
-  });
 
   describe("subscribeToPulse", () => {
     it("returns a no-op when Supabase is not configured", () => {
@@ -480,7 +374,7 @@ describe("pulse", () => {
       unsub();
     });
 
-    it("watches messages, plans, and plan responses", () => {
+    it("watches messages and discussions", () => {
       const channel = createChannel();
       const supabase = makeSupabase();
       (supabase.channel as jest.Mock).mockReturnValue(channel);

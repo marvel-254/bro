@@ -13,6 +13,7 @@ import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from "../../theme";
 import { Avatar } from "../../components/ui/Avatar";
 import AppBar from "../../components/layout/AppBar";
 import MemeFeed from "../memes/MemeFeed";
+import DiscussionStrip from "../discussions/DiscussionStrip";
 import StatusTray from "../status/StatusTray";
 import StatusViewer from "../status/StatusViewer";
 import StatusComposer from "../status/StatusComposer";
@@ -22,10 +23,8 @@ import { useAuth } from "../../lib/auth-context";
 import { isSupabaseConfigured } from "../../lib/supabase";
 import {
   fetchLiveConversations,
-  fetchUpcomingPlans,
   subscribeToPulse,
   type PulseLiveConversation,
-  type PulsePlan,
 } from "../../lib/pulse";
 import {
   LoadingState,
@@ -37,7 +36,7 @@ import {
  * Pulse — what is happening right now.
  *
  * Three time-bounded strips and nothing else: Live now (conversations with a
- * recent burst), Tap-in (plans still open), Around (peers and their presence).
+ * recent burst), Discussions (open threads), Around (peers and presence).
  * There is no ranking and no score, so this cannot decay into a feed; ordering
  * is purely chronological and everything expires on its own.
  */
@@ -52,16 +51,6 @@ function relativeLabel(iso: string): string {
   return `${Math.floor(hours / 24)}d`;
 }
 
-function startsLabel(iso: string): string {
-  const starts = new Date(iso).getTime();
-  const diffMs = starts - Date.now();
-  if (diffMs <= 0) return "happening now";
-  const minutes = Math.floor(diffMs / 60_000);
-  if (minutes < 60) return `in ${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `in ${hours}h`;
-  return `in ${Math.floor(hours / 24)}d`;
-}
 
 function titleFor(live: PulseLiveConversation): string {
   if (live.name) return live.name;
@@ -83,7 +72,6 @@ export default function PulseScreen() {
   const { people } = usePeople();
 
   const [live, setLive] = useState<PulseLiveConversation[]>([]);
-  const [plans, setPlans] = useState<PulsePlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,12 +83,10 @@ export default function PulseScreen() {
       setLoading(true);
     }
     try {
-      const [liveRows, planRows] = await Promise.all([
+      const [liveRows] = await Promise.all([
         fetchLiveConversations(),
-        fetchUpcomingPlans(),
       ]);
       setLive(liveRows);
-      setPlans(planRows);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load Pulse");
@@ -123,7 +109,7 @@ export default function PulseScreen() {
   const firstName = user?.displayName?.split(" ")[0] ?? null;
   const around = people.filter((person) => person.presence !== "offline");
   const isQuiet =
-    live.length === 0 && plans.length === 0 && around.length === 0;
+    live.length === 0 && around.length === 0;
 
   return (
     <>
@@ -259,39 +245,8 @@ export default function PulseScreen() {
               )}
             </View>
 
-            {/* Strip 2 — Tap-in */}
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Tap in</Text>
-                <Text style={styles.sectionMeta}>{plans.length || ""}</Text>
-              </View>
-              {plans.length === 0 ? (
-                <Text style={styles.stripEmpty}>
-                  Nothing on. Make something happen.
-                </Text>
-              ) : (
-                plans.map((plan) => (
-                  <View key={plan.id} style={styles.planRow}>
-                    <View style={styles.planMain}>
-                      <Text style={styles.planTitle} numberOfLines={1}>
-                        {plan.title}
-                      </Text>
-                      <Text style={styles.planMeta}>
-                        {plan.creatorName ? `${plan.creatorName} · ` : ""}
-                        {startsLabel(plan.startsAt)}
-                        {plan.location ? ` · ${plan.location}` : ""}
-                      </Text>
-                    </View>
-                    <View style={styles.planTally}>
-                      <Text style={styles.planGoing}>{plan.goingCount} in</Text>
-                      <Text style={styles.planMeta}>
-                        {plan.responseCount} said
-                      </Text>
-                    </View>
-                  </View>
-                ))
-              )}
-            </View>
+            {/* Strip 2 — Discussions */}
+            <DiscussionStrip viewerId={user?.id ?? null} />
 
             {/* Strip 3 — Around */}
             <View style={styles.section}>

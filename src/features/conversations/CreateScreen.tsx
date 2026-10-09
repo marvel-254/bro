@@ -13,88 +13,34 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from "../../theme";
 import {
-  createPlan,
-  PLAN_TITLE_MAX,
-  PLAN_LOCATION_MAX,
-  type PlanKind,
-} from "../../lib/plans";
+  createDiscussion,
+  DISCUSSION_TITLE_MAX,
+  DISCUSSION_BODY_MAX,
+} from "../../lib/discussions";
 
 /**
- * Create — the `+` sheet. Two taps max per the frozen dashboard spec:
- * name the thing, pick when, done. Plans land in Pulse's Tap-in strip.
+ * Create — the `+` sheet.
  *
- * Scope is deliberately one flow (make a plan). Drops get their own row here
- * once the drops data layer exists; the layout already reserves the slot.
+ * One flow: start a discussion. Anyone can start one and anyone can contribute,
+ * so the only things worth asking for are a title and, optionally, some context.
+ * There is no time, no place and no category any more — those were plans, and
+ * they made this a form to fill in rather than an idea to put down.
  */
-
-const KINDS: Array<{ value: PlanKind; label: string; icon: string }> = [
-  { value: "meal", label: "Eat", icon: "restaurant-outline" },
-  { value: "outing", label: "Out", icon: "walk-outline" },
-  { value: "football", label: "Ball", icon: "football-outline" },
-  { value: "event", label: "Event", icon: "ticket-outline" },
-  { value: "other", label: "Other", icon: "ellipsis-horizontal" },
-];
-
-interface Preset {
-  label: string;
-  at: () => Date;
-}
-
-function atHour(date: Date, hour: number): Date {
-  const copy = new Date(date);
-  copy.setHours(hour, 0, 0, 0);
-  return copy;
-}
-
-function presets(now: Date): Preset[] {
-  const tonight = atHour(now, 19);
-  const tomorrow = new Date(now);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const saturday = new Date(now);
-  saturday.setDate(saturday.getDate() + ((6 - saturday.getDay() + 7) % 7 || 7));
-
-  return [
-    {
-      label: "Tonight 7pm",
-      at: () =>
-        tonight.getTime() > now.getTime() ? tonight : atHour(tomorrow, 19),
-    },
-    {
-      label: "Tomorrow eve",
-      at: () => atHour(tomorrow, 19),
-    },
-    {
-      label: "Saturday",
-      at: () => atHour(saturday, 14),
-    },
-  ];
-}
 
 export default function CreateScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
   const [title, setTitle] = useState("");
-  const [kind, setKind] = useState<PlanKind>("meal");
-  const [location, setLocation] = useState("");
-  const [startsAt, setStartsAt] = useState<Date | null>(null);
+  const [body, setBody] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const submit = async () => {
-    if (!startsAt) {
-      setError("Pick when this is happening");
-      return;
-    }
     setCreating(true);
     setError(null);
 
-    const result = await createPlan({
-      title,
-      kind,
-      startsAt: startsAt.toISOString(),
-      location,
-    });
+    const result = await createDiscussion({ title, body });
     setCreating(false);
 
     if (!result.ok) {
@@ -103,12 +49,11 @@ export default function CreateScreen() {
     }
 
     setTitle("");
-    setLocation("");
-    setStartsAt(null);
+    setBody("");
     router.push("/(tabs)");
     Alert.alert(
-      "Bet — you made a plan",
-      "It is sitting in Tap-in. The squad can see it.",
+      "Posted",
+      "Anyone on BRO can add to it. Not just people you follow.",
     );
   };
 
@@ -131,102 +76,33 @@ export default function CreateScreen() {
         >
           <Ionicons name="close" size={22} color={COLORS.onSurface} />
         </TouchableOpacity>
-        <Text style={styles.title}>Make a plan</Text>
+        <Text style={styles.title}>Start a discussion</Text>
         <View style={styles.closeBtn} />
       </View>
 
-      <Text style={styles.label}>What is the move</Text>
+      <Text style={styles.label}>What is it about</Text>
       <TextInput
         style={styles.input}
         value={title}
         onChangeText={setTitle}
-        placeholder="Tacos at 7?"
+        placeholder="What should everyone weigh in on?"
         placeholderTextColor={COLORS.onSurfaceVariant}
-        maxLength={PLAN_TITLE_MAX}
-        accessibilityLabel="Plan title"
+        maxLength={DISCUSSION_TITLE_MAX}
+        accessibilityLabel="Discussion title"
       />
 
-      <Text style={styles.label}>What kind of thing</Text>
-      <View style={styles.kindRow}>
-        {KINDS.map((option) => (
-          <TouchableOpacity
-            key={option.value}
-            style={[
-              styles.kindChip,
-              kind === option.value && styles.kindChipActive,
-            ]}
-            onPress={() => setKind(option.value)}
-            accessibilityRole="button"
-            accessibilityState={{ selected: kind === option.value }}
-          >
-            <Ionicons
-              name={option.icon as never}
-              size={16}
-              color={
-                kind === option.value
-                  ? COLORS.primaryContainer
-                  : COLORS.onSurfaceVariant
-              }
-            />
-            <Text
-              style={[
-                styles.kindText,
-                kind === option.value && styles.kindTextActive,
-              ]}
-            >
-              {option.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <Text style={styles.label}>When</Text>
-      <View style={styles.presetRow}>
-        {presets(new Date()).map((preset) => {
-          const active =
-            startsAt !== null &&
-            Math.abs(preset.at().getTime() - startsAt.getTime()) < 60_000;
-          return (
-            <TouchableOpacity
-              key={preset.label}
-              style={[styles.presetChip, active && styles.kindChipActive]}
-              onPress={() => setStartsAt(preset.at())}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-            >
-              <Text style={[styles.kindText, active && styles.kindTextActive]}>
-                {preset.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-      {startsAt ? (
-        <Text style={styles.startsNote}>
-          {startsAt.toLocaleDateString([], {
-            weekday: "short",
-            month: "short",
-            day: "numeric",
-          })}{" "}
-          at{" "}
-          {startsAt.toLocaleTimeString([], {
-            hour: "numeric",
-            minute: "2-digit",
-          })}
-        </Text>
-      ) : null}
-
       <Text style={styles.label}>
-        Where <Text style={styles.optional}>(optional)</Text>
+        Say more <Text style={styles.optional}>(optional)</Text>
       </Text>
       <TextInput
-        style={styles.input}
-        value={location}
-        onChangeText={setLocation}
-        placeholder="Kilimani"
+        style={[styles.input, styles.bodyInput]}
+        value={body}
+        onChangeText={setBody}
+        placeholder="Add context so people can actually contribute."
         placeholderTextColor={COLORS.onSurfaceVariant}
-        maxLength={PLAN_LOCATION_MAX}
-        accessibilityLabel="Plan location"
+        multiline
+        maxLength={DISCUSSION_BODY_MAX}
+        accessibilityLabel="Opening post"
       />
 
       {error ? <Text style={styles.formError}>{error}</Text> : null}
@@ -239,14 +115,16 @@ export default function CreateScreen() {
         onPress={() => void submit()}
         disabled={creating || !title.trim()}
         accessibilityRole="button"
-        accessibilityLabel="Create plan"
+        accessibilityLabel="Post discussion"
       >
         <Text style={styles.submitText}>
-          {creating ? "Setting it up..." : "Put it on"}
+          {creating ? "Posting..." : "Put it out there"}
         </Text>
       </TouchableOpacity>
 
-      <Text style={styles.note}>Expires on its own. No cleanup fr.</Text>
+      <Text style={styles.note}>
+        Open to everyone on BRO. One contribution each, edit it any time.
+      </Text>
     </ScrollView>
   );
 }
@@ -297,6 +175,10 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surfaceContainer,
     borderWidth: 1,
     borderColor: COLORS.outlineVariant,
+  },
+  bodyInput: {
+    minHeight: 108,
+    textAlignVertical: "top",
   },
   kindRow: {
     flexDirection: "row",
