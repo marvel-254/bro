@@ -1,0 +1,19 @@
+name = "bro-meme-upload"
+main = "src/index.ts"
+compatibility_date = "2026-10-09"
+
+# The public read base the app uses. Kept here as well as in the app so there
+# is one place to change when this moves off the r2.dev dev subdomain.
+[vars]
+MEME_PUBLIC_BASE = "https://pub-43b10dbdfc2c4412822fa0b7110debe6.r2.dev"
+MAX_UPLOAD_BYTES = "5242880"
+UPLOADS_PER_DAY = "30"
+
+# Secrets (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_JWT_AUDIENCE) are
+# set with `wrangler secret put` and never appear here or in git.
+[[r2_buckets]]
+binding = "MEMES"
+bucket_name = "bro-memes"
+
+[observability]
+enabled = true

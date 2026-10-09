@@ -26,3 +26,7 @@ supabase/.branches/
 
 # Local bundle verification output
 .bundle-check/
+
+# Cloudflare Worker deps (installed separately from the app)
+workers/*/node_modules/
+.dev.vars
