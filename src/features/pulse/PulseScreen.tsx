@@ -12,7 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from "../../theme";
 import { Avatar } from "../../components/ui/Avatar";
 import AppBar from "../../components/layout/AppBar";
-import MemeCard from "../memes/MemeCard";
+import MemeFeed from "../memes/MemeFeed";
 import StatusTray from "../status/StatusTray";
 import StatusViewer from "../status/StatusViewer";
 import StatusComposer from "../status/StatusComposer";
@@ -194,7 +194,7 @@ export default function PulseScreen() {
           <ErrorState message={error} onRetry={() => void load()} />
         ) : (
           <>
-            <MemeCard />
+            <MemeFeed />
 
             {/* Strip 1 — Live now */}
             <View style={styles.section}>

@@ -1,107 +1,145 @@
 /**
- * Meme feed for the Pulse card.
+ * Self-hosted meme library.
  *
- * Source is Imgflip's public `get_memes` endpoint: keyless, stable, and JSON,
- * which matters more than freshness for a card on the home screen. It returns
- * popular meme *templates* (the classic formats, e.g. two-panel Drake), not
- * captioned one-offs -- serving a real captioned feed needs an authenticated
- * provider (Tenor, Imgflip auth, self-hosted), which is a product decision
- * rather than something to fake here.
+ * Metadata lives in Postgres (`memes`), files live in Cloudflare R2, and the
+ * client only ever reads a public URL. This replaces an imgflip.com feed,
+ * which meant the home screen depended on a third party being up and shipped
+ * an external dependency we did not control.
  *
- * Everything degrades quietly: the card hides itself rather than showing an
- * error, because a meme is not worth a red box on someone's home screen.
+ * Paging is offset-based with a total order on (created_at desc, id desc).
+ * The `id` tiebreak is what makes it safe: created_at alone is not unique, and
+ * without a total order two pages can return the same row twice. New uploads
+ * can still shift a page boundary, so the feed dedupes by id rather than
+ * trusting the boundary to be stable.
  */
+
+import { getSupabase } from "./supabase";
+import { memeUrl } from "./meme-queries";
 
 export type Meme = {
   id: string;
-  name: string;
-  url: string;
+  title: string;
+  tags: string;
+  /** Public URL, or null when the bucket base is not configured. */
+  url: string | null;
+  storagePath: string;
   width: number;
   height: number;
-  boxCount: number;
 };
 
-const ENDPOINT = "https://api.imgflip.com/get_memes";
+export type MemePage = {
+  memes: Meme[];
+  /** False when the page came back short, i.e. there is nothing more. */
+  hasMore: boolean;
+};
 
-/** Cache the catalogue for the session so we do not refetch on every render. */
-let catalogue: Meme[] | null = null;
-let inFlight: Promise<Meme[]> | null = null;
+export const MEME_PAGE_SIZE = 12;
 
-/** Keep images sane: the endpoint occasionally returns very large templates. */
-const MAX_EDGE = 900;
+/** Why this is a URL and not a signed one: memes are public, crowd-sourced
+ *  content that anyone in the app is meant to be able to read. */
+function mediaBase(): string {
+  return (process.env.EXPO_PUBLIC_R2_MEDIA_URL ?? "").replace(/\/$/, "");
+}
 
-function toMeme(raw: {
+type MemeRow = {
   id: string;
-  name: string;
-  url: string;
-  width?: number;
-  height?: number;
-  box_count?: number;
-}): Meme {
+  storage_path: string;
+  title: string | null;
+  tags: string | null;
+  width: number;
+  height: number;
+};
+
+function toMeme(row: MemeRow): Meme {
   return {
-    id: String(raw.id),
-    name: String(raw.name),
-    url: String(raw.url),
-    width: raw.width ?? MAX_EDGE,
-    height: raw.height ?? MAX_EDGE,
-    boxCount: raw.box_count ?? 0,
+    id: row.id,
+    title: row.title ?? "",
+    tags: row.tags ?? "",
+    storagePath: row.storage_path,
+    url: memeUrl(mediaBase(), row.storage_path),
+    width: row.width,
+    height: row.height,
   };
 }
 
-/** True when the endpoint handed us something we can actually render. */
-function isRenderable(meme: Meme): boolean {
-  return (
-    meme.url.startsWith("https://") &&
-    meme.name.length > 0 &&
-    meme.width > 0 &&
-    meme.height > 0 &&
-    meme.width <= 4000 &&
-    meme.height <= 4000
-  );
-}
-
-export async function fetchMemes(): Promise<Meme[]> {
-  if (catalogue) return catalogue;
-  if (inFlight) return inFlight;
-
-  inFlight = (async () => {
-    const response = await fetch(ENDPOINT);
-    if (!response.ok) {
-      throw new Error(`Meme service returned ${response.status}`);
-    }
-    const payload: unknown = await response.json();
-    const rows =
-      payload && typeof payload === "object" && "data" in payload
-        ? ((payload as { data: { memes?: unknown[] } }).data.memes ?? [])
-        : [];
-
-    const memes = rows
-      .filter((row): row is Parameters<typeof toMeme>[0] =>
-        Boolean(row && typeof row === "object" && "url" in row),
-      )
-      .map(toMeme)
-      .filter(isRenderable);
-
-    catalogue = memes;
-    return memes;
-  })();
-
-  try {
-    return await inFlight;
-  } finally {
-    inFlight = null;
-  }
+/** The library is not configured if the bucket base is missing. */
+export function isMemeLibraryConfigured(): boolean {
+  return mediaBase().length > 0;
 }
 
 /**
- * Pick a meme, avoiding the one already on screen so the shuffle button always
- * visibly changes something.
+ * One page of the feed, oldest-to-newest within the page but newest-first
+ * overall. `offset` is the number of rows already loaded.
+ *
+ * Throws on a failed query rather than returning an empty page: an empty feed
+ * is a legitimate state the UI has its own copy for, and returning [] here is
+ * what previously made a network drop indistinguishable from "no memes".
  */
-export function pickMeme(memes: Meme[], currentId?: string): Meme | null {
-  if (memes.length === 0) return null;
-  if (memes.length === 1) return memes[0];
+export async function fetchMemesPage(
+  offset = 0,
+  limit = MEME_PAGE_SIZE,
+  query = "",
+): Promise<MemePage> {
+  const supabase = getSupabase();
+  if (!supabase) return { memes: [], hasMore: false };
 
-  const options = memes.filter((meme) => meme.id !== currentId);
-  const pool = options.length > 0 ? options : memes;
-  return pool[Math.floor(Math.random() * pool.length)];
+  const cleaned = query.trim().toLowerCase();
+  let builder = supabase
+    .from("memes")
+    .select("id, storage_path, title, tags, width, height", { count: "exact" })
+    // RLS already hides reported memes, but asking explicitly keeps the query
+    // on the partial index `memes_feed_idx`.
+    .eq("is_hidden", false)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (cleaned.length > 0) {
+    builder = builder.or(`title.ilike.%${cleaned}%,tags.ilike.%${cleaned}%`);
+  }
+
+  const { data, error } = await builder;
+  if (error) throw new Error(error.message);
+
+  const rows = (data ?? []) as unknown as MemeRow[];
+  return { memes: rows.map(toMeme), hasMore: rows.length === limit };
+}
+
+export type ReportReason =
+  | "spam"
+  | "abusive"
+  | "nsfw"
+  | "copyright"
+  | "other";
+
+/**
+ * Report a meme. Three distinct reports hide it automatically, so this is the
+ * safety valve that makes open uploads survivable — do not make it decorative.
+ */
+export async function reportMeme(
+  memeId: string,
+  reason: ReportReason,
+  detail?: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = getSupabase();
+  if (!supabase) return { ok: false, error: "Backend not configured" };
+
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) {
+    return { ok: false, error: "You need to be signed in to report." };
+  }
+
+  const { error } = await supabase.from("meme_reports").insert({
+    meme_id: memeId,
+    reporter_id: userData.user.id,
+    reason,
+    detail: detail?.slice(0, 500) ?? null,
+  });
+
+  if (error) {
+    // Already reported by this person. Not a failure worth surfacing as one.
+    if (error.code === "23505") return { ok: true };
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
 }
