@@ -165,6 +165,7 @@ export default function PulseScreen() {
           loading={statuses.loading}
           onOpen={(authorId) => setStatusViewer({ authorId })}
           onCompose={() => setComposingStatus(true)}
+          onFollowed={() => void statuses.reload()}
         />
 
         <View style={styles.header}>

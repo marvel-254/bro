@@ -2,8 +2,9 @@ import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Avatar } from "../../components/ui/Avatar";
-import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from "../../theme";
+import { COLORS, SPACING, TYPOGRAPHY } from "../../theme";
 import type { StatusGroup } from "../../lib/statuses";
+import PeopleToFollow from "./PeopleToFollow";
 
 type Props = {
   groups: StatusGroup[];
@@ -13,6 +14,8 @@ type Props = {
   viewerAvatar: string | null;
   onOpen: (authorId: string) => void;
   onCompose: () => void;
+  /** Refetch the feed, so a new follow shows up without a manual refresh. */
+  onFollowed?: () => void;
   loading?: boolean;
 };
 
@@ -30,6 +33,7 @@ export default function StatusTray({
   viewerAvatar,
   onOpen,
   onCompose,
+  onFollowed,
   loading,
 }: Props) {
   // The compose tile already represents the viewer, so their own group would
@@ -123,11 +127,10 @@ export default function StatusTray({
         ))}
 
         {groups.length === 0 && !loading ? (
-          <View style={styles.empty}>
-            <Text style={styles.emptyText}>
-              No statuses yet. Yours is one tap away.
-            </Text>
-          </View>
+          <PeopleToFollow
+            viewerId={viewerId}
+            onFollowed={onFollowed ?? (() => {})}
+          />
         ) : null}
       </ScrollView>
     </View>
@@ -176,15 +179,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 2,
     borderColor: COLORS.semantic.canvasRoot,
-  },
-  empty: {
-    flex: 1,
-    justifyContent: "center",
-    paddingLeft: SPACING.spaceSm,
-    borderRadius: RADIUS.sm,
-  },
-  emptyText: {
-    ...TYPOGRAPHY.bodySM,
-    color: COLORS.semantic.textDim,
   },
 });
