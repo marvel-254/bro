@@ -6,7 +6,6 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -16,7 +15,7 @@ import {
   fetchMemesPage,
   isMemeLibraryConfigured,
   isMemeUploadConfigured,
-  reportMeme,
+  downloadMeme,
   uploadMeme,
   MEME_PAGE_SIZE,
   type Meme,
@@ -30,13 +29,6 @@ type Props = {
   onChanged?: () => void;
 };
 
-const REASONS = [
-  { value: "spam", label: "Spam" },
-  { value: "abusive", label: "Abusive" },
-  { value: "nsfw", label: "Not safe" },
-  { value: "copyright", label: "Copyright" },
-] as const;
-
 /**
  * The meme feed, infinite-scrolled.
  *
@@ -47,13 +39,11 @@ const REASONS = [
  */
 export default function MemeFeed({ onUseMeme, onChanged }: Props) {
   const [memes, setMemes] = useState<Meme[]>([]);
-  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [reporting, setReporting] = useState<Meme | null>(null);
-  const [reported, setReported] = useState(false);
+  const [saving, setSaving] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
@@ -62,12 +52,12 @@ export default function MemeFeed({ onUseMeme, onChanged }: Props) {
   // while the list is still tall, which would double-request every page.
   const inFlight = useRef(false);
 
-  const loadFirstPage = useCallback(async (term: string) => {
+  const loadFirstPage = useCallback(async () => {
     setLoading(true);
     setError(null);
     seen.current.clear();
     try {
-      const page = await fetchMemesPage(0, MEME_PAGE_SIZE, term);
+      const page = await fetchMemesPage(0, MEME_PAGE_SIZE);
       for (const meme of page.memes) seen.current.add(meme.id);
       setMemes(page.memes);
       setHasMore(page.hasMore);
@@ -85,7 +75,7 @@ export default function MemeFeed({ onUseMeme, onChanged }: Props) {
       setLoading(false);
       return;
     }
-    void loadFirstPage("");
+    void loadFirstPage();
   }, [loadFirstPage]);
 
   const loadMore = useCallback(async () => {
@@ -93,11 +83,7 @@ export default function MemeFeed({ onUseMeme, onChanged }: Props) {
     inFlight.current = true;
     setLoadingMore(true);
     try {
-      const page = await fetchMemesPage(
-        memes.length,
-        MEME_PAGE_SIZE,
-        query.trim(),
-      );
+      const page = await fetchMemesPage(memes.length, MEME_PAGE_SIZE);
       setMemes((prev) => {
         const added = mergeMemePage(prev, page.memes);
         const addedCount = added.length - prev.length;
@@ -110,14 +96,7 @@ export default function MemeFeed({ onUseMeme, onChanged }: Props) {
       setLoadingMore(false);
       inFlight.current = false;
     }
-  }, [hasMore, loading, memes.length, query]);
-
-  // Debounced so typing does not fire a query per keystroke.
-  useEffect(() => {
-    if (!isMemeLibraryConfigured()) return;
-    const handle = setTimeout(() => void loadFirstPage(query), query ? 300 : 0);
-    return () => clearTimeout(handle);
-  }, [query, loadFirstPage]);
+  }, [hasMore, loading, memes.length]);
 
   /**
    * Pick an image and send it to the Worker.
@@ -126,6 +105,18 @@ export default function MemeFeed({ onUseMeme, onChanged }: Props) {
    * decides the storage key and writes the catalogue row, so guessing at a row
    * here would show a meme that might have been rejected or rate-limited.
    */
+  const onDownload = useCallback(async (meme: Meme) => {
+    if (!meme.url || saving) return;
+    setSaving(meme.id);
+    setError(null);
+    try {
+      const result = await downloadMeme(meme);
+      if (!result.ok) setError(result.error);
+    } finally {
+      setSaving(null);
+    }
+  }, [saving]);
+
   const onUpload = useCallback(async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
@@ -151,7 +142,7 @@ export default function MemeFeed({ onUseMeme, onChanged }: Props) {
         setUploadError(result.error);
         return;
       }
-      await loadFirstPage(query);
+      await loadFirstPage;
       onChanged?.();
     } catch (err) {
       setUploadError(
@@ -160,15 +151,7 @@ export default function MemeFeed({ onUseMeme, onChanged }: Props) {
     } finally {
       setUploading(false);
     }
-  }, [loadFirstPage, query, onChanged]);
-
-  const onReport = useCallback(async (reason: (typeof REASONS)[number]["value"]) => {
-    if (!reporting) return;
-    const result = await reportMeme(reporting.id, reason);
-    setReporting(null);
-    if (result.ok) setReported(true);
-    else setError(result.error ?? "Could not report that");
-  }, [reporting]);
+  }, [loadFirstPage, onChanged]);
 
   const renderItem = useCallback(
     ({ item }: { item: Meme }) => (
@@ -176,8 +159,8 @@ export default function MemeFeed({ onUseMeme, onChanged }: Props) {
         {item.url ? (
           <Image
             source={{ uri: item.url }}
-            style={styles.image}
-            resizeMode="cover"
+            style={[styles.image, aspectStyle(item)]}
+            resizeMode="contain"
             accessibilityLabel={item.title || "Meme"}
           />
         ) : (
@@ -201,21 +184,27 @@ export default function MemeFeed({ onUseMeme, onChanged }: Props) {
               </Pressable>
             ) : null}
             <Pressable
-              onPress={() => {
-                setReported(false);
-                setReporting(item);
-              }}
+              onPress={() => void onDownload(item)}
+              disabled={saving === item.id}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel={`Report ${item.title}`}
+              accessibilityLabel={`Download ${item.title}`}
             >
-              <Ionicons name="flag-outline" size={15} color={COLORS.outline} />
+              {saving === item.id ? (
+                <ActivityIndicator size="small" color={COLORS.outline} />
+              ) : (
+                <Ionicons
+                  name="download-outline"
+                  size={16}
+                  color={COLORS.outline}
+                />
+              )}
             </Pressable>
           </View>
         </View>
       </View>
     ),
-    [onUseMeme],
+    [onUseMeme, onDownload, saving],
   );
 
   const footer = useMemo(() => {
@@ -258,19 +247,6 @@ export default function MemeFeed({ onUseMeme, onChanged }: Props) {
 
       {uploadError ? <Text style={styles.uploadError}>{uploadError}</Text> : null}
 
-      <View style={styles.searchRow}>
-        <Ionicons name="search" size={16} color={COLORS.outline} />
-        <TextInput
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search memes"
-          placeholderTextColor={COLORS.outline}
-          style={styles.search}
-          returnKeyType="search"
-          accessibilityLabel="Search memes"
-        />
-      </View>
-
       {loading ? (
         <View style={styles.footer}>
           <ActivityIndicator color={COLORS.primaryContainer} />
@@ -279,7 +255,7 @@ export default function MemeFeed({ onUseMeme, onChanged }: Props) {
         <View style={styles.errorBox}>
           <Text style={styles.errorText}>{error}</Text>
           <Pressable
-            onPress={() => void loadFirstPage(query)}
+            onPress={() => void loadFirstPage()}
             style={styles.retry}
             accessibilityRole="button"
             accessibilityLabel="Try loading memes again"
@@ -289,9 +265,7 @@ export default function MemeFeed({ onUseMeme, onChanged }: Props) {
         </View>
       ) : memes.length === 0 ? (
         <Text style={styles.endText}>
-          {query
-            ? "Nothing matched."
-            : "No memes yet. Be the first to upload one."}
+          No memes yet. Be the first to upload one.
         </Text>
       ) : (
         <FlatList
@@ -310,42 +284,27 @@ export default function MemeFeed({ onUseMeme, onChanged }: Props) {
         />
       )}
 
-      {reporting ? (
-        <View style={styles.sheetBackdrop}>
-          <View style={styles.sheet}>
-            <Text style={styles.sheetTitle}>Report this meme</Text>
-            <Text style={styles.sheetBody}>
-              Three reports hide a meme automatically.
-            </Text>
-            <View style={styles.reasonRow}>
-              {REASONS.map((reason) => (
-                <Pressable
-                  key={reason.value}
-                  onPress={() => void onReport(reason.value)}
-                  style={styles.reason}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Report as ${reason.label}`}
-                >
-                  <Text style={styles.reasonText}>{reason.label}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <Pressable
-              onPress={() => setReporting(null)}
-              style={styles.sheetCancel}
-              accessibilityRole="button"
-            >
-              <Text style={styles.retryText}>Cancel</Text>
-            </Pressable>
-          </View>
-        </View>
-      ) : null}
-
-      {reported && !reporting ? (
-        <Text style={styles.thanksText}>Reported. Thanks.</Text>
-      ) : null}
     </View>
   );
+}
+
+/**
+ * Size each meme to its real shape.
+ *
+ * The card used to force `aspectRatio: 1` with `resizeMode="cover"`, which
+ * cropped every non-square meme and cut the caption text straight off — the
+ * one part of a meme anybody reads. The catalogue already stores width and
+ * height, so the shape is known and there was no reason to guess.
+ *
+ * Tall memes are still capped, so a 2:5 template does not push the rest of
+ * the feed off the screen.
+ */
+const MAX_IMAGE_RATIO = 1.4;
+
+function aspectStyle(meme: Meme) {
+  const ratio =
+    meme.width > 0 && meme.height > 0 ? meme.height / meme.width : 1;
+  return { aspectRatio: Math.min(Math.max(ratio, 0.5), MAX_IMAGE_RATIO) };
 }
 
 const styles = StyleSheet.create({
@@ -397,7 +356,6 @@ const styles = StyleSheet.create({
   },
   image: {
     width: "100%",
-    aspectRatio: 1,
     backgroundColor: COLORS.semantic.surfaceLevel2,
   },
   imageMissing: {
@@ -452,46 +410,6 @@ const styles = StyleSheet.create({
   retryText: {
     ...TYPOGRAPHY.labelLG,
     color: COLORS.primaryContainer,
-  },
-  sheetBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.7)",
-    justifyContent: "flex-end",
-  },
-  sheet: {
-    backgroundColor: COLORS.semantic.surfaceLevel1,
-    borderTopLeftRadius: RADIUS.xl,
-    borderTopRightRadius: RADIUS.xl,
-    padding: SPACING.gutter,
-    gap: SPACING.spaceSm,
-  },
-  sheetTitle: {
-    ...TYPOGRAPHY.headlineSM,
-    color: COLORS.onSurface,
-  },
-  sheetBody: {
-    ...TYPOGRAPHY.bodySM,
-    color: COLORS.semantic.textDim,
-  },
-  reasonRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: SPACING.spaceSm,
-    paddingVertical: SPACING.spaceSm,
-  },
-  reason: {
-    paddingHorizontal: SPACING.spaceMd,
-    paddingVertical: SPACING.spaceSm,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.semantic.surfaceLevel2,
-  },
-  reasonText: {
-    ...TYPOGRAPHY.labelMD,
-    color: COLORS.onSurface,
-  },
-  sheetCancel: {
-    alignSelf: "center",
-    paddingVertical: SPACING.spaceSm,
   },
   thanksText: {
     ...TYPOGRAPHY.bodySM,

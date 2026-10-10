@@ -192,7 +192,8 @@ type DiscussionRow = {
   body: string;
   is_closed: boolean;
   created_at: string;
-  creator: {
+  /** Aliased `author:` in the select, so the key here must be `author`. */
+  author: {
     id: string;
     display_name: string | null;
     username: string | null;
@@ -304,7 +305,7 @@ export async function fetchDiscussions(
     contributionCount: counts.get(row.id) ?? 0,
     myContribution: mine.get(row.id) ?? null,
     author: toAuthor(
-      row.creator ?? {
+      row.author ?? {
         id: row.creator_id,
         display_name: null,
         username: null,

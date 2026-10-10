@@ -1,5 +1,6 @@
 import {
   contribute,
+  fetchDiscussions,
   createDiscussion,
   DISCUSSION_BODY_MAX,
   DISCUSSION_TITLE_MAX,
@@ -234,5 +235,61 @@ describe("withdrawContribution", () => {
     expect(await withdrawContribution("d-1")).toEqual({ ok: true });
     expect(chain.eq).toHaveBeenCalledWith("discussion_id", "d-1");
     expect(chain.eq).toHaveBeenCalledWith("author_id", "me");
+  });
+});
+
+describe("fetchDiscussions", () => {
+  it("reads the author off the aliased embed", async () => {
+    // The select aliases the join `author:`. Reading `creator` off the row
+    // type instead compiles fine — the `as unknown as` cast hides it — and
+    // silently renders every thread as "Someone". This is the test for that.
+    const { supabase } = makeSupabase();
+
+    const discussionsChain: Record<string, jest.Mock> = {};
+    for (const method of ["order", "limit"]) {
+      discussionsChain[method] = jest.fn(() => discussionsChain);
+    }
+    discussionsChain.order.mockReturnValue(discussionsChain);
+    discussionsChain.limit.mockResolvedValue({
+      data: [
+        {
+          id: "d-1",
+          creator_id: "them",
+          title: "Chip shop",
+          body: "",
+          is_closed: false,
+          created_at: "2026-10-09T00:00:00Z",
+          author: {
+            id: "them",
+            display_name: "Bro Probe",
+            username: "broprobe2026",
+            avatar_url: null,
+          },
+        },
+      ],
+      error: null,
+    });
+
+    // The contribution count and "my contribution" lookups resolve empty.
+    // One chain serves both queries, and the "my contribution" branch chains
+    // .in(...).eq(...), so the chain has to be both chainable and awaitable.
+    const emptyResult = { data: [], error: null, count: 0 };
+    const contributionsChain: Record<string, unknown> = {};
+    contributionsChain.in = jest.fn(() => contributionsChain);
+    contributionsChain.eq = jest.fn(() => contributionsChain);
+    contributionsChain.then = (
+      resolve: (value: typeof emptyResult) => unknown,
+    ) => resolve(emptyResult);
+
+    supabase.auth.getUser.mockResolvedValue({ data: { user: { id: "me" } } });
+    // One chain per table, or the mock answers both queries with one object.
+    supabase.from.mockImplementation(((table: string) => ({
+      select: () =>
+        table === "discussions" ? discussionsChain : contributionsChain,
+    })) as unknown as typeof supabase.from);
+    mockedGetSupabase.mockReturnValue(supabase as never);
+
+    const [discussion] = await fetchDiscussions();
+    expect(discussion.author.name).toBe("Bro Probe");
   });
 });

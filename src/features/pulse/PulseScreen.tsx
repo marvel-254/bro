@@ -125,23 +125,10 @@ export default function PulseScreen() {
           />
         }
       >
-        <AppBar
-          title="Home"
-          right={
-            <TouchableOpacity
-              style={styles.iconCircle}
-              onPress={() => router.push("/search")}
-              accessibilityRole="button"
-              accessibilityLabel="Search BRO"
-            >
-              <Ionicons
-                name="search"
-                size={20}
-                color={COLORS.primaryContainer}
-              />
-            </TouchableOpacity>
-          }
-        />
+        {/* No search affordance on Home. The global search lives on the Me
+            tab; a magnifier here duplicated it and gave the app bar a job
+            that was not the home screen's. */}
+        <AppBar title="Home" />
 
         <StatusTray
           groups={statuses.groups}

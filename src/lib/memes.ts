@@ -173,6 +173,52 @@ export async function uploadMeme(
   return { ok: true, url: payload.url };
 }
 
+/**
+ * Save a meme to the device's gallery.
+ *
+ * Both native modules are imported lazily so they are not pulled in for users
+ * who never download anything, and so a missing module surfaces as an error
+ * instead of crashing at startup.
+ */
+export async function downloadMeme(
+  meme: Pick<Meme, "id" | "title" | "url" | "storagePath">,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!meme.url) return { ok: false, error: "That meme has no file." };
+
+  try {
+    const MediaLibrary = await import("expo-media-library");
+    const FileSystem = await import("expo-file-system");
+
+    const permission = await MediaLibrary.requestPermissionsAsync();
+    if (!permission.granted) {
+      return {
+        ok: false,
+        error: "BRO needs permission to save to your photos.",
+      };
+    }
+
+    // downloadAsync rather than hand-rolling a base64 write: it streams, and
+    // it does not depend on Blob.arrayBuffer behaving the same way on Hermes
+    // as it does in a browser.
+    const extension = meme.storagePath.split(".").pop() ?? "jpg";
+    const localUri = `${FileSystem.cacheDirectory ?? ""}meme-${meme.id}.${extension}`;
+
+    // The legacy FileSystem API reports an HTTP status, not `ok`.
+    const result = await FileSystem.downloadAsync(meme.url, localUri);
+    if (result.status < 200 || result.status >= 300) {
+      return { ok: false, error: "Could not fetch that meme." };
+    }
+
+    await MediaLibrary.saveToLibraryAsync(result.uri);
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Could not save that meme.",
+    };
+  }
+}
+
 export type ReportReason =
   | "spam"
   | "abusive"
