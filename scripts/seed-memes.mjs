@@ -19,6 +19,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
+import { imageSize } from "./image-size.mjs";
 
 const run = promisify(execFile);
 
@@ -144,7 +145,14 @@ async function main() {
       await putToR2(storagePath, bytes, image.headers.get("content-type") ?? "image/jpeg");
 
       // width/height/size_bytes are CHECK-constrained in the database, so
-      // measure rather than trust imgflip's declared numbers.
+      // measure rather than trust imgflip's declared numbers — and they *are*
+      // wrong: imgflip reports the size of a template's text boxes, not of the
+      // image. Using them gave every meme the wrong aspect ratio, which showed
+      // up as black bars above and below the picture.
+      const measured = imageSize(bytes) ?? {
+        width: template.width,
+        height: template.height,
+      };
       const { error } = await supabase.from("memes").insert({
         storage_path: storagePath,
         title: String(template.name ?? "").slice(0, 120),
@@ -154,8 +162,8 @@ async function main() {
           .filter(Boolean)
           .join(" ")
           .slice(0, 200),
-        width: template.width,
-        height: template.height,
+        width: measured.width,
+        height: measured.height,
         size_bytes: bytes.byteLength,
         // uploaded_by stays null: these predate BRO and have no author.
       });
