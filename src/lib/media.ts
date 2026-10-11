@@ -39,6 +39,7 @@ export const FULL_MAX_EDGE = 1920;
 
 /** Long-edge cap for the thumbnail. */
 export const THUMB_EDGE = 400;
+export const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
 
 const FULL_QUALITY = 0.8;
 const THUMB_QUALITY = 0.6;
@@ -230,6 +231,41 @@ async function currentUserId(): Promise<string | undefined> {
   return data.user?.id ?? undefined;
 }
 
+export async function uploadAudioFile(
+  conversationId: string,
+  senderId: string,
+  localUri: string,
+  suffix: string,
+): Promise<{ path: string; bytes: number }> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    throw new Error("Backend not configured");
+  }
+
+  const info = await FileSystem.getInfoAsync(localUri);
+  if (!info.exists) {
+    throw new Error("That audio is gone. Pick it again.");
+  }
+  const size = info.size ?? 0;
+  if (size > MAX_AUDIO_BYTES) {
+    throw new Error("That audio is over 10MB. Pick a shorter one.");
+  }
+
+  const base64 = await FileSystem.readAsStringAsync(localUri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  const bytes = base64ToBytes(base64);
+  const path = `${conversationId}/${senderId}-${Date.now()}${suffix}.m4a`;
+
+  const { error } = await supabase.storage
+    .from("chat-media")
+    .upload(path, bytes, { contentType: "audio/m4a", upsert: false });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+  return { path, bytes: bytes.length };
+}
 export async function insertAttachment(
   input: Omit<AttachmentRef, "id"> & { messageId: string | null },
 ): Promise<string> {

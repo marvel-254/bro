@@ -112,6 +112,8 @@ import {
   type AttachmentRef,
 } from "../../lib/media";
 import GifPicker from "../gifs/GifPicker";
+import VoiceRecorder from "./VoiceRecorder";
+import VoiceMessage from "./VoiceMessage";
 import type { Gif } from "../../lib/gifs";
 import type {
   MessageReactionRow,
@@ -320,7 +322,6 @@ export default function ConversationDetail({ conversationId, title }: Props) {
   const [replyingTo, setReplyingTo] = useState<MessageWithSender | null>(null);
   const [editing, setEditing] = useState<MessageWithSender | null>(null);
   const [hasMore, setHasMore] = useState(true);
-
   // Device-local chat appearance (bubble shape + optional background image).
   const [appearance, setAppearance] = useState(DEFAULT_APPEARANCE);
   useEffect(() => {
@@ -781,6 +782,11 @@ export default function ConversationDetail({ conversationId, title }: Props) {
               </Text>
             ) : null}
 
+            {item.type === "voice" && !isDeleted ? (
+              <VoiceMessage
+                attachment={attachments[item.id]}
+              />
+            ) : null}
             {item.type === "image" && !isDeleted ? (
               <ChatImage
                 attachment={attachments[item.id]}
@@ -1035,6 +1041,12 @@ export default function ConversationDetail({ conversationId, title }: Props) {
             />
           )}
         </Pressable>
+        <VoiceRecorder
+          conversationId={conversationId}
+          currentUser={currentUser}
+          disabled={sendingGif || sending || sendingImage}
+          onSend={() => {}}
+        />
         <Pressable
           style={[
             styles.imageButton,
