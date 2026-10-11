@@ -57,6 +57,7 @@ export interface CompressedPair {
 }
 
 export interface AttachmentRef {
+  viewOnce?: boolean;
   id: string;
   storagePath: string;
   thumbPath: string | null;
@@ -290,6 +291,7 @@ export async function insertAttachment(
       mime_type: input.mime,
       size_bytes: input.bytes,
       kind: "image",
+      view_once: input.viewOnce ?? false,
     })
     .select("id")
     .single();
@@ -395,6 +397,7 @@ export async function signedChatUrl(
 export async function sendImageMessage(
   conversationId: string,
   caption: string,
+  viewOnce = false,
 ): Promise<SendImageResult> {
   const supabase = getSupabase();
   if (!supabase) {
@@ -453,6 +456,7 @@ export async function sendImageMessage(
   let attachmentId: string;
   try {
     attachmentId = await insertAttachment({
+      viewOnce: viewOnce,
       storagePath: fullPath,
       thumbPath,
       mime: "image/jpeg",
