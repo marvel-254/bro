@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Audio } from 'expo-av';
 import {
   ActivityIndicator,
   Alert,
@@ -17,7 +16,6 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import * as Permissions from "expo-permissions";
 import {
   COLORS,
   RADIUS,
@@ -322,12 +320,6 @@ export default function ConversationDetail({ conversationId, title }: Props) {
   const [replyingTo, setReplyingTo] = useState<MessageWithSender | null>(null);
   const [editing, setEditing] = useState<MessageWithSender | null>(null);
   const [hasMore, setHasMore] = useState(true);
-  // Voice recording
-  const [voiceRecorder, setVoiceRecorder] = useState<Audio.Recording | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingUri, setRecordingUri] = useState<string | null>(null);
-  const [voicePickerOpen, setVoicePickerOpen] = useState(false);
-  const [sendingVoice, setSendingVoice] = useState(false);
 
   // Device-local chat appearance (bubble shape + optional background image).
   const [appearance, setAppearance] = useState(DEFAULT_APPEARANCE);
