@@ -141,6 +141,13 @@ export async function uploadMeme(
   }
 
   const blob = await (await fetch(file.uri)).blob();
+
+  // Real dimensions, measured here, because the Worker cannot decode an image
+  // and was storing 1x1 for everything — which rendered every uploaded meme in
+  // a square box with black bars, the exact problem the aspect-ratio fix was
+  // meant to remove.
+  const { width, height } = await measureImage(file.uri);
+
   const response = await fetch(endpoint, {
     method: "POST",
     headers: {
@@ -148,6 +155,8 @@ export async function uploadMeme(
       // The Worker sniffs the bytes; this is only a cheap first pass.
       "Content-Type": file.type ?? blob.type ?? "image/jpeg",
       "x-meme-title": title.slice(0, 140),
+      "x-meme-width": String(width),
+      "x-meme-height": String(height),
     },
     body: blob,
   });
@@ -217,6 +226,26 @@ export async function downloadMeme(
       error: err instanceof Error ? err.message : "Could not save that meme.",
     };
   }
+}
+
+/**
+ * Read an image's intrinsic size, falling back to a square.
+ *
+ * `Image.getSize` needs the native image loader, so it is imported lazily for
+ * the same reason as the download path: nothing native is pulled in until it
+ * is actually needed.
+ */
+async function measureImage(
+  uri: string,
+): Promise<{ width: number; height: number }> {
+  try {
+    const { Image } = await import("react-native");
+    const size = await Image.getSize(uri);
+    if (size.width > 0 && size.height > 0) return size;
+  } catch {
+    // Fall through to the default below.
+  }
+  return { width: 1, height: 1 };
 }
 
 export type ReportReason =
