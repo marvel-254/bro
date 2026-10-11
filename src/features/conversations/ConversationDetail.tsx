@@ -48,6 +48,57 @@ import {
   subscribeToBranches,
   BRANCH_SUGGEST_AT,
 } from "../../lib/branches";
+
+/**
+ * Message status indicator — shows sent/delivered/read/failed state.
+ * Uses the message's status field: "pending" | "sending" | "sent" | "delivered" | "seen" | "failed"
+ */
+function MessageStatus({ status }: { status: string }) {
+  if (status === "pending" || status === "sending") {
+    return (
+      <Ionicons
+        name="time-outline"
+        size={14}
+        color={SEMANTIC_COLORS.textDim}
+      />
+    );
+  }
+  if (status === "sent") {
+    return (
+      <Ionicons
+        name="checkmark-outline"
+        size={14}
+        color={SEMANTIC_COLORS.textDim}
+      />
+    );
+  }
+  if (status === "delivered") {
+    return (
+      <View style={styles.doubleCheck}>
+        <Ionicons name="checkmark-outline" size={14} color={SEMANTIC_COLORS.textDim} />
+        <Ionicons name="checkmark-outline" size={14} color={SEMANTIC_COLORS.textDim} />
+      </View>
+    );
+  }
+  if (status === "seen") {
+    return (
+      <View style={styles.doubleCheck}>
+        <Ionicons name="checkmark-sharp" size={14} color={COLORS.surfaceTint} />
+        <Ionicons name="checkmark-sharp" size={14} color={COLORS.surfaceTint} />
+      </View>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <Ionicons
+        name="alert-circle-outline"
+        size={14}
+        color={COLORS.error}
+      />
+    );
+  }
+  return null;
+}
 import {
   fetchMessageAttachments,
   sendImageMessage,
@@ -613,14 +664,6 @@ export default function ConversationDetail({ conversationId, title }: Props) {
       const messageReactions = reactions[item.id] ?? [];
       const isDeleted = item.deleted_for_everyone;
 
-      // Read receipt: show a check when the peer has read past this message.
-      const peerRead = Object.entries(readCursors).some(
-        ([userId, cursor]) =>
-          userId !== selfId &&
-          cursor &&
-          Date.parse(cursor) >= Date.parse(item.created_at),
-      );
-
       return (
         <Pressable
           style={[
@@ -689,8 +732,8 @@ export default function ConversationDetail({ conversationId, title }: Props) {
                   minute: "2-digit",
                 })}
               </Text>
-              {isMine && peerRead ? (
-                <Text style={styles.readReceipt}>✓✓</Text>
+              {isMine ? (
+                <MessageStatus status={item.status} />
               ) : null}
             </View>
 
@@ -897,7 +940,7 @@ export default function ConversationDetail({ conversationId, title }: Props) {
             <ActivityIndicator size="small" color={SEMANTIC_COLORS.textDim} />
           ) : (
             <Ionicons
-              name="happy-outline"
+              name="images-outline"
               size={22}
               color={SEMANTIC_COLORS.textDim}
             />
@@ -942,9 +985,11 @@ export default function ConversationDetail({ conversationId, title }: Props) {
           accessibilityRole="button"
           accessibilityLabel={editing ? "Save edit" : "Send message"}
         >
-          <Text style={styles.sendButtonText}>
-            {sending ? "…" : editing ? "Save" : "Send"}
-          </Text>
+          <Ionicons
+            name="send-sharp"
+            size={20}
+            color={COLORS.onPrimary}
+          />
         </Pressable>
       </View>
 
@@ -997,7 +1042,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: SPACING.gutter,
-    paddingVertical: SPACING.spaceMd,
+    paddingVertical: SPACING.spaceLg,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: SEMANTIC_COLORS.ghostBorderLight,
   },
@@ -1043,11 +1088,17 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.secondaryContainer,
     borderColor: "transparent",
     borderBottomRightRadius: RADIUS.sm,
+    borderTopLeftRadius: RADIUS.DEFAULT,
+    borderTopRightRadius: RADIUS.DEFAULT,
+    borderBottomLeftRadius: RADIUS.DEFAULT,
   },
   bubbleTheirs: {
     backgroundColor: SEMANTIC_COLORS.surfaceLevel2,
     borderColor: SEMANTIC_COLORS.ghostBorderLight,
     borderBottomLeftRadius: RADIUS.sm,
+    borderTopLeftRadius: RADIUS.DEFAULT,
+    borderTopRightRadius: RADIUS.DEFAULT,
+    borderBottomRightRadius: RADIUS.DEFAULT,
   },
   senderName: {
     ...TYPOGRAPHY.labelSM,
@@ -1084,9 +1135,13 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.labelSM,
     color: SEMANTIC_COLORS.textDim,
   },
-  readReceipt: {
+readReceipt: {
     ...TYPOGRAPHY.labelSM,
     color: COLORS.surfaceTint,
+  },
+  doubleCheck: {
+    flexDirection: "row",
+    gap: -2,
   },
   reactionRow: {
     flexDirection: "row",

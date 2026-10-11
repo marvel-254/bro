@@ -43,6 +43,15 @@ export default function MemeFeed({ onUseMeme, onChanged }: Props) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Failures from an action the user just took — download, upload.
+   *
+   * Separate from `error`, which is the *load* failure and only renders when
+   * the feed is empty. Sharing one state meant a failed download set a message
+   * that was never displayed, because memes were loaded and the list was not
+   * empty: the download appeared to do nothing.
+   */
+  const [actionError, setActionError] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -108,10 +117,10 @@ export default function MemeFeed({ onUseMeme, onChanged }: Props) {
   const onDownload = useCallback(async (meme: Meme) => {
     if (!meme.url || saving) return;
     setSaving(meme.id);
-    setError(null);
+    setActionError(null);
     try {
       const result = await downloadMeme(meme);
-      if (!result.ok) setError(result.error);
+      if (!result.ok) setActionError(result.error);
     } finally {
       setSaving(null);
     }
@@ -132,6 +141,7 @@ export default function MemeFeed({ onUseMeme, onChanged }: Props) {
 
     setUploading(true);
     setUploadError(null);
+    setActionError(null);
     try {
       const asset = picked.assets[0];
       const result = await uploadMeme(
@@ -246,6 +256,19 @@ export default function MemeFeed({ onUseMeme, onChanged }: Props) {
       </View>
 
       {uploadError ? <Text style={styles.uploadError}>{uploadError}</Text> : null}
+      {actionError ? (
+        <View style={styles.noticeRow}>
+          <Text style={styles.uploadError}>{actionError}</Text>
+          <Pressable
+            onPress={() => setActionError(null)}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss"
+          >
+            <Ionicons name="close" size={14} color={COLORS.semantic.textDim} />
+          </Pressable>
+        </View>
+      ) : null}
 
       {loading ? (
         <View style={styles.footer}>
@@ -329,6 +352,12 @@ const styles = StyleSheet.create({
   uploadError: {
     ...TYPOGRAPHY.bodySM,
     color: COLORS.error,
+  },
+  noticeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: SPACING.spaceSm,
   },
   title: {
     ...TYPOGRAPHY.headlineSM,

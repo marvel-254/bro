@@ -67,6 +67,11 @@ export default function YouScreen() {
     (group) => group.authorId === user?.id,
   )?.updates.length ?? 0;
 
+  // Chat appearance settings
+  const [showBackgroundPicker, setShowBackgroundPicker] = useState(false);
+  const [showThemePicker, setShowThemePicker] = useState(false);
+  const [showGifManager, setShowGifManager] = useState(false);
+
   const load = useCallback(
     async (asRefresh = false) => {
       if (asRefresh) {
@@ -168,7 +173,42 @@ export default function YouScreen() {
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8,
-    });
+settingsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.spaceMd,
+    paddingHorizontal: SPACING.spaceMd,
+    paddingVertical: SPACING.spaceMd,
+  },
+  settingsIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  settingsIconBlue: {
+    backgroundColor: COLORS.primaryContainer,
+  },
+  settingsIconGreen: {
+    backgroundColor: COLORS.secondary,
+  },
+  settingsIconOrange: {
+    backgroundColor: COLORS.tertiaryContainer,
+  },
+  settingsBody: {
+    flex: 1,
+    gap: 2,
+  },
+  settingsTitle: {
+    ...TYPOGRAPHY.labelLG,
+    color: COLORS.onSurface,
+  },
+  settingsSub: {
+    ...TYPOGRAPHY.bodySM,
+    color: COLORS.outline,
+  },
+});
     if (picked.canceled) return;
 
     const asset = picked.assets[0];
@@ -457,6 +497,68 @@ export default function YouScreen() {
               ))
             )}
           </View>
+
+        {/* Chat Appearance Settings */}
+        <View style={styles.section}>
+          <View style={styles.sectionHead}>
+            <Text style={styles.sectionTitle}>Chat appearance</Text>
+            <Text style={styles.sectionMeta}>Customize your chats</Text>
+          </View>
+
+          <TouchableOpacity
+            style={styles.settingsRow}
+            onPress={() => setShowBackgroundPicker(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Change chat background"
+          >
+            <View style={[styles.settingsIcon, styles.settingsIconBlue]}>
+              <Ionicons name="image-outline" size={20} color={COLORS.onPrimary} />
+            </View>
+            <View style={styles.settingsBody}>
+              <Text style={styles.settingsTitle}>Chat background</Text>
+              <Text style={styles.settingsSub} numberOfLines={1}>
+                Choose a background image for your chats
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.outline} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.settingsRow}
+            onPress={() => setShowThemePicker(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Change chat bubble theme"
+          >
+            <View style={[styles.settingsIcon, styles.settingsIconGreen]}>
+              <Ionicons name="chatbubbles-outline" size={20} color={COLORS.onPrimary} />
+            </View>
+            <View style={styles.settingsBody}>
+              <Text style={styles.settingsTitle}>Bubble theme</Text>
+              <Text style={styles.settingsSub} numberOfLines={1}>
+                Choose your chat bubble style
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.outline} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.settingsRow}
+            onPress={() => setShowGifManager(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Manage your GIFs"
+          >
+            <View style={[styles.settingsIcon, styles.settingsIconOrange]}>
+              <Ionicons name="images-outline" size={20} color={COLORS.onPrimary} />
+            </View>
+            <View style={styles.settingsBody}>
+              <Text style={styles.settingsTitle}>My GIFs</Text>
+              <Text style={styles.settingsSub} numberOfLines={1}>
+                Upload, manage, and share your GIFs
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.outline} />
+          </TouchableOpacity>
+        </View>
         </>
       )}
     </ScrollView>

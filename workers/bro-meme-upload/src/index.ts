@@ -468,6 +468,19 @@ export default {
       httpMetadata: { contentType: sniffed },
     });
 
+    // Dimensions are measured by the client, which can decode an image; this
+    // Worker cannot. They are validated rather than trusted, because they drive
+    // the aspect ratio every meme renders at, and a nonsense value is either a
+    // blank card or an absurdly tall one. Implausible values fall back to
+    // square rather than being rejected.
+    const clampDimension = (value: string | null): number => {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed)) return 1;
+      const rounded = Math.round(parsed);
+      if (rounded < 1 || rounded > 4000) return 1;
+      return rounded;
+    };
+
     const title = (request.headers.get("x-meme-title") ?? "").slice(0, 140);
     const row = await insertCatalogueRow(env, {
       storagePath: key,
@@ -478,10 +491,8 @@ export default {
         .filter(Boolean)
         .join(" ")
         .slice(0, 200),
-      // The database CHECKs these, and the client is not the only writer, so
-      // they are sent as safe defaults the catalogue does not depend on.
-      width: 1,
-      height: 1,
+      width: clampDimension(request.headers.get("x-meme-width")),
+      height: clampDimension(request.headers.get("x-meme-height")),
       sizeBytes: bytes.byteLength,
       userId: auth.userId,
     });
