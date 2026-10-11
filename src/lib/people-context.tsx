@@ -10,9 +10,11 @@ import { getSupabase } from "./supabase";
 import type { Presence } from "./presence";
 
 /**
- * Roster of people who share a conversation with the signed-in user, along with
- * their presence. This stands in for a friend graph until `friendships` exists,
- * so it is deliberately named "people you talk to" rather than "friends".
+ * Roster of everyone on the platform, along with their presence.
+ *
+ * The `profiles` table is publicly readable by design (it is the discovery
+ * surface), so Who's Around can list every user and their online state
+ * without a conversation history between them.
  */
 
 export interface PersonPresence {
@@ -64,17 +66,14 @@ export function PeopleProvider({
     setError(null);
 
     const { data, error: queryError } = await supabase
-      .from("conversation_members")
+      .from("profiles")
       .select(
-        `
-        user_id,
-        profile:profiles!conversation_members_user_id_fkey (
-          id, username, display_name, avatar_url,
-          presence, presence_text, presence_emoji, last_seen_at
-        )
-      `,
+        `id, username, display_name, avatar_url,
+         presence, presence_text, presence_emoji, last_seen_at`,
       )
-      .neq("user_id", userId);
+      .neq("id", userId)
+      .order("presence", { ascending: false })
+      .limit(500);
 
     if (queryError) {
       setError(queryError.message);
@@ -83,33 +82,24 @@ export function PeopleProvider({
     }
 
     const rows = (data ?? []) as unknown as Array<{
-      user_id: string;
-      profile: {
-        id: string;
-        username: string | null;
-        display_name: string;
-        avatar_url: string | null;
-        presence: Presence;
-        presence_text: string | null;
-        presence_emoji: string | null;
-      } | null;
+      id: string;
+      username: string | null;
+      display_name: string;
+      avatar_url: string | null;
+      presence: Presence;
+      presence_text: string | null;
+      presence_emoji: string | null;
     }>;
 
-    const mapped: PersonPresence[] = rows
-      .map((row) => {
-        const profile = row.profile;
-        if (!profile) return null;
-        return {
-          userId: profile.id,
-          username: profile.username,
-          displayName: profile.display_name,
-          avatarUrl: profile.avatar_url,
-          presence: profile.presence ?? "offline",
-          statusText: profile.presence_text,
-          emoji: profile.presence_emoji,
-        };
-      })
-      .filter((person): person is PersonPresence => person !== null);
+    const mapped: PersonPresence[] = rows.map((profile) => ({
+      userId: profile.id,
+      username: profile.username,
+      displayName: profile.display_name,
+      avatarUrl: profile.avatar_url,
+      presence: profile.presence ?? "offline",
+      statusText: profile.presence_text,
+      emoji: profile.presence_emoji,
+    }));
 
     setPeople(mapped);
     setLoading(false);

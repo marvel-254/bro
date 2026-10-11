@@ -38,6 +38,11 @@ import {
 } from "../../lib/conversations";
 import { sendTyping, watchTyping, releaseTypingChannel } from "../../lib/presence";
 import { isSupabaseConfigured } from "../../lib/supabase";
+import {
+  DEFAULT_APPEARANCE,
+  loadAppearance,
+  type BubbleTheme,
+} from "../../lib/chat-appearance";
 import { useAuth } from "../../lib/auth-context";
 import { useCall } from "../../lib/call-context";
 import { fetchConversationPeer } from "../../lib/conversations";
@@ -123,6 +128,38 @@ import type {
 interface Props {
   conversationId: string;
   title?: string;
+}
+
+/**
+ * Corner overrides for a bubble theme. "default" is the asymmetric BRO tail
+ * (sharp corner on the sender's side); the others are purely local cosmetics.
+ */
+function bubbleShape(theme: BubbleTheme, isMine: boolean) {
+  switch (theme) {
+    case "rounded":
+      return {
+        borderTopLeftRadius: RADIUS.full,
+        borderTopRightRadius: RADIUS.full,
+        borderBottomLeftRadius: RADIUS.full,
+        borderBottomRightRadius: RADIUS.full,
+      } as const;
+    case "teardrop":
+      return isMine
+        ? {
+            borderTopLeftRadius: RADIUS.full,
+            borderTopRightRadius: RADIUS.full,
+            borderBottomLeftRadius: RADIUS.full,
+            borderBottomRightRadius: RADIUS.sm,
+          } as const
+        : {
+            borderTopLeftRadius: RADIUS.full,
+            borderTopRightRadius: RADIUS.full,
+            borderBottomLeftRadius: RADIUS.sm,
+            borderBottomRightRadius: RADIUS.full,
+          } as const;
+    default:
+      return null;
+  }
 }
 
 /**
@@ -267,13 +304,25 @@ export default function ConversationDetail({ conversationId, title }: Props) {
   const [sendingGif, setSendingGif] = useState(false);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [viewerLoading, setViewerLoading] = useState(false);
-  const [readCursors, setReadCursors] = useState<Record<string, string | null>>(
-    {},
-  );
+  // Read cursors are tracked for future read-receipt UI; only the writer is
+  // used today.
+  const [, setReadCursors] = useState<Record<string, string | null>>({});
   const [typists, setTypists] = useState<Map<string, string>>(new Map());
   const [replyingTo, setReplyingTo] = useState<MessageWithSender | null>(null);
   const [editing, setEditing] = useState<MessageWithSender | null>(null);
   const [hasMore, setHasMore] = useState(true);
+
+  // Device-local chat appearance (bubble shape + optional background image).
+  const [appearance, setAppearance] = useState(DEFAULT_APPEARANCE);
+  useEffect(() => {
+    let cancelled = false;
+    void loadAppearance().then((stored) => {
+      if (!cancelled) setAppearance(stored);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const listRef = useRef<FlatList<MessageWithSender>>(null);
   const lastIdRef = useRef<string | null>(null);
@@ -696,6 +745,7 @@ export default function ConversationDetail({ conversationId, title }: Props) {
               styles.bubble,
               isMine ? styles.bubbleMine : styles.bubbleTheirs,
               !startsGroup && styles.bubbleTight,
+              bubbleShape(appearance.bubbleTheme, isMine),
             ]}
           >
             {startsGroup && !isMine && item.sender ? (
@@ -797,7 +847,6 @@ export default function ConversationDetail({ conversationId, title }: Props) {
       messages,
       selfId,
       reactions,
-      readCursors,
       onDelete,
       onReact,
       replyCounts,
@@ -806,6 +855,7 @@ export default function ConversationDetail({ conversationId, title }: Props) {
       openBranch,
       attachments,
       openViewer,
+      appearance.bubbleTheme,
     ],
   );
 
@@ -838,6 +888,14 @@ export default function ConversationDetail({ conversationId, title }: Props) {
         </Text>
         <CallButtons conversationId={conversationId} />
       </View>
+
+      {appearance.backgroundUri ? (
+        <Image
+          source={{ uri: appearance.backgroundUri }}
+          style={styles.chatBackground}
+          resizeMode="cover"
+        />
+      ) : null}
 
       {loading ? (
         <View style={styles.centered}>
@@ -1037,6 +1095,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: SEMANTIC_COLORS.canvasRoot,
+  },
+  chatBackground: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.35,
   },
   header: {
     flexDirection: "row",

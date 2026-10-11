@@ -11,11 +11,14 @@ import {
   Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { COLORS, SPACING, RADIUS, TYPOGRAPHY } from "../../theme";
 import { Avatar } from "../../components/ui/Avatar";
 import AppBar from "../../components/layout/AppBar";
 import { usePeople } from "../../lib/people-context";
 import { usePresence } from "../../lib/presence-context";
+import { useAuth } from "../../lib/auth-context";
+import { createDirectConversation } from "../../lib/conversations";
 import {
   PRESENCE_LABELS,
   PRESENCE_COLORS,
@@ -67,6 +70,8 @@ const QUICK_ACTIVITIES = [
 export default function PeopleScreen() {
   const { people, loading, error, refresh } = usePeople();
   const { presence, statusText, emoji, setPresence, isBusy } = usePresence();
+  const { user } = useAuth();
+  const router = useRouter();
 
   // Friendships replace "conversation peers" as the circle once they exist.
   // Until then both lists are shown: requests first, then the peers you talk to.
@@ -118,6 +123,26 @@ export default function PeopleScreen() {
     await setPresence(next, { text: text ?? undefined, emoji: undefined });
     setPickerOpen(false);
   };
+
+  const openChat = useCallback(
+    (peerId: string) => {
+      if (busyId === peerId) return;
+      setBusyId(peerId);
+      void (async () => {
+        const result = await createDirectConversation(peerId);
+        setBusyId(null);
+        if (!result.ok) {
+          Alert.alert(
+            "Could not open chat",
+            result.error ?? "Try again in a bit.",
+          );
+          return;
+        }
+        router.push(`/chat/${result.conversationId}`);
+      })();
+    },
+    [busyId, router],
+  );
 
   const renderPerson = ({ item }: { item: (typeof people)[number] }) => {
     const activity = item.emoji || item.statusText;
@@ -177,7 +202,13 @@ export default function PeopleScreen() {
               />
             </TouchableOpacity>
           ) : null}
-          <TouchableOpacity style={styles.iconBtn}>
+          <TouchableOpacity
+            style={styles.iconBtn}
+            disabled={busy}
+            onPress={() => openChat(item.userId)}
+            accessibilityRole="button"
+            accessibilityLabel={`Message ${item.displayName}`}
+          >
             <Ionicons
               name="chatbubble-outline"
               size={18}
@@ -194,11 +225,12 @@ export default function PeopleScreen() {
       {/* Header */}
       <AppBar
         title="Who's Around"
-        subtitle={`${onlineCount} online · ${people.length} in your circle`}
-        right={
+        subtitle={`${onlineCount} online · ${people.length} on BRO`}
+        left={
           <TouchableOpacity style={styles.youBtn} onPress={openPicker}>
             <Avatar
-              name="You"
+              uri={user?.avatar ?? null}
+              name={user?.displayName ?? "You"}
               size={34}
               presence={presence === "offline" ? null : presence}
             />

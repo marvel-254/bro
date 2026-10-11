@@ -7,11 +7,13 @@ import {
   RefreshControl,
   StyleSheet,
   Alert,
+  Modal,
+  Image,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
-import { COLORS, SPACING, TYPOGRAPHY } from "../../theme";
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from "../../theme";
 import { Avatar } from "../../components/ui/Avatar";
 import AppBar from "../../components/layout/AppBar";
 import EditProfileSheet from "./EditProfileSheet";
@@ -24,6 +26,13 @@ import { useAuth } from "../../lib/auth-context";
 import { usePresence } from "../../lib/presence-context";
 import { PRESENCE_LABELS } from "../../lib/presence";
 import { isSupabaseConfigured } from "../../lib/supabase";
+import {
+  BUBBLE_THEMES,
+  DEFAULT_APPEARANCE,
+  loadAppearance,
+  saveAppearance,
+  type ChatAppearance,
+} from "../../lib/chat-appearance";
 import { fetchMySpaces, type SpaceSummary } from "../../lib/spaces";
 import {
   fetchDiscussions,
@@ -67,10 +76,61 @@ export default function YouScreen() {
     (group) => group.authorId === user?.id,
   )?.updates.length ?? 0;
 
-  // Chat appearance settings
-  const [showBackgroundPicker, setShowBackgroundPicker] = useState(false);
-  const [showThemePicker, setShowThemePicker] = useState(false);
-  const [showGifManager, setShowGifManager] = useState(false);
+  // Chat appearance is device-local; see lib/chat-appearance.ts.
+  const [appearance, setAppearance] = useState<ChatAppearance>(
+    DEFAULT_APPEARANCE,
+  );
+  const [bgPickerOpen, setBgPickerOpen] = useState(false);
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const [gifManagerOpen, setGifManagerOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadAppearance().then((stored) => {
+      if (!cancelled) setAppearance(stored);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const updateAppearance = useCallback(
+    async (patch: Partial<ChatAppearance>) => {
+      const next = { ...appearance, ...patch };
+      setAppearance(next);
+      try {
+        await saveAppearance(next);
+      } catch {
+        Alert.alert(
+          "Could not save",
+          "Your choice was not stored. Try again in a bit.",
+        );
+      }
+    },
+    [appearance],
+  );
+
+  const onChangeChatBackground = useCallback(async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(
+        "Permission needed",
+        "Allow photo access to pick a chat background.",
+      );
+      return;
+    }
+    const picked = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [9, 16],
+      quality: 0.7,
+    });
+    if (picked.canceled) return;
+    const asset = picked.assets[0];
+    if (asset?.uri) {
+      await updateAppearance({ backgroundUri: asset.uri });
+    }
+  }, [updateAppearance]);
 
   const load = useCallback(
     async (asRefresh = false) => {
@@ -173,42 +233,7 @@ export default function YouScreen() {
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8,
-settingsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.spaceMd,
-    paddingHorizontal: SPACING.spaceMd,
-    paddingVertical: SPACING.spaceMd,
-  },
-  settingsIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  settingsIconBlue: {
-    backgroundColor: COLORS.primaryContainer,
-  },
-  settingsIconGreen: {
-    backgroundColor: COLORS.secondary,
-  },
-  settingsIconOrange: {
-    backgroundColor: COLORS.tertiaryContainer,
-  },
-  settingsBody: {
-    flex: 1,
-    gap: 2,
-  },
-  settingsTitle: {
-    ...TYPOGRAPHY.labelLG,
-    color: COLORS.onSurface,
-  },
-  settingsSub: {
-    ...TYPOGRAPHY.bodySM,
-    color: COLORS.outline,
-  },
-});
+    });
     if (picked.canceled) return;
 
     const asset = picked.assets[0];
@@ -498,69 +523,254 @@ settingsRow: {
             )}
           </View>
 
-        {/* Chat Appearance Settings */}
-        <View style={styles.section}>
-          <View style={styles.sectionHead}>
-            <Text style={styles.sectionTitle}>Chat appearance</Text>
-            <Text style={styles.sectionMeta}>Customize your chats</Text>
+          <View style={styles.section}>
+            <View style={styles.sectionHead}>
+              <Text style={styles.sectionTitle}>Chat appearance</Text>
+              <Text style={styles.sectionMeta}>Only you see this</Text>
+            </View>
+            <View style={styles.settingsList}>
+              <TouchableOpacity
+                style={styles.settingsRow}
+                onPress={() => setBgPickerOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Change chat background"
+              >
+                <View style={[styles.settingsIcon, styles.settingsIconBlue]}>
+                  <Ionicons
+                    name="image-outline"
+                    size={20}
+                    color={COLORS.onPrimaryContainer}
+                  />
+                </View>
+                <View style={styles.settingsBody}>
+                  <Text style={styles.settingsTitle}>Chat background</Text>
+                  <Text style={styles.settingsSub} numberOfLines={1}>
+                    {appearance.backgroundUri
+                      ? "Custom image set"
+                      : "None \u00b7 use the default"}
+                  </Text>
+                </View>
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={COLORS.outline}
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.settingsRow}
+                onPress={() => setThemePickerOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Change chat bubble theme"
+              >
+                <View style={[styles.settingsIcon, styles.settingsIconGreen]}>
+                  <Ionicons
+                    name="chatbubbles-outline"
+                    size={20}
+                    color={COLORS.onPrimaryContainer}
+                  />
+                </View>
+                <View style={styles.settingsBody}>
+                  <Text style={styles.settingsTitle}>Bubble theme</Text>
+                  <Text style={styles.settingsSub} numberOfLines={1}>
+                    {BUBBLE_THEMES.find(
+                      (theme) => theme.id === appearance.bubbleTheme,
+                    )?.label ?? "Default"}{" "}
+                    shape of your message bubbles
+                  </Text>
+                </View>
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={COLORS.outline}
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.settingsRow}
+                onPress={() => setGifManagerOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Manage your GIFs"
+              >
+                <View style={[styles.settingsIcon, styles.settingsIconOrange]}>
+                  <Ionicons
+                    name="images-outline"
+                    size={20}
+                    color={COLORS.onPrimaryContainer}
+                  />
+                </View>
+                <View style={styles.settingsBody}>
+                  <Text style={styles.settingsTitle}>My GIFs</Text>
+                  <Text style={styles.settingsSub} numberOfLines={1}>
+                    Browse and pick from the GIF library
+                  </Text>
+                </View>
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={COLORS.outline}
+                />
+              </TouchableOpacity>
+            </View>
           </View>
-
-          <TouchableOpacity
-            style={styles.settingsRow}
-            onPress={() => setShowBackgroundPicker(true)}
-            accessibilityRole="button"
-            accessibilityLabel="Change chat background"
-          >
-            <View style={[styles.settingsIcon, styles.settingsIconBlue]}>
-              <Ionicons name="image-outline" size={20} color={COLORS.onPrimary} />
-            </View>
-            <View style={styles.settingsBody}>
-              <Text style={styles.settingsTitle}>Chat background</Text>
-              <Text style={styles.settingsSub} numberOfLines={1}>
-                Choose a background image for your chats
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={COLORS.outline} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.settingsRow}
-            onPress={() => setShowThemePicker(true)}
-            accessibilityRole="button"
-            accessibilityLabel="Change chat bubble theme"
-          >
-            <View style={[styles.settingsIcon, styles.settingsIconGreen]}>
-              <Ionicons name="chatbubbles-outline" size={20} color={COLORS.onPrimary} />
-            </View>
-            <View style={styles.settingsBody}>
-              <Text style={styles.settingsTitle}>Bubble theme</Text>
-              <Text style={styles.settingsSub} numberOfLines={1}>
-                Choose your chat bubble style
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={COLORS.outline} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.settingsRow}
-            onPress={() => setShowGifManager(true)}
-            accessibilityRole="button"
-            accessibilityLabel="Manage your GIFs"
-          >
-            <View style={[styles.settingsIcon, styles.settingsIconOrange]}>
-              <Ionicons name="images-outline" size={20} color={COLORS.onPrimary} />
-            </View>
-            <View style={styles.settingsBody}>
-              <Text style={styles.settingsTitle}>My GIFs</Text>
-              <Text style={styles.settingsSub} numberOfLines={1}>
-                Upload, manage, and share your GIFs
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={COLORS.outline} />
-          </TouchableOpacity>
-        </View>
         </>
       )}
+
+      {/* Chat background picker */}
+      <Modal
+        visible={bgPickerOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setBgPickerOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Chat background</Text>
+              <TouchableOpacity onPress={() => setBgPickerOpen(false)}>
+                <Ionicons name="close" size={22} color={COLORS.onSurface} />
+              </TouchableOpacity>
+            </View>
+
+            {appearance.backgroundUri ? (
+              <Image
+                source={{ uri: appearance.backgroundUri }}
+                style={styles.bgPreview}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={styles.bgPreviewEmpty}>
+                <Ionicons
+                  name="image-outline"
+                  size={32}
+                  color={COLORS.outline}
+                />
+                <Text style={styles.bgPreviewEmptyText}>
+                  No background set
+                </Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={styles.modalAction}
+              onPress={() => {
+                setBgPickerOpen(false);
+                void onChangeChatBackground();
+              }}
+              accessibilityRole="button"
+            >
+              <Ionicons
+                name="images-outline"
+                size={18}
+                color={COLORS.onSurface}
+              />
+              <Text style={styles.modalActionText}>
+                {appearance.backgroundUri ? "Replace image" : "Choose image"}
+              </Text>
+            </TouchableOpacity>
+
+            {appearance.backgroundUri ? (
+              <TouchableOpacity
+                style={styles.modalAction}
+                onPress={() => {
+                  void updateAppearance({ backgroundUri: null });
+                  setBgPickerOpen(false);
+                }}
+                accessibilityRole="button"
+              >
+                <Ionicons
+                  name="trash-outline"
+                  size={18}
+                  color={COLORS.error}
+                />
+                <Text style={[styles.modalActionText, { color: COLORS.error }]}>
+                  Remove background
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Bubble theme picker */}
+      <Modal
+        visible={themePickerOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setThemePickerOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Bubble theme</Text>
+              <TouchableOpacity onPress={() => setThemePickerOpen(false)}>
+                <Ionicons name="close" size={22} color={COLORS.onSurface} />
+              </TouchableOpacity>
+            </View>
+
+            {BUBBLE_THEMES.map((theme) => {
+              const active = theme.id === appearance.bubbleTheme;
+              return (
+                <TouchableOpacity
+                  key={theme.id}
+                  style={[
+                    styles.themeRow,
+                    active && styles.themeRowActive,
+                  ]}
+                  onPress={() => {
+                    void updateAppearance({ bubbleTheme: theme.id });
+                    setThemePickerOpen(false);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Use ${theme.label} bubble theme`}
+                >
+                  <Text style={styles.themeLabel}>{theme.label}</Text>
+                  <Text style={styles.themeHint}>{theme.hint}</Text>
+                  {active ? (
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={22}
+                      color={COLORS.secondary}
+                    />
+                  ) : (
+                    <View style={{ width: 22 }} />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      </Modal>
+
+      {/* My GIFs */}
+      <Modal
+        visible={gifManagerOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setGifManagerOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>My GIFs</Text>
+              <TouchableOpacity onPress={() => setGifManagerOpen(false)}>
+                <Ionicons name="close" size={22} color={COLORS.onSurface} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.gifEmpty}>
+              <Ionicons
+                name="happy-outline"
+                size={32}
+                color={COLORS.outline}
+              />
+              <Text style={styles.gifEmptyText}>
+                Send a GIF from any chat and it lands here for reuse.{" "}
+                {"\n"}Your sent GIFs will build up over time.
+              </Text>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -735,5 +945,140 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.labelSM,
     color: COLORS.onSurfaceVariant,
     marginTop: 2,
+  },
+  settingsList: {
+    backgroundColor: COLORS.semantic.surfaceLevel1,
+    borderRadius: RADIUS.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.semantic.ghostBorderLight,
+    overflow: "hidden",
+  },
+  settingsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.spaceMd,
+    paddingHorizontal: SPACING.spaceMd,
+    paddingVertical: SPACING.spaceMd,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.semantic.ghostBorderLight,
+  },
+  settingsIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  settingsIconBlue: {
+    backgroundColor: COLORS.primaryContainer,
+  },
+  settingsIconGreen: {
+    backgroundColor: COLORS.secondary,
+  },
+  settingsIconOrange: {
+    backgroundColor: COLORS.tertiaryContainer,
+  },
+  settingsBody: {
+    flex: 1,
+    gap: 2,
+  },
+  settingsTitle: {
+    ...TYPOGRAPHY.labelLG,
+    color: COLORS.onSurface,
+  },
+  settingsSub: {
+    ...TYPOGRAPHY.bodySM,
+    color: COLORS.outline,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "center",
+    padding: SPACING.margin,
+  },
+  modalCard: {
+    backgroundColor: COLORS.semantic.surfaceLevel2,
+    borderRadius: RADIUS.md,
+    padding: SPACING.spaceLg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.semantic.ghostBorder,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: SPACING.spaceLg,
+  },
+  modalTitle: {
+    ...TYPOGRAPHY.headlineSM,
+    color: COLORS.semantic.textPrimary,
+  },
+  bgPreview: {
+    width: "100%",
+    height: 160,
+    borderRadius: RADIUS.sm,
+    marginBottom: SPACING.spaceMd,
+  },
+  bgPreviewEmpty: {
+    width: "100%",
+    height: 160,
+    borderRadius: RADIUS.sm,
+    marginBottom: SPACING.spaceMd,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.semantic.ghostBorderLight,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: SPACING.spaceSm,
+  },
+  bgPreviewEmptyText: {
+    ...TYPOGRAPHY.bodySM,
+    color: COLORS.outline,
+  },
+  modalAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.spaceMd,
+    paddingVertical: SPACING.spaceMd,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.semantic.ghostBorderLight,
+  },
+  modalActionText: {
+    ...TYPOGRAPHY.labelLG,
+    color: COLORS.onSurface,
+  },
+  themeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.spaceMd,
+    paddingVertical: SPACING.spaceMd,
+    paddingHorizontal: SPACING.spaceMd,
+    borderRadius: RADIUS.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.semantic.ghostBorderLight,
+    marginBottom: SPACING.spaceSm,
+  },
+  themeRowActive: {
+    borderColor: COLORS.secondary,
+    borderWidth: 1,
+  },
+  themeLabel: {
+    ...TYPOGRAPHY.labelLG,
+    color: COLORS.onSurface,
+    width: 84,
+  },
+  themeHint: {
+    ...TYPOGRAPHY.bodySM,
+    color: COLORS.outline,
+    flex: 1,
+  },
+  gifEmpty: {
+    alignItems: "center",
+    gap: SPACING.spaceMd,
+    paddingVertical: SPACING.spaceLg,
+  },
+  gifEmptyText: {
+    ...TYPOGRAPHY.bodySM,
+    color: COLORS.outline,
+    textAlign: "center",
   },
 });
