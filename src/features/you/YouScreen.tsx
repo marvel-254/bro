@@ -1306,6 +1306,8 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.spaceSm,
     paddingHorizontal: SPACING.spaceMd,
     alignItems: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.semantic.ghostBorderLight,
   },
   colorPreviewText: {
     ...TYPOGRAPHY.labelMD,
@@ -1325,6 +1327,7 @@ const styles = StyleSheet.create({
   colorSwatch: {
     width: 44,
     height: 44,
+    aspectRatio: 1,
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
