@@ -27,9 +27,11 @@ import { usePresence } from "../../lib/presence-context";
 import { PRESENCE_LABELS } from "../../lib/presence";
 import { isSupabaseConfigured } from "../../lib/supabase";
 import {
+  BUBBLE_COLORS,
   BUBBLE_THEMES,
   DEFAULT_APPEARANCE,
   loadAppearance,
+  readableTextOn,
   saveAppearance,
   type ChatAppearance,
 } from "../../lib/chat-appearance";
@@ -44,6 +46,18 @@ import {
   ErrorState,
   EmptyState,
 } from "../../components/feedback/States";
+
+/** One-line summary of the current bubble colour choices. */
+function colorSummary(appearance: ChatAppearance): string {
+  const nameOf = (value: string | null) =>
+    value
+      ? (BUBBLE_COLORS.find((color) => color.value === value)?.label ??
+        "Custom")
+      : "Default";
+  return `${nameOf(appearance.mineColor)} \u00b7 ${nameOf(
+    appearance.theirsColor,
+  )} (yours \u00b7 theirs)`;
+}
 
 /**
  * Me — your profile, presence, spaces and discussions.
@@ -82,6 +96,7 @@ export default function YouScreen() {
   );
   const [bgPickerOpen, setBgPickerOpen] = useState(false);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const [colorPickerOpen, setColorPickerOpen] = useState(false);
   const [gifManagerOpen, setGifManagerOpen] = useState(false);
 
   useEffect(() => {
@@ -588,6 +603,54 @@ export default function YouScreen() {
 
               <TouchableOpacity
                 style={styles.settingsRow}
+                onPress={() => setColorPickerOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Change bubble colours"
+              >
+                <View style={[styles.settingsIcon, styles.settingsIconPink]}>
+                  <Ionicons
+                    name="color-palette-outline"
+                    size={20}
+                    color={COLORS.onPrimaryContainer}
+                  />
+                </View>
+                <View style={styles.settingsBody}>
+                  <Text style={styles.settingsTitle}>Bubble colours</Text>
+                  <Text style={styles.settingsSub} numberOfLines={1}>
+                    {colorSummary(appearance)}
+                  </Text>
+                </View>
+                <View style={styles.colorDots}>
+                  <View
+                    style={[
+                      styles.colorDot,
+                      {
+                        backgroundColor:
+                          appearance.mineColor ??
+                          COLORS.secondaryContainer,
+                      },
+                    ]}
+                  />
+                  <View
+                    style={[
+                      styles.colorDot,
+                      {
+                        backgroundColor:
+                          appearance.theirsColor ??
+                          COLORS.semantic.surfaceLevel2,
+                      },
+                    ]}
+                  />
+                </View>
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={COLORS.outline}
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.settingsRow}
                 onPress={() => setGifManagerOpen(true)}
                 accessibilityRole="button"
                 accessibilityLabel="Manage your GIFs"
@@ -738,6 +801,142 @@ export default function YouScreen() {
                 </TouchableOpacity>
               );
             })}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Bubble colour picker */}
+      <Modal
+        visible={colorPickerOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setColorPickerOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Bubble colours</Text>
+              <TouchableOpacity onPress={() => setColorPickerOpen(false)}>
+                <Ionicons name="close" size={22} color={COLORS.onSurface} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Live preview: one bubble per side with the current colours */}
+            <View style={styles.colorPreview}>
+              <View
+                style={[
+                  styles.colorPreviewBubble,
+                  {
+                    backgroundColor:
+                      appearance.mineColor ?? COLORS.secondaryContainer,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.colorPreviewText,
+                    appearance.mineColor
+                      ? { color: readableTextOn(appearance.mineColor) }
+                      : null,
+                  ]}
+                >
+                  Yours
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.colorPreviewBubble,
+                  {
+                    backgroundColor:
+                      appearance.theirsColor ??
+                      COLORS.semantic.surfaceLevel2,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.colorPreviewText,
+                    appearance.theirsColor
+                      ? { color: readableTextOn(appearance.theirsColor) }
+                      : null,
+                  ]}
+                >
+                  Theirs
+                </Text>
+              </View>
+            </View>
+
+            <Text style={styles.colorSectionLabel}>Your bubbles</Text>
+            <View style={styles.colorGrid}>
+              {BUBBLE_COLORS.map((color) => {
+                const active = color.value === appearance.mineColor;
+                return (
+                  <TouchableOpacity
+                    key={`mine-${color.id}`}
+                    style={[
+                      styles.colorSwatch,
+                      color.value
+                        ? { backgroundColor: color.value }
+                        : styles.colorSwatchDefault,
+                      active && styles.colorSwatchActive,
+                    ]}
+                    onPress={() =>
+                      void updateAppearance({ mineColor: color.value })
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel={`Your bubbles: ${color.label}`}
+                  >
+                    {active ? (
+                      <Ionicons
+                        name="checkmark"
+                        size={18}
+                        color={
+                          color.value
+                            ? readableTextOn(color.value)
+                            : COLORS.onSurface
+                        }
+                      />
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={styles.colorSectionLabel}>Their bubbles</Text>
+            <View style={styles.colorGrid}>
+              {BUBBLE_COLORS.map((color) => {
+                const active = color.value === appearance.theirsColor;
+                return (
+                  <TouchableOpacity
+                    key={`theirs-${color.id}`}
+                    style={[
+                      styles.colorSwatch,
+                      color.value
+                        ? { backgroundColor: color.value }
+                        : styles.colorSwatchDefault,
+                      active && styles.colorSwatchActive,
+                    ]}
+                    onPress={() =>
+                      void updateAppearance({ theirsColor: color.value })
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel={`Their bubbles: ${color.label}`}
+                  >
+                    {active ? (
+                      <Ionicons
+                        name="checkmark"
+                        size={18}
+                        color={
+                          color.value
+                            ? readableTextOn(color.value)
+                            : COLORS.onSurface
+                        }
+                      />
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
         </View>
       </Modal>
@@ -978,6 +1177,9 @@ const styles = StyleSheet.create({
   settingsIconOrange: {
     backgroundColor: COLORS.tertiaryContainer,
   },
+  settingsIconPink: {
+    backgroundColor: COLORS.primary,
+  },
   settingsBody: {
     flex: 1,
     gap: 2,
@@ -1080,5 +1282,61 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.bodySM,
     color: COLORS.outline,
     textAlign: "center",
+  },
+  colorDots: {
+    flexDirection: "row",
+    gap: 4,
+  },
+  colorDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.semantic.ghostBorderLight,
+  },
+  colorPreview: {
+    flexDirection: "row",
+    gap: SPACING.spaceMd,
+    marginBottom: SPACING.spaceLg,
+  },
+  colorPreviewBubble: {
+    flex: 1,
+    borderRadius: 16,
+    borderBottomRightRadius: 5,
+    paddingVertical: SPACING.spaceSm,
+    paddingHorizontal: SPACING.spaceMd,
+    alignItems: "center",
+  },
+  colorPreviewText: {
+    ...TYPOGRAPHY.labelMD,
+    color: COLORS.semantic.textPrimary,
+  },
+  colorSectionLabel: {
+    ...TYPOGRAPHY.labelMD,
+    color: COLORS.onSurface,
+    marginBottom: SPACING.spaceSm,
+  },
+  colorGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACING.spaceSm,
+    marginBottom: SPACING.spaceLg,
+  },
+  colorSwatch: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
+  colorSwatchDefault: {
+    backgroundColor: COLORS.semantic.surfaceLevel1,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.semantic.ghostBorderLight,
+  },
+  colorSwatchActive: {
+    borderColor: COLORS.onSurface,
   },
 });

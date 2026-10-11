@@ -41,6 +41,7 @@ import { isSupabaseConfigured } from "../../lib/supabase";
 import {
   DEFAULT_APPEARANCE,
   loadAppearance,
+  readableTextOn,
   type BubbleTheme,
 } from "../../lib/chat-appearance";
 import { useAuth } from "../../lib/auth-context";
@@ -133,29 +134,37 @@ interface Props {
 /**
  * Corner overrides for a bubble theme. "default" is the asymmetric BRO tail
  * (sharp corner on the sender's side); the others are purely local cosmetics.
+ *
+ * The rounded corners are a FIXED radius rather than RADIUS.full: with
+ * "full", a long multi-line message clamps to half the bubble height and the
+ * curve eats into the text column, so the shape visually breaks as the
+ * message grows. A fixed radius keeps the text inside the shape at any
+ * length, and the bubble's overflow:"hidden" clips the image corners to match.
  */
 function bubbleShape(theme: BubbleTheme, isMine: boolean) {
+  const round = 20;
+  const tail = 5;
   switch (theme) {
     case "rounded":
       return {
-        borderTopLeftRadius: RADIUS.full,
-        borderTopRightRadius: RADIUS.full,
-        borderBottomLeftRadius: RADIUS.full,
-        borderBottomRightRadius: RADIUS.full,
+        borderTopLeftRadius: round,
+        borderTopRightRadius: round,
+        borderBottomLeftRadius: round,
+        borderBottomRightRadius: round,
       } as const;
     case "teardrop":
       return isMine
         ? {
-            borderTopLeftRadius: RADIUS.full,
-            borderTopRightRadius: RADIUS.full,
-            borderBottomLeftRadius: RADIUS.full,
-            borderBottomRightRadius: RADIUS.sm,
+            borderTopLeftRadius: round,
+            borderTopRightRadius: round,
+            borderBottomLeftRadius: round,
+            borderBottomRightRadius: tail,
           } as const
         : {
-            borderTopLeftRadius: RADIUS.full,
-            borderTopRightRadius: RADIUS.full,
-            borderBottomLeftRadius: RADIUS.sm,
-            borderBottomRightRadius: RADIUS.full,
+            borderTopLeftRadius: round,
+            borderTopRightRadius: round,
+            borderBottomLeftRadius: tail,
+            borderBottomRightRadius: round,
           } as const;
     default:
       return null;
@@ -713,6 +722,15 @@ export default function ConversationDetail({ conversationId, title }: Props) {
       const messageReactions = reactions[item.id] ?? [];
       const isDeleted = item.deleted_for_everyone;
 
+      // A chosen bubble colour overrides the theme default, and every text
+      // inside the bubble switches to the contrast-safe pairing for it.
+      const bubbleColor = isMine
+        ? appearance.mineColor
+        : appearance.theirsColor;
+      const bubbleTextStyle = bubbleColor
+        ? { color: readableTextOn(bubbleColor) }
+        : null;
+
       return (
         <Pressable
           style={[
@@ -746,14 +764,21 @@ export default function ConversationDetail({ conversationId, title }: Props) {
               isMine ? styles.bubbleMine : styles.bubbleTheirs,
               !startsGroup && styles.bubbleTight,
               bubbleShape(appearance.bubbleTheme, isMine),
+              bubbleColor ? { backgroundColor: bubbleColor } : null,
             ]}
           >
             {startsGroup && !isMine && item.sender ? (
-              <Text style={styles.senderName}>{item.sender.display_name}</Text>
+              <Text
+                style={[styles.senderName, bubbleTextStyle]}
+              >
+                {item.sender.display_name}
+              </Text>
             ) : null}
 
             {item.reply_to_message_id ? (
-              <Text style={styles.replyHint}>↳ replying to a message</Text>
+              <Text style={[styles.replyHint, bubbleTextStyle]}>
+                ↳ replying to a message
+              </Text>
             ) : null}
 
             {item.type === "image" && !isDeleted ? (
@@ -768,15 +793,19 @@ export default function ConversationDetail({ conversationId, title }: Props) {
                 Message deleted
               </Text>
             ) : item.content ? (
-              <Text style={styles.messageText}>{item.content}</Text>
+              <Text style={[styles.messageText, bubbleTextStyle]}>
+                {item.content}
+              </Text>
             ) : null}
 
             {item.edited_at ? (
-              <Text style={styles.editedHint}>edited</Text>
+              <Text style={[styles.editedHint, bubbleTextStyle]}>
+                edited
+              </Text>
             ) : null}
 
             <View style={styles.metaRow}>
-              <Text style={styles.timestamp}>
+              <Text style={[styles.timestamp, bubbleTextStyle]}>
                 {new Date(item.created_at).toLocaleTimeString([], {
                   hour: "2-digit",
                   minute: "2-digit",
@@ -856,6 +885,8 @@ export default function ConversationDetail({ conversationId, title }: Props) {
       attachments,
       openViewer,
       appearance.bubbleTheme,
+      appearance.mineColor,
+      appearance.theirsColor,
     ],
   );
 
@@ -1142,6 +1173,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.spaceMd,
     paddingVertical: SPACING.spaceSm,
     borderWidth: StyleSheet.hairlineWidth,
+    // Clips images and text to whatever corner shape the theme draws, so a
+    // teardrop stays a teardrop even with a long message or a photo.
+    overflow: "hidden",
+    flexShrink: 1,
   },
   bubbleTight: {
     marginBottom: 2,
