@@ -36,6 +36,7 @@ import {
   type ChatAppearance,
 } from "../../lib/chat-appearance";
 import { fetchMySpaces, type SpaceSummary } from "../../lib/spaces";
+import { getMyGifs, type Gif } from "../../lib/gifs";
 import {
   fetchDiscussions,
   withdrawContribution,
@@ -98,6 +99,28 @@ export default function YouScreen() {
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
   const [gifManagerOpen, setGifManagerOpen] = useState(false);
+  const [myGifs, setMyGifs] = useState<Gif[]>([]);
+  const [myGifsStatus, setMyGifsStatus] = useState<
+    "loading" | "error" | "ready"
+  >("loading");
+
+  useEffect(() => {
+    if (!gifManagerOpen || !user) return;
+    let cancelled = false;
+    setMyGifsStatus("loading");
+    void getMyGifs(user.id)
+      .then((gifs) => {
+        if (cancelled) return;
+        setMyGifs(gifs);
+        setMyGifsStatus("ready");
+      })
+      .catch(() => {
+        if (!cancelled) setMyGifsStatus("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [gifManagerOpen, user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -956,17 +979,38 @@ export default function YouScreen() {
                 <Ionicons name="close" size={22} color={COLORS.onSurface} />
               </TouchableOpacity>
             </View>
-            <View style={styles.gifEmpty}>
-              <Ionicons
-                name="happy-outline"
-                size={32}
-                color={COLORS.outline}
+            {myGifsStatus === "loading" ? (
+              <LoadingState message="Loading your GIFs..." />
+            ) : myGifsStatus === "error" ? (
+              <ErrorState
+                message="Could not load your GIFs."
+                onRetry={() => setGifManagerOpen(false)}
               />
-              <Text style={styles.gifEmptyText}>
-                Send a GIF from any chat and it lands here for reuse.{" "}
-                {"\n"}Your sent GIFs will build up over time.
-              </Text>
-            </View>
+            ) : myGifs.length === 0 ? (
+              <View style={styles.gifEmpty}>
+                <Ionicons
+                  name="happy-outline"
+                  size={32}
+                  color={COLORS.outline}
+                />
+                <Text style={styles.gifEmptyText}>
+                  Send a GIF from any chat and it lands here for reuse.{" "}
+                  {"\n"}Your sent GIFs will build up over time.
+                </Text>
+              </View>
+            ) : (
+              <ScrollView style={styles.gifGrid}>
+                {myGifs.map((gif) => (
+                  <Image
+                    key={gif.id}
+                    source={{ uri: gif.url }}
+                    style={styles.gifThumb}
+                    resizeMode="cover"
+                    accessibilityLabel={gif.title}
+                  />
+                ))}
+              </ScrollView>
+            )}
           </View>
         </View>
       </Modal>
@@ -1282,6 +1326,18 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.bodySM,
     color: COLORS.outline,
     textAlign: "center",
+  },
+  gifGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACING.spaceSm,
+    paddingVertical: SPACING.spaceSm,
+  },
+  gifThumb: {
+    width: "31%",
+    aspectRatio: 1,
+    borderRadius: RADIUS.sm,
+    backgroundColor: COLORS.surface,
   },
   colorDots: {
     flexDirection: "row",
