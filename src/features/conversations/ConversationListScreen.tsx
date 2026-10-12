@@ -17,6 +17,7 @@ import {
   subscribeToConversationList,
 } from "../../lib/conversations";
 import { isSupabaseConfigured } from "../../lib/supabase";
+import { getSupabase } from "../../lib/supabase";
 import { useActivityBadge } from "../../lib/activity-badge-context";
 import type { ConversationSummary } from "../../lib/database.types";
 import {
@@ -89,6 +90,17 @@ export default function ConversationListScreen() {
     router.push(`/chat/${id}`);
   };
 
+  const togglePin = async (id: string) => {
+    try {
+      const supabase = getSupabase();
+      if (!supabase) return;
+      await supabase.rpc("toggle_conversation_pin", { conversation_id: id });
+      void load();
+    } catch {
+      // ignore errors
+    }
+  };
+
   const renderItem = ({ item }: { item: ConversationSummary }) => {
     const peer = item.peers[0];
     const presence =
@@ -107,6 +119,7 @@ export default function ConversationListScreen() {
       <TouchableOpacity
         style={styles.row}
         onPress={() => openConversation(item.id)}
+        onLongPress={() => togglePin(item.id)}
         accessibilityRole="button"
         accessibilityLabel={`Open conversation ${titleFor(item)}`}
       >
@@ -136,6 +149,9 @@ export default function ConversationListScreen() {
                 </Text>
               </View>
             ) : null}
+            {item.is_pinned && (
+              <Ionicons name="pin-outline" size={16} color={COLORS.primary} style={styles.pinIcon} />
+            )}
           </View>
         </View>
       </TouchableOpacity>
@@ -331,6 +347,9 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.labelSM,
     color: COLORS.onPrimary,
     fontWeight: "700",
+  },
+  pinIcon: {
+    marginLeft: 4,
   },
   centered: {
     flex: 1,

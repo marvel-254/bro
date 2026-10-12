@@ -255,8 +255,9 @@ export async function fetchConversationSummaries(): Promise<
   const { data, error } = await supabase
     .from("conversations")
     .select(
-      "id, type, name, avatar_url, created_at, conversation_members!inner (user_id, last_read_at)",
+      "id, type, name, avatar_url, created_at, is_pinned, conversation_members!inner (user_id, last_read_at)",
     )
+    .order("is_pinned", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(50);
 
@@ -294,6 +295,7 @@ export async function fetchConversationSummaries(): Promise<
       last_message_preview: latest?.content ?? null,
       last_message_sender: latest?.senderId ?? null,
       unread_count: latest?.unreadCount ?? 0,
+      is_pinned: row.is_pinned ?? false,
       peers: [],
     });
   }

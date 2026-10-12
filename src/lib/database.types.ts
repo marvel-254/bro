@@ -111,7 +111,8 @@ export interface ConversationSummary {
   last_message_preview: string | null;
   last_message_sender: string | null;
   unread_count: number;
-  /** Peers (everyone except the caller) with presence, for the list avatar. */
+  is_pinned: boolean;
+  /** Peers (everyone except the caller) with peers list, for the list avatar. */
   peers: Array<{
     user_id: string;
     display_name: string;

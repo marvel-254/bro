@@ -275,7 +275,8 @@ describe("searchConversations", () => {
         last_message_at: "2026-10-03T12:00:00Z",
         last_message_preview: "uko wapi",
         last_message_sender: "peer",
-        unread_count: 1,
+        unread_count: 0,
+      is_pinned: false,
         peers: [
           {
             user_id: "p1",
@@ -305,6 +306,7 @@ describe("searchConversations", () => {
         last_message_preview: "tacos at 7?",
         last_message_sender: "peer",
         unread_count: 0,
+      is_pinned: false,
         peers: [],
       },
     ]);
@@ -325,6 +327,7 @@ describe("searchConversations", () => {
         last_message_preview: "see you there",
         last_message_sender: "peer",
         unread_count: 0,
+      is_pinned: false,
         peers: [],
       },
     ]);
