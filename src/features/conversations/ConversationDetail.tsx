@@ -37,7 +37,7 @@ import {
   MESSAGES_PAGE_SIZE,
 } from "../../lib/conversations";
 import { sendTyping, watchTyping, releaseTypingChannel } from "../../lib/presence";
-import { isSupabaseConfigured } from "../../lib/supabase";
+import { getSupabase, isSupabaseConfigured } from "../../lib/supabase";
 import {
   DEFAULT_APPEARANCE,
   loadAppearance,
@@ -182,7 +182,7 @@ function ChatImage({
   onOpen,
 }: {
   attachment: AttachmentRef | undefined;
-  onOpen: (fullPath: string) => void;
+  onOpen: (fullPath: string, viewOnce?: boolean) => void;
 }) {
   const [url, setUrl] = useState<string | null>(null);
 
@@ -218,13 +218,21 @@ function ChatImage({
     );
   }
 
+  const isViewOnce = attachment.viewOnce === true;
+
   return (
     <Pressable
-      onPress={() => onOpen(attachment.storagePath)}
+      onPress={() => onOpen(attachment.storagePath, isViewOnce)}
       accessibilityRole="button"
-      accessibilityLabel="Open photo"
+      accessibilityLabel={isViewOnce ? "Open view-once photo" : "Open photo"}
     >
       <Image source={{ uri: url }} style={styles.photo} resizeMode="cover" />
+      {isViewOnce && (
+        <View style={styles.viewOnceBadge}>
+          <Ionicons name="eye-off-outline" size={12} color={COLORS.onPrimary} />
+          <Text style={styles.viewOnceBadgeText}>View once</Text>
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -309,6 +317,8 @@ export default function ConversationDetail({ conversationId, title }: Props) {
     {},
   );
   const [sendingImage, setSendingImage] = useState(false);
+  /** When armed, the next photo is flagged view-once instead of permanent. */
+  const [viewOnce, setViewOnce] = useState(false);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [sendingGif, setSendingGif] = useState(false);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
@@ -565,7 +575,7 @@ export default function ConversationDetail({ conversationId, title }: Props) {
     if (sendingImage) return;
     setSendingImage(true);
 
-    const result = await sendImageMessage(conversationId, draft);
+    const result = await sendImageMessage(conversationId, draft, viewOnce);
     setSendingImage(false);
 
     if (!result.ok) {
@@ -577,6 +587,7 @@ export default function ConversationDetail({ conversationId, title }: Props) {
 
     const now = new Date().toISOString();
     setDraft("");
+    setViewOnce(false);
     setMessages((current) => {
       if (current.some((message) => message.id === result.messageId))
         return current;
@@ -609,7 +620,7 @@ export default function ConversationDetail({ conversationId, title }: Props) {
     // The attachment row exists by now; pull it in for the thumbnail.
     const attached = await fetchMessageAttachments([result.messageId]);
     setAttachments((current) => ({ ...current, ...attached }));
-  }, [conversationId, currentUser, draft, sendingImage]);
+  }, [conversationId, currentUser, draft, sendingImage, viewOnce]);
 
   /**
    * Send a GIF from the self-hosted library. No upload happens: the message
@@ -669,7 +680,28 @@ export default function ConversationDetail({ conversationId, title }: Props) {
     [conversationId, currentUser, draft, sendingGif],
   );
 
-  const openViewer = useCallback(async (fullPath: string) => {
+  const openViewer = useCallback(async (fullPath: string, viewOnce = false) => {
+    if (viewOnce) {
+      try {
+        const supabase = getSupabase();
+        if (supabase) {
+          const { data: attachment } = await supabase
+            .from("attachments")
+            .select("id")
+            .eq("storage_path", fullPath)
+            .eq("view_once", true)
+            .maybeSingle();
+          if (attachment) {
+            await supabase.rpc("mark_attachment_viewed", {
+              attachment_id: attachment.id,
+            });
+          }
+        }
+      } catch {
+        // ignore RPC errors
+      }
+    }
+
     setViewerLoading(true);
     const url = await signedChatUrl(fullPath, 300);
     setViewerLoading(false);
@@ -1055,6 +1087,22 @@ export default function ConversationDetail({ conversationId, title }: Props) {
             />
           )}
         </Pressable>
+        <Pressable
+          style={[
+            styles.viewOnceButton,
+            viewOnce && styles.viewOnceButtonActive,
+          ]}
+          onPress={() => setViewOnce((v) => !v)}
+          disabled={sendingImage || sending}
+          accessibilityRole="button"
+          accessibilityLabel={viewOnce ? "Disable view once" : "Enable view once"}
+        >
+          <Ionicons
+            name={viewOnce ? "eye-off-outline" : "eye-outline"}
+            size={22}
+            color={viewOnce ? COLORS.primary : SEMANTIC_COLORS.textDim}
+          />
+        </Pressable>
         <TextInput
           style={styles.input}
           placeholder="Message"
@@ -1274,6 +1322,22 @@ readReceipt: {
     ...TYPOGRAPHY.labelSM,
     color: SEMANTIC_COLORS.textDim,
   },
+  viewOnceBadge: {
+    position: "absolute",
+    top: SPACING.spaceXs,
+    right: SPACING.spaceXs,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    paddingHorizontal: SPACING.spaceXs,
+    paddingVertical: 2,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    borderRadius: RADIUS.sm,
+  },
+  viewOnceBadgeText: {
+    fontSize: 10,
+    color: COLORS.onPrimary,
+  },
   gifButton: {
     width: 40,
     height: 40,
@@ -1285,6 +1349,13 @@ readReceipt: {
   },
   imageButtonDisabled: {
     opacity: 0.5,
+  },
+  viewOnceButton: {
+    padding: SPACING.spaceSm,
+  },
+  viewOnceButtonActive: {
+    backgroundColor: COLORS.primaryContainer,
+    borderRadius: RADIUS.full,
   },
   viewerBackdrop: {
     flex: 1,
