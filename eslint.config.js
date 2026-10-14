@@ -6,7 +6,17 @@ const tsPlugin = require('@typescript-eslint/eslint-plugin');
 
 module.exports = [
   {
-    ignores: ['bro/**', 'brarvel/**', 'node_modules/**', 'android/**', 'website/**'],
+    ignores: [
+      'bro/**',
+      'brarvel/**',
+      'node_modules/**',
+      'android/**',
+      'website/**',
+      // Herald-OS is a separate product tree checked into the same repo (see
+      // `git show b30ac11 -- Herald-OS`). It has its own vitest/eslint setup;
+      // the BRO jest config has no vitest and cannot run or lint it.
+      'Herald-OS/**',
+    ],
   },
   js.configs.recommended,
   {
