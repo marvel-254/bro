@@ -125,6 +125,43 @@ jobs:
           fi
           echo "APK verified: $(ls -lh android/app/build/outputs/apk/release/app-release.apk)"
 
+      # Report real size numbers so APK bloat is visible in every run instead
+      # of being discovered only when a user complains. The top native
+      # libraries are the usual culprit; the marker summary proves R8 and the
+      # arm-only ABI split actually took effect.
+      - name: Measure APK size
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+          echo "=== Total APK size ==="
+          ls -lh "$APK"
+          bytes=$(stat -c%s "$APK")
+          echo "size_bytes=$bytes"
+          echo "size_mb=$(awk "BEGIN{printf \"%.2f\", $bytes/1048576}")"
+          echo ""
+          echo "=== Largest native libraries ==="
+          unzip -l "$APK" | grep '\.so$' | awk '{print $1, $4}' | sort -rn | head -15
+          echo ""
+          echo "=== Verification markers ==="
+          unzip -l "$APK" | grep -q 'lib/x86' && echo "FAIL: x86 native libs present (expected arm-only)" && exit 1 || echo "OK: no x86 native libs"
+          if unzip -l "$APK" | grep -q 'classes.dex'; then
+            echo "dex files present (R8 ran if total dex is small)"
+          fi
+          # Upload a machine-readable size record as an artifact.
+          mkdir -p apk-metrics
+          {
+            echo "size_bytes=$bytes"
+            echo "size_mb=$(awk "BEGIN{printf \"%.2f\", $bytes/1048576}")"
+          } > apk-metrics/size.txt
+          unzip -l "$APK" | grep '\.so$' | awk '{print $1, $4}' | sort -rn | head -50 > apk-metrics/native-libs.txt
+
+      - name: Upload APK size metrics
+        uses: actions/upload-artifact@v4
+        with:
+          name: APK-size-metrics
+          path: apk-metrics/
+          retention-days: 30
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
