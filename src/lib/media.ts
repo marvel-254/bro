@@ -63,6 +63,8 @@ export interface AttachmentRef {
   thumbPath: string | null;
   mime: string;
   bytes: number;
+  /** Attachment category, e.g. "image", "voice". Defaults to "image". */
+  kind?: string;
 }
 
 export type SendImageResult =
@@ -268,7 +270,7 @@ export async function uploadAudioFile(
   return { path, bytes: bytes.length };
 }
 export async function insertAttachment(
-  input: Omit<AttachmentRef, "id"> & { messageId: string | null },
+  input: Omit<AttachmentRef, "id"> & { messageId: string | null; kind?: string },
 ): Promise<string> {
   const supabase = getSupabase();
   if (!supabase) {
@@ -290,7 +292,7 @@ export async function insertAttachment(
       thumb_path: input.thumbPath,
       mime_type: input.mime,
       size_bytes: input.bytes,
-      kind: "image",
+      kind: input.kind ?? "image",
       view_once: input.viewOnce ?? false,
     })
     .select("id")

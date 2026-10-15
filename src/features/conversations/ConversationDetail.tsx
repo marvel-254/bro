@@ -111,6 +111,8 @@ import {
   signedChatUrl,
   type AttachmentRef,
 } from "../../lib/media";
+import VoiceRecorder from "./VoiceRecorder";
+import VoiceMessage from "./VoiceMessage";
 import GifPicker from "../gifs/GifPicker";
 import type { Gif } from "../../lib/gifs";
 import type {
@@ -820,6 +822,10 @@ export default function ConversationDetail({ conversationId, title }: Props) {
               />
             ) : null}
 
+            {item.type === "voice" && !isDeleted ? (
+              <VoiceMessage attachment={attachments[item.id]} />
+            ) : null}
+
             {isDeleted ? (
               <Text style={[styles.messageText, styles.deletedText]}>
                 Message deleted
@@ -1103,6 +1109,31 @@ export default function ConversationDetail({ conversationId, title }: Props) {
             color={viewOnce ? COLORS.primary : SEMANTIC_COLORS.textDim}
           />
         </Pressable>
+        <VoiceRecorder
+          conversationId={conversationId}
+          currentUser={currentUser}
+          disabled={sending || sendingImage}
+          onSent={(message) => {
+            setMessages((current) => {
+              if (current.some((m) => m.id === message.id)) return current;
+              return [
+                ...current,
+                {
+                  ...message,
+                  sender: currentUser
+                    ? {
+                        id: currentUser.id,
+                        username: currentUser.username,
+                        display_name: currentUser.displayName,
+                        avatar_url: currentUser.avatar ?? null,
+                        status: currentUser.status ?? "online",
+                      }
+                    : null,
+                },
+              ];
+            });
+          }}
+        />
         <TextInput
           style={styles.input}
           placeholder="Message"

@@ -2,37 +2,44 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { Audio } from "expo-av";
 import { Ionicons } from "@expo/vector-icons";
-import {
-  COLORS,
-  RADIUS,
-  SEMANTIC_COLORS,
-  SPACING,
-} from "../../theme";
-import {
-  uploadAudioFile,
-  insertAttachment,
-} from "../../lib/media";
+import { COLORS, RADIUS, SEMANTIC_COLORS, SPACING } from "../../theme";
+import { insertAttachment, uploadAudioFile } from "../../lib/media";
 import { sendMessage } from "../../lib/conversations";
 import { getSupabase } from "../../lib/supabase";
+import type { MessageRow } from "../../lib/database.types";
 
 interface Props {
   conversationId: string;
+  /** Only `id` is read; the rest stays optional so the app `User` shape fits. */
   currentUser: {
     id: string;
-    username: string;
-    displayName: string;
-    avatar: string | null;
-    status: string;
+    username?: string;
+    displayName?: string;
+    avatar?: string | null;
+    status?: string;
   } | null;
   disabled?: boolean;
-  onSend?: () => void;
+  /** Fires once the row is linked, so the chat can render the note immediately. */
+  onSent?: (message: MessageRow) => void;
 }
 
+/**
+ * Composer voice-note recorder.
+ *
+ * expo-av 16 is promise-based and its status object is a union, so every status
+ * read is guarded behind `isLoaded` and `durationMillis` is optional (Android
+ * reports it, some iOS streams do not). The previous version used the removed
+ * `start()`/`stop()`/`unload()`/`release()` methods, which is why `tsc` failed.
+ *
+ * The ticker lives in a ref rather than state: putting the interval id in state
+ * made the unmount cleanup depend on it, so every time the id was set the
+ * effect tore down the recorder it had just started.
+ */
 export default function VoiceRecorder({
   conversationId,
   currentUser,
   disabled = false,
-  onSend,
+  onSent,
 }: Props) {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingUri, setRecordingUri] = useState<string | null>(null);
@@ -40,29 +47,45 @@ export default function VoiceRecorder({
   const [sendingVoice, setSendingVoice] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [recordingDuration, setRecordingDuration] = useState(0);
-  const [timerID, setTimerID] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const voiceRecorderRef = useRef<Audio.Recording | null>(null);
-  const voicePreviewSoundRef = useRef<Audio.Sound | null>(null);
+  const recorderRef = useRef<Audio.Recording | null>(null);
+  const previewSoundRef = useRef<Audio.Sound | null>(null);
+  const tickerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
-    return () => {
-      if (voicePreviewSoundRef.current) {
-        voicePreviewSoundRef.current.unload().catch(() => {});
-      }
-      if (voiceRecorderRef.current) {
-        voiceRecorderRef.current.release().catch(() => {});
-      }
-      if (timerID) clearInterval(timerID);
-    };
-  }, [timerID]);
+  const stopTicker = useCallback(() => {
+    if (tickerRef.current !== null) {
+      clearInterval(tickerRef.current);
+      tickerRef.current = null;
+    }
+  }, []);
+
+  /** Release both native handles and restore the normal audio mode. */
+  const releaseNative = useCallback(() => {
+    stopTicker();
+    const sound = previewSoundRef.current;
+    previewSoundRef.current = null;
+    if (sound) {
+      void sound.unloadAsync().catch(() => {});
+    }
+    const recorder = recorderRef.current;
+    recorderRef.current = null;
+    if (recorder) {
+      void recorder.stopAndUnloadAsync().catch(() => {});
+    }
+    void Audio.setAudioModeAsync({ allowsRecordingIOS: false }).catch(() => {});
+  }, [stopTicker]);
+
+  // Unmount only. No state in the deps, so nothing can tear down a live
+  // recording except the component going away.
+  useEffect(() => releaseNative, [releaseNative]);
 
   const startRecording = useCallback(async () => {
+    setError(null);
     try {
-      const granted = await Audio.requestPermissionsAsync();
-      if (!granted.granted) {
-        setError("Audio recording permission is required");
+      const permission = await Audio.requestPermissionsAsync();
+      if (!permission.granted) {
+        setError("Microphone access is off. Turn it on to send a voice note.");
         return;
       }
       await Audio.setAudioModeAsync({
@@ -73,97 +96,84 @@ export default function VoiceRecorder({
       await recorder.prepareToRecordAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY,
       );
-      await recorder.start();
-      voiceRecorderRef.current = recorder;
-      setIsRecording(true);
+      await recorder.startAsync();
+      recorderRef.current = recorder;
       setElapsedTime(0);
-      const timer = setInterval(() => {
+      setIsRecording(true);
+      tickerRef.current = setInterval(() => {
         setElapsedTime((prev) => prev + 1);
       }, 1000);
-      setTimerID(timer);
-    } catch {
-      setError("Failed to start recording");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start recording");
     }
   }, []);
 
   const stopRecording = useCallback(async () => {
+    const recorder = recorderRef.current;
+    if (!recorder) return;
+    stopTicker();
     try {
-      const recorder = voiceRecorderRef.current;
-      if (!recorder) return;
-      await recorder.stop();
+      await recorder.stopAndUnloadAsync();
+      recorderRef.current = null;
       const uri = recorder.getURI();
       setRecordingUri(uri);
       setIsRecording(false);
-      setRecordingDuration(elapsedTime);
-      if (timerID) clearInterval(timerID);
-      setTimerID(null);
-    } catch {
-      setError("Failed to stop recording");
+      // The ticker counted whole seconds; trust it over the native duration,
+      // which is not always populated on stop.
+      setRecordingDuration((prev) => Math.max(prev, elapsedTime));
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not stop recording");
     }
-  }, [elapsedTime, timerID]);
+  }, [elapsedTime, stopTicker]);
 
   const playPreview = useCallback(async () => {
     if (!recordingUri) return;
+    setError(null);
     try {
-      if (voicePreviewSoundRef.current) {
-        await voicePreviewSoundRef.current.unload();
+      const previous = previewSoundRef.current;
+      if (previous) {
+        await previous.unloadAsync();
       }
       const sound = new Audio.Sound();
       await sound.loadAsync({ uri: recordingUri });
       const status = await sound.getStatusAsync();
-      setRecordingDuration(Math.floor(status.durationMillis / 1000));
-      await sound.playAsync();
-      voicePreviewSoundRef.current = sound;
-      setIsPlayingPreview(true);
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (status.didJustFinish) {
+      if (status.isLoaded && status.durationMillis != null) {
+        setRecordingDuration(Math.round(status.durationMillis / 1000));
+      }
+      sound.setOnPlaybackStatusUpdate((update) => {
+        if (update.isLoaded && update.didJustFinish) {
           setIsPlayingPreview(false);
         }
       });
-    } catch {
-      setError("Failed to play preview");
+      await sound.playAsync();
+      previewSoundRef.current = sound;
+      setIsPlayingPreview(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not play that note");
     }
   }, [recordingUri]);
 
   const stopPreview = useCallback(async () => {
+    const sound = previewSoundRef.current;
+    if (!sound) return;
     try {
-      if (voicePreviewSoundRef.current) {
-        await voicePreviewSoundRef.current.unload();
-        voicePreviewSoundRef.current = null;
-        setIsPlayingPreview(false);
-      }
+      await sound.pauseAsync();
+      await sound.setPositionAsync(0);
     } catch {
-      // ignore
+      // A failed pause still leaves the button in the stopped state.
     }
+    setIsPlayingPreview(false);
   }, []);
 
-  const deleteRecording = useCallback(() => {
-    try {
-      if (voicePreviewSoundRef.current) {
-        voicePreviewSoundRef.current.unload();
-        voicePreviewSoundRef.current = null;
-      }
-      if (voiceRecorderRef.current) {
-        voiceRecorderRef.current.release();
-        voiceRecorderRef.current = null;
-      }
-      setRecordingUri(null);
-      setIsRecording(false);
-      setIsPlayingPreview(false);
-      setElapsedTime(0);
-      setRecordingDuration(0);
-      if (timerID) clearInterval(timerID);
-      setTimerID(null);
-    } catch {
-      // ignore
-    }
-  }, [timerID]);
-
-  const formatDuration = (seconds: number) => {
-    const minutes = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${minutes}:${secs.toString().padStart(2, "0")}`;
-  };
+  const discard = useCallback(() => {
+    releaseNative();
+    setRecordingUri(null);
+    setIsRecording(false);
+    setIsPlayingPreview(false);
+    setElapsedTime(0);
+    setRecordingDuration(0);
+  }, [releaseNative]);
 
   const sendVoice = useCallback(async () => {
     if (!recordingUri || sendingVoice || !currentUser) return;
@@ -185,168 +195,186 @@ export default function VoiceRecorder({
         thumbPath: null,
         mime: "audio/m4a",
         bytes,
+        kind: "voice",
         messageId: null,
       });
 
       const sent = await sendMessage(conversationId, "", {
         messageType: "voice",
       });
-      if (!sent.ok) throw new Error(sent.error ?? "Failed to send message");
+      if (!sent.ok) throw new Error(sent.error);
 
-      await supabase
+      const { error: linkError } = await supabase
         .from("attachments")
         .update({ message_id: sent.message.id })
         .eq("id", attachmentId);
+      if (linkError) throw new Error(linkError.message);
 
-      deleteRecording();
-      onSend?.();
-    } catch {
-      setError("Failed to send voice message");
+      discard();
+      onSent?.(sent.message);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not send that voice note",
+      );
     } finally {
       setSendingVoice(false);
     }
-  }, [recordingUri, sendingVoice, currentUser, conversationId, deleteRecording, onSend]);
+  }, [
+    recordingUri,
+    sendingVoice,
+    currentUser,
+    conversationId,
+    discard,
+    onSent,
+  ]);
 
-  const renderRecording = () => (
-    <View style={styles.recordingContainer}>
-      <Pressable
-        style={[styles.voiceButton, styles.voiceButtonRecording]}
-        onPress={stopRecording}
-        disabled={sendingVoice}
-        accessibilityRole="button"
-        accessibilityLabel="Stop recording"
-      >
-        <Ionicons name="stop-circle" size={28} color={COLORS.error} />
-      </Pressable>
-      <Text style={styles.voiceTimer}>
-        {formatDuration(elapsedTime)}
-      </Text>
-    </View>
-  );
+  const formatDuration = (seconds: number) => {
+    const safe = Math.max(0, Math.floor(seconds));
+    const minutes = Math.floor(safe / 60);
+    const secs = (safe % 60).toString().padStart(2, "0");
+    return `${minutes}:${secs}`;
+  };
 
-  const renderPreview = () => (
-    <View style={styles.previewContainer}>
-      <Pressable
-        style={[styles.voicePlayButton, isPlayingPreview && styles.voicePlayButtonPlaying]}
-        onPress={isPlayingPreview ? stopPreview : playPreview}
-      >
-        {isPlayingPreview ? (
-          <Ionicons name="pause-outline" size={24} color={SEMANTIC_COLORS.textDim} />
-        ) : (
-          <Ionicons name="play-outline" size={24} color={SEMANTIC_COLORS.textDim} />
-        )}
-      </Pressable>
-      <Text style={styles.voiceDuration}>
-        {formatDuration(recordingDuration)}
-      </Text>
-      <Pressable
-        style={styles.voiceSendButton}
-        onPress={sendVoice}
-        disabled={sendingVoice}
-      >
-        {sendingVoice ? (
-          <ActivityIndicator size="small" color={SEMANTIC_COLORS.textDim} />
-        ) : (
-          <Ionicons name="send-sharp" size={20} color={COLORS.onPrimary} />
-        )}
-      </Pressable>
-      <Pressable
-        style={styles.voiceDeleteButton}
-        onPress={deleteRecording}
-      >
-        <Ionicons name="trash-outline" size={22} color={SEMANTIC_COLORS.textDim} />
-      </Pressable>
-    </View>
-  );
+  if (error) {
+    return (
+      <View style={styles.errorWrap}>
+        <Text style={styles.errorText} numberOfLines={2}>
+          {error}
+        </Text>
+        <Pressable
+          onPress={discard}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss"
+        >
+          <Ionicons name="close" size={18} color={SEMANTIC_COLORS.textDim} />
+        </Pressable>
+      </View>
+    );
+  }
 
-  const renderIdle = () => (
+  if (isRecording) {
+    return (
+      <View style={styles.inline}>
+        <Pressable
+          style={styles.stopButton}
+          onPress={() => void stopRecording()}
+          disabled={sendingVoice}
+          accessibilityRole="button"
+          accessibilityLabel="Stop recording"
+        >
+          <Ionicons name="stop-circle" size={30} color={COLORS.error} />
+        </Pressable>
+        <Text style={styles.timer}>{formatDuration(elapsedTime)}</Text>
+      </View>
+    );
+  }
+
+  if (recordingUri) {
+    return (
+      <View style={styles.inline}>
+        <Pressable
+          style={styles.roundButton}
+          onPress={isPlayingPreview ? () => void stopPreview() : () => void playPreview()}
+          accessibilityRole="button"
+          accessibilityLabel={isPlayingPreview ? "Stop preview" : "Play recording"}
+        >
+          <Ionicons
+            name={isPlayingPreview ? "pause" : "play"}
+            size={20}
+            color={SEMANTIC_COLORS.textDim}
+          />
+        </Pressable>
+        <Text style={styles.duration}>{formatDuration(recordingDuration)}</Text>
+        <Pressable
+          style={[styles.roundButton, styles.sendButton]}
+          onPress={() => void sendVoice()}
+          disabled={sendingVoice}
+          accessibilityRole="button"
+          accessibilityLabel="Send voice note"
+        >
+          {sendingVoice ? (
+            <ActivityIndicator size="small" color={COLORS.onPrimary} />
+          ) : (
+            <Ionicons name="send-sharp" size={20} color={COLORS.onPrimary} />
+          )}
+        </Pressable>
+        <Pressable
+          style={styles.roundButton}
+          onPress={discard}
+          disabled={sendingVoice}
+          accessibilityRole="button"
+          accessibilityLabel="Discard recording"
+        >
+          <Ionicons name="trash-outline" size={20} color={SEMANTIC_COLORS.textDim} />
+        </Pressable>
+      </View>
+    );
+  }
+
+  return (
     <Pressable
-      style={styles.voiceButton}
-      onPress={startRecording}
+      style={styles.micButton}
+      onPress={() => void startRecording()}
       disabled={disabled || sendingVoice}
       accessibilityRole="button"
-      accessibilityLabel="Start voice recording"
+      accessibilityLabel="Record a voice note"
     >
       <Ionicons name="mic-outline" size={22} color={SEMANTIC_COLORS.textDim} />
     </Pressable>
   );
-
-  return (
-    <View style={styles.container}>
-      {error && <Text style={styles.errorText}>{error}</Text>}
-      {isRecording ? renderRecording() : recordingUri ? renderPreview() : renderIdle()}
-    </View>
-  );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  recordingContainer: {
+  inline: {
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.spaceSm,
   },
-  previewContainer: {
+  micButton: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stopButton: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  timer: {
+    color: COLORS.error,
+    fontVariant: ["tabular-nums"],
+  },
+  roundButton: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: SEMANTIC_COLORS.ghostBorderLight,
+    borderRadius: RADIUS.full,
+  },
+  sendButton: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  duration: {
+    color: SEMANTIC_COLORS.textDim,
+    fontVariant: ["tabular-nums"],
+    minWidth: 40,
+    textAlign: "center",
+  },
+  errorWrap: {
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.spaceXs,
-  },
-  voiceButton: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "transparent",
-  },
-  voiceButtonRecording: {
-    backgroundColor: COLORS.error,
-    borderRadius: RADIUS.full,
-  },
-  voiceTimer: {
-    fontSize: 12,
-    color: COLORS.error,
-  },
-  voicePlayButton: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: COLORS.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.full,
-  },
-  voicePlayButtonPlaying: {
-    backgroundColor: COLORS.primaryContainer,
-  },
-  voiceDuration: {
-    fontSize: 12,
-    color: SEMANTIC_COLORS.textDim,
-  },
-  voiceSendButton: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: COLORS.primary,
-    borderRadius: RADIUS.full,
-  },
-  voiceDeleteButton: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: COLORS.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.full,
+    flex: 1,
   },
   errorText: {
+    flex: 1,
     color: COLORS.error,
     fontSize: 12,
-    marginBottom: SPACING.spaceXs,
   },
 });
