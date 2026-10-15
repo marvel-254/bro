@@ -41,7 +41,7 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - run: npm install --legacy-peer-deps
+      - run: npm ci --legacy-peer-deps
 
       - run: npm run typecheck
 
@@ -60,6 +60,6 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - run: npm install --legacy-peer-deps
+      - run: npm ci --legacy-peer-deps
 
       - run: npx expo prebuild --no-install --platform android

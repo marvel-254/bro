@@ -57,7 +57,7 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - run: npm install --legacy-peer-deps
+      - run: npm ci --legacy-peer-deps
 
       - uses: actions/setup-java@v4
         with:
