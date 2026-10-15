@@ -188,3 +188,66 @@ export async function getMyGifs(
     .filter((gif): gif is Gif => gif !== undefined);
 }
 
+
+export type SpaceGifsOptions = { limit?: number };
+
+/**
+ * GIFs shared anywhere inside a Space, newest first and deduplicated.
+ *
+ * Scoped by joining messages to conversations through
+ * `conversations.space_id`, so a GIF posted in any conversation in the Space
+ * is discoverable from the Space itself. Rows are scoped to the Space in the
+ * query rather than filtered client-side, because the messages table holds
+ * every message in the database and pulling them all to discard most of them
+ * would be both slow and a needless data exposure.
+ *
+ * Reads more rows than it returns (400) for the same reason as getMyGifs: the
+ * same GIF recurs often enough that dedup has to happen here, keeping the
+ * library lookup a single bounded request.
+ */
+export async function getSpaceGifs(
+  spaceId: string,
+  options: SpaceGifsOptions = {},
+): Promise<Gif[]> {
+  const supabase = getSupabase();
+  if (!supabase || !spaceId) return [];
+
+  const limit = Math.min(Math.max(options.limit ?? 60, 1), 100);
+
+  const { data: sent, error } = await supabase
+    .from("messages")
+    .select("gif_id, created_at, conversation:conversations!inner (space_id)")
+    .eq("type", "gif")
+    .eq("conversations.space_id", spaceId)
+    .not("gif_id", "is", null)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(400);
+
+  if (error) throw new Error(error.message);
+
+  const ids: string[] = [];
+  for (const row of (sent ?? []) as { gif_id: string | null }[]) {
+    if (row.gif_id && !ids.includes(row.gif_id)) ids.push(row.gif_id);
+    if (ids.length >= limit) break;
+  }
+  if (ids.length === 0) return [];
+
+  const { data: rows, error: libError } = await supabase
+    .from("gif_library")
+    .select("id, storage_path, title, tags, width, height, size_bytes")
+    .in("id", ids);
+
+  if (libError) throw new Error(libError.message);
+
+  const baseUrl = publicBase(process.env.EXPO_PUBLIC_SUPABASE_URL ?? "");
+  const byId = new Map<string, Gif>();
+  for (const row of (rows ?? []) as unknown as GifRow[]) {
+    if (!isSafeGifPath(row.storage_path)) continue;
+    byId.set(row.id, toGif(row, baseUrl));
+  }
+
+  return ids
+    .map((id) => byId.get(id))
+    .filter((gif): gif is Gif => gif !== undefined);
+}

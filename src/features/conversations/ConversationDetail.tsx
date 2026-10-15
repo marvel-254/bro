@@ -121,7 +121,7 @@ import {
 import VoiceRecorder from "./VoiceRecorder";
 import VoiceMessage from "./VoiceMessage";
 import GifPicker from "../gifs/GifPicker";
-import type { Gif } from "../../lib/gifs";
+import { getGif, type Gif } from "../../lib/gifs";
 import type {
   MessageReactionRow,
   MessageWithSender,
@@ -138,6 +138,13 @@ import type {
 interface Props {
   conversationId: string;
   title?: string;
+  /**
+   * A GIF picked from a Space gallery, sent automatically on open.
+   *
+   * Carried through the route rather than a module-level singleton so that
+   * opening the chat twice from the same Space does not replay a stale pick.
+   */
+  pendingGifId?: string;
 }
 
 /**
@@ -307,7 +314,11 @@ function CallButtons({ conversationId }: { conversationId: string }) {
   );
 }
 
-export default function ConversationDetail({ conversationId, title }: Props) {
+export default function ConversationDetail({
+  conversationId,
+  title,
+  pendingGifId,
+}: Props) {
   const router = useRouter();
   const { user: currentUser } = useAuth();
   const [messages, setMessages] = useState<MessageWithSender[]>([]);
@@ -861,6 +872,24 @@ export default function ConversationDetail({ conversationId, title }: Props) {
     },
     [conversationId, currentUser, draft, sendingGif],
   );
+
+  // Send a GIF chosen from a Space gallery as soon as the chat opens.
+  // Guarded on a ref so the effect cannot re-fire: sendGif changes identity
+  // whenever the draft changes, and without this the GIF would be resent on
+  // every keystroke in the composer.
+  const pendingGifHandled = useRef<string | null>(null);
+  useEffect(() => {
+    if (!pendingGifId || pendingGifHandled.current === pendingGifId) return;
+    pendingGifHandled.current = pendingGifId;
+    void (async () => {
+      try {
+        const gif = await getGif(pendingGifId);
+        if (gif) await sendGif(gif);
+      } catch {
+        // A missing GIF should not block the conversation from opening.
+      }
+    })();
+  }, [pendingGifId, sendGif]);
 
   const openViewer = useCallback(async (fullPath: string, viewOnce = false) => {
     if (viewOnce) {

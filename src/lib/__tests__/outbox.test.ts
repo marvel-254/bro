@@ -14,9 +14,28 @@ import {
   removeEntry,
 } from "../outbox";
 
-jest.mock("@react-native-async-storage/async-storage", () =>
-  require("@react-native-async-storage/async-storage/jest/async-storage-mock"),
-);
+// Minimal in-memory stand-in. The package ships its own jest mock, but it
+// pulls in globals this environment does not define; the outbox only ever
+// calls getItem/setItem/removeItem, so a few lines are enough and keep the
+// test independent of that file.
+jest.mock("@react-native-async-storage/async-storage", () => {
+  const store = new Map<string, string>();
+  return {
+    __esModule: true,
+    default: {
+      getItem: jest.fn(async (key: string) => store.get(key) ?? null),
+      setItem: jest.fn(async (key: string, value: string) => {
+        store.set(key, value);
+      }),
+      removeItem: jest.fn(async (key: string) => {
+        store.delete(key);
+      }),
+      clear: jest.fn(async () => {
+        store.clear();
+      }),
+    },
+  };
+});
 
 const entry = (over: Partial<OutboxEntry> = {}): OutboxEntry => ({
   clientId: "local-1",

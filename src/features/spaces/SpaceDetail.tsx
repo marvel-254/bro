@@ -13,6 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from "../../theme";
 import { Avatar } from "../../components/ui/Avatar";
+import SpaceGifsModal from "./SpaceGifsModal";
 import { isSupabaseConfigured } from "../../lib/supabase";
 import {
   fetchSpace,
@@ -56,6 +57,7 @@ export default function SpaceDetail({ spaceId }: { spaceId: string }) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [gifsOpen, setGifsOpen] = useState(false);
 
   const load = useCallback(
     async (asRefresh = false) => {
@@ -120,6 +122,42 @@ export default function SpaceDetail({ spaceId }: { spaceId: string }) {
     }
     router.back();
   }, [spaceId, router]);
+
+  /**
+   * Sends a Space GIF into one of the Space's conversations.
+   *
+   * The Space is the scope, but messages still live in a conversation, so a
+   * target has to be chosen. A single-conversation Space skips the question
+   * rather than making the user confirm the only possible answer.
+   */
+  const onPickSpaceGif = useCallback(
+    (gif: { id: string; title: string }) => {
+      setGifsOpen(false);
+      if (conversations.length === 0) {
+        Alert.alert(
+          "No chats yet",
+          "Create a conversation in this Space first, then send the GIF.",
+        );
+        return;
+      }
+      if (conversations.length === 1) {
+        router.push(`/chat/${conversations[0].id}?gif=${gif.id}`);
+        return;
+      }
+      Alert.alert(
+        "Send to which chat?",
+        undefined,
+        [
+          ...conversations.slice(0, 6).map((conversation) => ({
+            text: conversation.name ?? "Chat",
+            onPress: () => router.push(`/chat/${conversation.id}?gif=${gif.id}`),
+          })),
+          { text: "Cancel", style: "cancel" as const },
+        ],
+      );
+    },
+    [conversations, router],
+  );
 
   if (!isSupabaseConfigured) {
     return (
@@ -223,7 +261,22 @@ export default function SpaceDetail({ spaceId }: { spaceId: string }) {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Conversations</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Conversations</Text>
+          <TouchableOpacity
+            onPress={() => setGifsOpen(true)}
+            style={styles.sectionAction}
+            accessibilityRole="button"
+            accessibilityLabel={`${space.name} GIFs`}
+          >
+            <Ionicons
+              name="images-outline"
+              size={16}
+              color={COLORS.primaryContainer}
+            />
+            <Text style={styles.sectionActionText}>GIFs</Text>
+          </TouchableOpacity>
+        </View>
         {conversations.length === 0 ? (
           <Text style={styles.stripEmpty}>No chats in here yet.</Text>
         ) : (
@@ -282,6 +335,14 @@ export default function SpaceDetail({ spaceId }: { spaceId: string }) {
           ))
         )}
       </View>
+
+      <SpaceGifsModal
+        visible={gifsOpen}
+        spaceId={spaceId}
+        spaceName={space.name}
+        onClose={() => setGifsOpen(false)}
+        onPick={onPickSpaceGif}
+      />
     </ScrollView>
   );
 }
@@ -350,6 +411,24 @@ const styles = StyleSheet.create({
     color: COLORS.onSurfaceVariant,
     paddingHorizontal: SPACING.spaceMd,
     marginBottom: SPACING.spaceXs,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  sectionAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: SPACING.spaceMd,
+    paddingVertical: SPACING.spaceXs,
+    marginBottom: SPACING.spaceXs,
+  },
+  sectionActionText: {
+    ...TYPOGRAPHY.labelMD,
+    fontWeight: "600",
+    color: COLORS.primaryContainer,
   },
   stripEmpty: {
     ...TYPOGRAPHY.bodySM,
