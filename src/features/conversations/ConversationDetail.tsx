@@ -37,6 +37,7 @@ import {
   MESSAGES_PAGE_SIZE,
 } from "../../lib/conversations";
 import {
+  dequeue,
   entriesFor,
   flushConversation,
   queueMessage,
@@ -675,6 +676,37 @@ export default function ConversationDetail({ conversationId, title }: Props) {
     void flushOutbox();
   }, [flushOutbox]);
 
+  /**
+   * Re-sends one queued message the user tapped.
+   *
+   * Kept separate from the automatic flush so an explicit tap is not subject
+   * to backoff: the user has just told us to try again now.
+   */
+  const retryMessage = useCallback(
+    async (message: MessageWithSender) => {
+      if (message.status !== "failed") return;
+
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === message.id ? { ...item, status: "sending" as const } : item,
+        ),
+      );
+
+      const sent = await sendContent({
+        content: message.content,
+        replyToMessageId: message.reply_to_message_id,
+        clientId: message.id,
+      });
+
+      if (sent) {
+        // The row is on the server now, so the local copy must not linger in
+        // the outbox to be replayed and duplicated later.
+        await dequeue(message.id);
+      }
+    },
+    [sendContent],
+  );
+
   const onEdit = useCallback(async () => {
     if (!editing) return;
     const content = draft.trim();
@@ -919,6 +951,15 @@ export default function ConversationDetail({ conversationId, title }: Props) {
             styles.bubbleRow,
             isMine ? styles.bubbleRowMine : styles.bubbleRowTheirs,
           ]}
+          // A failed message is a retry target: tapping it tries again
+          // immediately rather than waiting for the automatic flush's backoff.
+          onPress={item.status === "failed" ? () => void retryMessage(item) : undefined}
+          accessibilityRole={item.status === "failed" ? "button" : undefined}
+          accessibilityLabel={
+            item.status === "failed"
+              ? "Message failed to send. Double tap to retry."
+              : undefined
+          }
           onLongPress={() => {
             if (isMine) {
               Alert.alert("Message", undefined, [
@@ -1073,6 +1114,7 @@ export default function ConversationDetail({ conversationId, title }: Props) {
       appearance.bubbleTheme,
       appearance.mineColor,
       appearance.theirsColor,
+      retryMessage,
     ],
   );
 
