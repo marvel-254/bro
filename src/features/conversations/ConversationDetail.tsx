@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -36,6 +36,12 @@ import {
   toggleReaction,
   MESSAGES_PAGE_SIZE,
 } from "../../lib/conversations";
+import {
+  entriesFor,
+  flushConversation,
+  queueMessage,
+  readOutbox,
+} from "../../lib/outbox";
 import { sendTyping, watchTyping, releaseTypingChannel } from "../../lib/presence";
 import { getSupabase, isSupabaseConfigured } from "../../lib/supabase";
 import {
@@ -490,42 +496,184 @@ export default function ConversationDetail({ conversationId, title }: Props) {
     }
   };
 
+  const senderProfile = useMemo(
+    () =>
+      currentUser
+        ? {
+            id: currentUser.id,
+            username: currentUser.username,
+            display_name: currentUser.displayName,
+            avatar_url: currentUser.avatar ?? null,
+            status: currentUser.status ?? "online",
+          }
+        : null,
+    [currentUser],
+  );
+
+  /**
+   * Sends `content`, showing the bubble immediately.
+   *
+   * The bubble is appended with a locally generated id before the request is
+   * made, so the composer clears the moment the user hits send instead of the
+   * text appearing to hang while the network call is in flight. On success
+   * that placeholder is swapped for the authoritative server row (matched by
+   * the same local id); on failure it stays in place marked failed and is
+   * persisted to the outbox so it survives leaving the screen.
+   */
+  const sendContent = useCallback(
+    async (params: {
+      content: string;
+      replyToMessageId: string | null;
+      clientId: string;
+    }) => {
+      const optimisticId = params.clientId;
+      setMessages((current) => {
+        if (current.some((message) => message.id === optimisticId)) return current;
+        return [
+          ...current,
+          {
+            id: optimisticId,
+            conversation_id: conversationId,
+            sender_id: currentUser?.id ?? "",
+            content: params.content,
+            type: "text" as const,
+            gif_id: null,
+            status: "sending" as const,
+            reply_to_message_id: params.replyToMessageId,
+            branch_id: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            sender: senderProfile,
+          },
+        ];
+      });
+
+      const result = await sendMessage(conversationId, params.content, {
+        replyToMessageId: params.replyToMessageId,
+      });
+
+      if (result.ok) {
+        // Replace the placeholder with the real row rather than appending, so
+        // a message never appears twice when the send succeeds.
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === optimisticId
+              ? { ...result.message, sender: senderProfile }
+              : message,
+          ),
+        );
+        return true;
+      }
+
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === optimisticId
+            ? { ...message, status: "failed" as const }
+            : message,
+        ),
+      );
+      setError(result.error);
+      return false;
+    },
+    [conversationId, currentUser, senderProfile],
+  );
+
   const send = useCallback(async () => {
     const content = draft.trim();
     if (!content || sending) return;
 
     setSending(true);
-    const result = await sendMessage(conversationId, content, {
-      replyToMessageId: replyingTo?.id ?? null,
+    setError(null);
+
+    const replyToMessageId = replyingTo?.id ?? null;
+    // One identity for the placeholder, the outbox entry and every retry, so
+    // a message can never land twice.
+    const clientId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+    setDraft("");
+    setReplyingTo(null);
+
+    const sent = await sendContent({ content, replyToMessageId, clientId });
+
+    if (!sent) {
+      // Only persisted once the send has actually failed; queuing up front
+      // would leave entries behind for messages that succeeded immediately.
+      await queueMessage({
+        conversationId,
+        content,
+        replyToMessageId,
+        clientId,
+      });
+      // Restore the text so the user is not left staring at a failed bubble
+      // with no way to tell what was lost.
+      setDraft(content);
+    }
+
+    setSending(false);
+  }, [conversationId, draft, replyingTo, sendContent, sending]);
+
+  /**
+   * Replays everything the outbox holds for this conversation.
+   *
+   * Runs on mount, so anything queued while the app was closed or the user was
+   * in another conversation goes out as soon as they come back.
+   */
+  const flushOutbox = useCallback(async () => {
+    const queued = entriesFor(await readOutbox(), conversationId);
+    if (queued.length === 0) return;
+
+    // Show the queued messages again while they retry, so the user sees what is
+    // in flight rather than an apparently empty gap in the thread.
+    setMessages((current) => {
+      const known = new Set(current.map((message) => message.id));
+      const missing = queued.filter((entry) => !known.has(entry.clientId));
+      if (missing.length === 0) return current;
+      return [
+        ...current,
+        ...missing.map((entry) => ({
+          id: entry.clientId,
+          conversation_id: conversationId,
+          sender_id: currentUser?.id ?? "",
+          content: entry.content,
+          type: "text" as const,
+          gif_id: null,
+          status: "sending" as const,
+          reply_to_message_id: entry.replyToMessageId,
+          branch_id: null,
+          created_at: entry.createdAt,
+          updated_at: entry.createdAt,
+          sender: senderProfile,
+        })),
+      ];
     });
 
-    if (result.ok) {
-      setDraft("");
-      setReplyingTo(null);
-      setMessages((current) => {
-        if (current.some((message) => message.id === result.message.id))
-          return current;
-        return [
-          ...current,
-          {
-            ...result.message,
-            sender: currentUser
-              ? {
-                  id: currentUser.id,
-                  username: currentUser.username,
-                  display_name: currentUser.displayName,
-                  avatar_url: currentUser.avatar ?? null,
-                  status: currentUser.status ?? "online",
-                }
-              : null,
-          },
-        ];
-      });
-    } else {
-      setError(result.error);
-    }
-    setSending(false);
-  }, [conversationId, currentUser, draft, replyingTo, sending]);
+    await flushConversation({
+      conversationId,
+      send: async (entry) => {
+        const ok = await sendContent({
+          content: entry.content,
+          replyToMessageId: entry.replyToMessageId,
+          clientId: entry.clientId,
+        });
+        return { ok, messageId: ok ? entry.clientId : undefined };
+      },
+      onFailure: () => {
+        setMessages((current) =>
+          current.map((message) =>
+            queued.some((entry) => entry.clientId === message.id)
+              ? { ...message, status: "failed" as const }
+              : message,
+          ),
+        );
+      },
+    });
+  }, [conversationId, currentUser, sendContent, senderProfile]);
+
+  // Declared after flushOutbox on purpose: a dependency array is evaluated
+  // during render, so referencing it above its declaration would throw.
+  useEffect(() => {
+    void flushOutbox();
+  }, [flushOutbox]);
 
   const onEdit = useCallback(async () => {
     if (!editing) return;
