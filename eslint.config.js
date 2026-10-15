@@ -93,4 +93,18 @@ module.exports = [
       'no-console': 'off',
     },
   },
+  {
+    // Expo config plugins run in Node under CommonJS during `expo prebuild`.
+    // They legitimately use require/module and must not inherit the app's
+    // browser globals, so they get the Node scope explicitly.
+    files: ['plugins/**/*.{js,cjs,mjs}'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'commonjs',
+      globals: { ...globals.node },
+    },
+    rules: {
+      'no-console': 'off',
+    },
+  },
 ];
