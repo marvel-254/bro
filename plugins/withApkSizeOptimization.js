@@ -1,5 +1,6 @@
 const {
   withGradleProperties,
+  withAppBuildGradle,
   withDangerousMod,
 } = require('@expo/config-plugins');
 const fs = require('fs');
@@ -88,6 +89,42 @@ const PROGUARD_KEEP_RULES = `
 const BEGIN_MARKER = '# --- BRO: keep rules required once R8 minification is on';
 const END_MARKER = '# --- end BRO keep rules ---';
 
+/**
+ * Per-ABI APK output.
+ *
+ * This is the single biggest remaining size win. Measured on a build of this
+ * app, the native libraries alone came to roughly 40 MB:
+ *
+ *   libjingle_peerconnection_so.so   18.1 MB  (react-native-webrtc, for calls)
+ *   libreactnative.so                11.3 MB
+ *   libhermes.so                      3.8 MB
+ *   libappmodules.so                  2.7 MB
+ *   libexpo-modules-core.so           2.2 MB
+ *   libc++_shared.so                  2.2 MB
+ *
+ * Every one of those ships once per ABI. A user on an arm64 phone is paying
+ * for an armeabi-v7a copy they can never execute, and vice versa. Splitting
+ * the output means each download carries only the libraries that device can
+ * actually run.
+ */
+const SPLITS_BLOCK = `    // Added by plugins/withApkSizeOptimization.js -- see that file for why.
+    // Native libs dominate this APK (~40MB of a ~58MB universal build) and each
+    // one is duplicated per ABI, so per-ABI APKs are a large download win.
+    splits {
+        abi {
+            enable true
+            reset()
+            include "armeabi-v7a", "arm64-v8a"
+            // No universal APK: it would re-bundle both ABIs and undo the point.
+            universalApk false
+        }
+    }
+
+`;
+
+/** The android {} block always contains this; used as the insertion anchor. */
+const SPLITS_ANCHOR = '    packagingOptions {';
+
 /** Upsert `key=value` in a PropertiesItem[] list, replacing any prior value. */
 function setProperty(properties, key, value) {
   const existing = properties.find((item) => item.key === key);
@@ -108,6 +145,29 @@ const withApkSizeOptimization = (config) => {
       properties,
       'android.enableShrinkResourcesInReleaseBuilds',
       String(SHRINK_RESOURCES_ENABLED)
+    );
+    return config;
+  });
+
+  // app/build.gradle has no mod for a raw Groovy fragment, so the splits block
+  // is spliced in ahead of `packagingOptions {`, which sits inside the android
+  // block in every generated template. Guarded so re-running prebuild is a
+  // no-op rather than a duplicate block.
+  config = withAppBuildGradle(config, (config) => {
+    if (config.modResults.language !== 'groovy') return config;
+    const contents = config.modResults.contents;
+    if (contents.includes('Added by plugins/withApkSizeOptimization.js')) {
+      return config;
+    }
+    if (!contents.includes(SPLITS_ANCHOR)) {
+      throw new Error(
+        'withApkSizeOptimization: could not find `packagingOptions {` in ' +
+          'android/app/build.gradle, so the ABI splits block could not be inserted.'
+      );
+    }
+    config.modResults.contents = contents.replace(
+      SPLITS_ANCHOR,
+      SPLITS_BLOCK + SPLITS_ANCHOR
     );
     return config;
   });

@@ -116,44 +116,53 @@ jobs:
           EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
         timeout-minutes: 30
 
-      - name: Verify APK exists
+      # Per-ABI splits mean several APKs land here (arm64-v8a, armeabi-v7a)
+      # rather than one universal build, so every step below globs the output
+      # directory instead of assuming a single filename.
+      - name: Verify APKs exist
         run: |
-          if [ ! -f android/app/build/outputs/apk/release/app-release.apk ]; then
-            echo "APK not found at expected path"
-            find android -name "*.apk" -type f 2>/dev/null
+          shopt -s nullglob
+          apks=(android/app/build/outputs/apk/release/*.apk)
+          if [ ${#apks[@]} -eq 0 ]; then
+            echo "No APK found in android/app/build/outputs/apk/release/"
+            find android -name "*.apk" -type f 2>/dev/null || true
             exit 1
           fi
-          echo "APK verified: $(ls -lh android/app/build/outputs/apk/release/app-release.apk)"
+          echo "Found ${#apks[@]} APK(s):"
+          ls -lh android/app/build/outputs/apk/release/*.apk
 
       # Report real size numbers so APK bloat is visible in every run instead
-      # of being discovered only when a user complains. The top native
-      # libraries are the usual culprit; the marker summary proves R8 and the
-      # arm-only ABI split actually took effect.
+      # of being discovered only when a user complains.
       - name: Measure APK size
         run: |
           set -euo pipefail
-          APK="android/app/build/outputs/apk/release/app-release.apk"
-          echo "=== Total APK size ==="
-          ls -lh "$APK"
-          bytes=$(stat -c%s "$APK")
-          echo "size_bytes=$bytes"
-          echo "size_mb=$(awk "BEGIN{printf \"%.2f\", $bytes/1048576}")"
-          echo ""
-          echo "=== Largest native libraries ==="
-          unzip -l "$APK" | grep '\.so$' | awk '{print $1, $4}' | sort -rn | head -15
-          echo ""
-          echo "=== Verification markers ==="
-          unzip -l "$APK" | grep -q 'lib/x86' && echo "FAIL: x86 native libs present (expected arm-only)" && exit 1 || echo "OK: no x86 native libs"
-          if unzip -l "$APK" | grep -q 'classes.dex'; then
-            echo "dex files present (R8 ran if total dex is small)"
-          fi
-          # Upload a machine-readable size record as an artifact.
+          shopt -s nullglob
           mkdir -p apk-metrics
-          {
-            echo "size_bytes=$bytes"
-            echo "size_mb=$(awk "BEGIN{printf \"%.2f\", $bytes/1048576}")"
-          } > apk-metrics/size.txt
-          unzip -l "$APK" | grep '\.so$' | awk '{print $1, $4}' | sort -rn | head -50 > apk-metrics/native-libs.txt
+          : > apk-metrics/size.txt
+          total=0
+          for apk in android/app/build/outputs/apk/release/*.apk; do
+            name=$(basename "$apk")
+            bytes=$(stat -c%s "$apk")
+            total=$((total + bytes))
+            mb=$(awk "BEGIN{printf \"%.2f\", $bytes/1048576}")
+            echo "=== $name : $mb MB ==="
+            ls -lh "$apk"
+            {
+              echo "$name $bytes $mb"
+            } >> apk-metrics/size.txt
+            echo "$name size_bytes=$bytes size_mb=$mb" >> "$GITHUB_STEP_SUMMARY"
+            echo "--- largest native libs ---"
+            unzip -l "$apk" | grep '\.so$' | awk '{print $1, $4}' | sort -rn | head -8
+            echo "--- verification ---"
+            if unzip -l "$apk" | grep -q 'lib/x86'; then
+              echo "FAIL: x86 native libs present in $name (arm-only expected)"
+              exit 1
+            fi
+            echo "OK: no x86 native libs in $name"
+            unzip -l "$apk" | grep '\.so$' | awk '{print $1, $4}' | sort -rn >> apk-metrics/native-libs.txt
+          done
+          echo ""
+          echo "Total across all APKs: $total bytes"
 
       - name: Upload APK size metrics
         uses: actions/upload-artifact@v4
@@ -162,16 +171,19 @@ jobs:
           path: apk-metrics/
           retention-days: 30
 
-      - name: Upload APK
+      - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
           name: BRO-release
-          path: android/app/build/outputs/apk/release/app-release.apk
-          retention-days: 7
+          path: android/app/build/outputs/apk/release/*.apk
 
       - name: Push APK to Vercel Blob
         env:
           BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
         run: |
           set -euo pipefail
-          node scripts/upload-apk-blob.mjs android/app/build/outputs/apk/release/app-release.apk
+          shopt -s nullglob
+          for apk in android/app/build/outputs/apk/release/*.apk; do
+            echo "Uploading $(basename "$apk")"
+            node scripts/upload-apk-blob.mjs "$apk"
+          done
