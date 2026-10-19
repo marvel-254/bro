@@ -457,6 +457,34 @@ describe("resolveActivityDestination", () => {
     ).toBe("/chat/conv-7/branch/branch-9");
   });
 
+  it("does not redirect a reaction into the branch its message started", async () => {
+    // A reaction is about the message itself; only replies belong in the
+    // branch the parent message spun off.
+    const messages = createChain();
+    messages.maybeSingle.mockReturnValue(
+      Promise.resolve({
+        data: { conversation_id: "conv-7", branch_id: null },
+        error: null,
+      }),
+    );
+    const branches = createChain();
+    branches.maybeSingle.mockReturnValue(
+      Promise.resolve({ data: { id: "branch-9" }, error: null }),
+    );
+    const supabase = makeSupabase();
+    (supabase.from as jest.Mock).mockImplementation((table: string) =>
+      table === "messages" ? messages : branches,
+    );
+    mockedGetSupabase.mockReturnValue(supabase);
+
+    expect(
+      await resolveActivityDestination(
+        item({ type: "reaction", targetType: "message", targetId: "msg-6" }),
+      ),
+    ).toBe("/chat/conv-7?message=msg-6");
+    expect(branches.maybeSingle).not.toHaveBeenCalled();
+  });
+
   it("returns null when a message target cannot be resolved", async () => {
     const chain = createChain();
     chain.maybeSingle.mockReturnValue(Promise.resolve({ data: null, error: null }));

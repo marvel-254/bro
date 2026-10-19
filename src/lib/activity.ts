@@ -70,22 +70,29 @@ export async function resolveActivityDestination(
       .maybeSingle<{ conversation_id: string; branch_id: string | null }>();
     if (!data?.conversation_id) return null;
 
-    // A reply notification points at the parent message. If that message
-    // started a branch, the answer the notification is about lives in the
-    // branch, so open the branch rather than the main thread.
+    // The message itself lives in a branch, so open there.
     if (data.branch_id) {
       return `/chat/${data.conversation_id}/branch/${data.branch_id}`;
     }
 
-    const { data: branch } = await supabase
-      .from("conversation_branches")
-      .select("id")
-      .eq("root_message_id", item.targetId)
-      .maybeSingle<{ id: string }>();
+    // A *reply* notification points at the parent message. If that message
+    // started a branch, the answer the notification is about lives in the
+    // branch, so open the branch rather than the main thread. Other activity
+    // (a reaction on the parent) is about the message itself, so it must not
+    // be redirected into the branch.
+    if (item.type === "reply") {
+      const { data: branch } = await supabase
+        .from("conversation_branches")
+        .select("id")
+        .eq("root_message_id", item.targetId)
+        .maybeSingle<{ id: string }>();
 
-    return branch?.id
-      ? `/chat/${data.conversation_id}/branch/${branch.id}`
-      : `/chat/${data.conversation_id}?message=${item.targetId}`;
+      if (branch?.id) {
+        return `/chat/${data.conversation_id}/branch/${branch.id}`;
+      }
+    }
+
+    return `/chat/${data.conversation_id}?message=${item.targetId}`;
   }
 
   return null;
