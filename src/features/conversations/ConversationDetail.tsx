@@ -43,6 +43,8 @@ import {
   flushConversation,
   queueMessage,
   readOutbox,
+  recordFailure,
+  type OutboxEntry,
 } from "../../lib/outbox";
 import {
   outboxPlaceholderText,
@@ -544,18 +546,27 @@ export default function ConversationDetail({
     }
   }, [conversationId, selfId, currentUser]);
 
+  // Keyed on primitives, not the `currentUser` object: the auth provider used
+  // to rebuild that object every render, and a changing identity here would
+  // re-create every callback below and re-run the outbox flush effect.
   const senderProfile = useMemo(
     () =>
-      currentUser
+      selfId
         ? {
-            id: currentUser.id,
-            username: currentUser.username,
-            display_name: currentUser.displayName,
-            avatar_url: currentUser.avatar ?? null,
-            status: currentUser.status ?? "online",
+            id: selfId,
+            username: currentUser?.username ?? "",
+            display_name: currentUser?.displayName ?? "",
+            avatar_url: currentUser?.avatar ?? null,
+            status: currentUser?.status ?? "online",
           }
         : null,
-    [currentUser],
+    [
+      selfId,
+      currentUser?.username,
+      currentUser?.displayName,
+      currentUser?.avatar,
+      currentUser?.status,
+    ],
   );
 
   /**
@@ -582,7 +593,7 @@ export default function ConversationDetail({
           {
             id: optimisticId,
             conversation_id: conversationId,
-            sender_id: currentUser?.id ?? "",
+            sender_id: selfId ?? "",
             content: params.content,
             type: "text" as const,
             gif_id: null,
@@ -623,7 +634,7 @@ export default function ConversationDetail({
       setError(result.error);
       return false;
     },
-    [conversationId, currentUser, senderProfile],
+    [conversationId, selfId, senderProfile],
   );
 
   const send = useCallback(async () => {
@@ -662,97 +673,156 @@ export default function ConversationDetail({
   }, [conversationId, draft, replyingTo, sendContent, sending, stopTyping]);
 
   /**
+   * Replaces a queued message's optimistic bubble with the authoritative row.
+   *
+   * Text sends already reconcile inside `sendContent` (it swaps the
+   * placeholder for `result.message`), so only the media kinds need this: their
+   * send helpers return an id but not the row. Fetching it means the bubble is
+   * right even when the realtime echo never arrives, and reconciling against an
+   * echo that did arrive keeps the message from appearing twice.
+   */
+  const applySentEntry = useCallback(
+    async (entry: OutboxEntry, messageId: string) => {
+      if (messageId === entry.clientId) return;
+
+      const real = await fetchMessageById(messageId);
+      setMessages((current) => {
+        const withoutPlaceholder = current.filter(
+          (message) => message.id !== entry.clientId,
+        );
+        if (!real) return withoutPlaceholder;
+        if (withoutPlaceholder.some((message) => message.id === real.id)) {
+          return withoutPlaceholder;
+        }
+        return [...withoutPlaceholder, real];
+      });
+
+      if (entry.kind === "gif" && entry.media?.gifId) {
+        try {
+          const gif = await getGif(entry.media.gifId);
+          if (gif) setGifs((current) => ({ ...current, [gif.id]: gif }));
+        } catch {
+          // Enrichment will still find it; a missed cache entry is cosmetic.
+        }
+      }
+
+      if (entry.kind === "image" || entry.kind === "voice") {
+        const attached = await fetchMessageAttachments([messageId]);
+        setAttachments((current) => ({ ...current, ...attached }));
+      }
+    },
+    [],
+  );
+
+  /** Replays one outbox entry by its kind, returning the server message id. */
+  const replayEntry = useCallback(
+    async (
+      entry: OutboxEntry,
+    ): Promise<{ ok: boolean; messageId?: string; error?: string }> => {
+      if (entry.kind === "gif" && entry.media?.gifId) {
+        const r = await sendMessage(entry.conversationId, entry.content, {
+          messageType: "gif",
+          gifId: entry.media.gifId,
+        });
+        return r.ok
+          ? { ok: true, messageId: r.message.id }
+          : { ok: false, error: r.error };
+      }
+      if (entry.kind === "image" && entry.media?.localUri) {
+        const r = await sendStoredImage(
+          entry.conversationId,
+          entry.media.localUri,
+          entry.media.thumbUri ?? entry.media.localUri,
+          entry.content,
+          entry.media.viewOnce ?? false,
+        );
+        return r.ok
+          ? { ok: true, messageId: r.messageId }
+          : { ok: false, error: r.error };
+      }
+      if (entry.kind === "voice" && entry.media?.localUri) {
+        const r = await sendStoredVoice(
+          entry.conversationId,
+          entry.media.localUri,
+        );
+        return r.ok
+          ? { ok: true, messageId: r.messageId }
+          : { ok: false, error: r.error };
+      }
+      const ok = await sendContent({
+        content: entry.content,
+        replyToMessageId: entry.replyToMessageId,
+        clientId: entry.clientId,
+      });
+      return { ok, messageId: ok ? entry.clientId : undefined };
+    },
+    [sendContent],
+  );
+
+  /**
    * Replays everything the outbox holds for this conversation.
    *
    * Runs on mount, so anything queued while the app was closed or the user was
    * in another conversation goes out as soon as they come back.
    */
+  const flushingRef = useRef(false);
   const flushOutbox = useCallback(async () => {
-    const queued = entriesFor(await readOutbox(), conversationId);
-    if (queued.length === 0) return;
+    // A second flush reading the same rows before the first dequeues them
+    // would send everything twice.
+    if (flushingRef.current) return;
+    flushingRef.current = true;
 
-    // Show the queued messages again while they retry, so the user sees what is
-    // in flight rather than an apparently empty gap in the thread.
-    setMessages((current) => {
-      const known = new Set(current.map((message) => message.id));
-      const missing = queued.filter((entry) => !known.has(entry.clientId));
-      if (missing.length === 0) return current;
-      return [
-        ...current,
-        ...missing.map((entry) => ({
-          id: entry.clientId,
-          conversation_id: conversationId,
-          sender_id: currentUser?.id ?? "",
-          // Media captions can be empty; fall back to a label so the retry
-          // bubble is not a blank line.
-          content: outboxPlaceholderText(entry),
-          type: "text" as const,
-          gif_id: null,
-          status: "sending" as const,
-          reply_to_message_id: entry.replyToMessageId,
-          branch_id: null,
-          created_at: entry.createdAt,
-          updated_at: entry.createdAt,
-          sender: senderProfile,
-        })),
-      ];
-    });
+    try {
+      const queued = entriesFor(await readOutbox(), conversationId);
+      if (queued.length === 0) return;
 
-    await flushConversation({
-      conversationId,
-      send: async (entry) => {
-        // Media replays from the payload, not from text, so each kind has its
-        // own path. Returns the outbox clientId as the message id on success,
-        // matching the text path's optimistic-row replacement.
-        if (entry.kind === "gif" && entry.media?.gifId) {
-          const r = await sendMessage(entry.conversationId, entry.content, {
-            messageType: "gif",
-            gifId: entry.media.gifId,
-          });
-          return r.ok ? { ok: true, messageId: entry.clientId } : { ok: false };
-        }
-        if (entry.kind === "image" && entry.media?.localUri) {
-          const r = await sendStoredImage(
-            entry.conversationId,
-            entry.media.localUri,
-            entry.media.thumbUri ?? entry.media.localUri,
-            entry.content,
-            entry.media.viewOnce ?? false,
+      // Show the queued messages again while they retry, so the user sees what
+      // is in flight rather than an apparently empty gap in the thread.
+      setMessages((current) => {
+        const known = new Set(current.map((message) => message.id));
+        const missing = queued.filter((entry) => !known.has(entry.clientId));
+        if (missing.length === 0) return current;
+        return [
+          ...current,
+          ...missing.map((entry) => ({
+            id: entry.clientId,
+            conversation_id: conversationId,
+            sender_id: selfId ?? "",
+            // Media captions can be empty; fall back to a label so the retry
+            // bubble is not a blank line.
+            content: outboxPlaceholderText(entry),
+            type: "text" as const,
+            gif_id: null,
+            status: "sending" as const,
+            reply_to_message_id: entry.replyToMessageId,
+            branch_id: null,
+            created_at: entry.createdAt,
+            updated_at: entry.createdAt,
+            sender: senderProfile,
+          })),
+        ];
+      });
+
+      await flushConversation({
+        conversationId,
+        send: replayEntry,
+        onSent: (entry, messageId) => applySentEntry(entry, messageId),
+        onFailure: (entry) => {
+          // Only the entry that failed; the rest were never attempted.
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === entry.clientId
+                ? { ...message, status: "failed" as const }
+                : message,
+            ),
           );
-          return r.ok
-            ? { ok: true, messageId: entry.clientId }
-            : { ok: false };
-        }
-        if (entry.kind === "voice" && entry.media?.localUri) {
-          const r = await sendStoredVoice(
-            entry.conversationId,
-            entry.media.localUri,
-          );
-          return r.ok
-            ? { ok: true, messageId: entry.clientId }
-            : { ok: false };
-        }
-        const ok = await sendContent({
-          content: entry.content,
-          replyToMessageId: entry.replyToMessageId,
-          clientId: entry.clientId,
-        });
-        return { ok, messageId: ok ? entry.clientId : undefined };
-      },
-      onFailure: () => {
-        setMessages((current) =>
-          current.map((message) =>
-            queued.some((entry) => entry.clientId === message.id)
-              ? { ...message, status: "failed" as const }
-              : message,
-          ),
-        );
-      },
-    });
-  }, [conversationId, currentUser, sendContent, senderProfile]);
+        },
+      });
+    } finally {
+      flushingRef.current = false;
+    }
+  }, [applySentEntry, conversationId, replayEntry, selfId, senderProfile]);
 
-  // Declared after flushOutbox on purpose: a dependency array is evaluated
-  // during render, so referencing it above its declaration would throw.
   useEffect(() => {
     void flushOutbox();
   }, [flushOutbox]);
@@ -767,25 +837,49 @@ export default function ConversationDetail({
     async (message: MessageWithSender) => {
       if (message.status !== "failed") return;
 
+      const entry = (await readOutbox()).find(
+        (candidate) => candidate.clientId === message.id,
+      );
+
       setMessages((current) =>
         current.map((item) =>
           item.id === message.id ? { ...item, status: "sending" as const } : item,
         ),
       );
 
-      const sent = await sendContent({
-        content: message.content,
-        replyToMessageId: message.reply_to_message_id,
-        clientId: message.id,
-      });
-
-      if (sent) {
-        // The row is on the server now, so the local copy must not linger in
-        // the outbox to be replayed and duplicated later.
-        await dequeue(message.id);
+      if (!entry) {
+        // A failed bubble with no queued payload predates the outbox, or its
+        // recorded media file was purged. Fall back to sending the visible
+        // text; there is nothing else left to replay.
+        const sent = await sendContent({
+          content: message.content,
+          replyToMessageId: message.reply_to_message_id,
+          clientId: message.id,
+        });
+        if (sent) await dequeue(message.id);
+        return;
       }
+
+      // Retry by kind. Sending `message.content` would turn a failed photo or
+      // voice note into a text message ("Photo") and then discard the payload.
+      const result = await replayEntry(entry);
+      if (!result.ok) {
+        await recordFailure(entry.clientId);
+        setMessages((current) =>
+          current.map((item) =>
+            item.id === message.id
+              ? { ...item, status: "failed" as const }
+              : item,
+          ),
+        );
+        setError(result.error ?? "Could not send that message");
+        return;
+      }
+
+      await dequeue(entry.clientId);
+      await applySentEntry(entry, result.messageId ?? entry.clientId);
     },
-    [sendContent],
+    [applySentEntry, replayEntry, sendContent],
   );
 
   const onEdit = useCallback(async () => {

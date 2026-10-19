@@ -4,6 +4,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   type ReactNode,
 } from "react";
 import type { Session, User as SupabaseUser } from "@supabase/supabase-js";
@@ -299,7 +300,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
   }, []);
 
-  const user = overrideUser ?? (session?.user ? toBroUser(session.user) : null);
+  // `toBroUser` returns a fresh object. Without memoizing, every provider
+  // render hands consumers a new `user` identity, which makes any effect or
+  // callback depending on it (e.g. the chat outbox flush) re-run on every
+  // render. Key on the session user, which only changes on auth transitions.
+  const user = useMemo(
+    () => overrideUser ?? (session?.user ? toBroUser(session.user) : null),
+    [overrideUser, session?.user],
+  );
   const isConfigured = isSupabaseConfigured;
 
   return (
