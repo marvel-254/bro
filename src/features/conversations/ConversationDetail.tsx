@@ -694,6 +694,43 @@ export default function ConversationDetail({
   }, [conversationId, draft, replyingTo, sendContent, sending, stopTyping]);
 
   /**
+   * The optimistic bubble for a queued message. Extracted so a message queued
+   * while the user is watching the thread can appear at once, the same way one
+   * queued on an earlier visit shows during the outbox flush.
+   */
+  const makePlaceholder = useCallback(
+    (entry: OutboxEntry, status: "sending" | "failed"): MessageWithSender => ({
+      id: entry.clientId,
+      conversation_id: conversationId,
+      sender_id: selfId ?? "",
+      // Media captions can be empty; fall back to a label so the bubble is not
+      // a blank line.
+      content: outboxPlaceholderText(entry),
+      type: "text",
+      gif_id: null,
+      status,
+      reply_to_message_id: entry.replyToMessageId,
+      branch_id: null,
+      created_at: entry.createdAt,
+      updated_at: entry.createdAt,
+      sender: senderProfile,
+    }),
+    [conversationId, selfId, senderProfile],
+  );
+
+  /** Surface a freshly queued (failed) send so it can be retried in place. */
+  const insertQueuedPlaceholder = useCallback(
+    (entry: OutboxEntry) => {
+      setMessages((current) =>
+        current.some((message) => message.id === entry.clientId)
+          ? current
+          : [...current, makePlaceholder(entry, "failed")],
+      );
+    },
+    [makePlaceholder],
+  );
+
+  /**
    * Replaces a queued message's optimistic bubble with the authoritative row.
    *
    * Text sends already reconcile inside `sendContent` (it swaps the
@@ -805,22 +842,7 @@ export default function ConversationDetail({
         if (missing.length === 0) return current;
         return [
           ...current,
-          ...missing.map((entry) => ({
-            id: entry.clientId,
-            conversation_id: conversationId,
-            sender_id: selfId ?? "",
-            // Media captions can be empty; fall back to a label so the retry
-            // bubble is not a blank line.
-            content: outboxPlaceholderText(entry),
-            type: "text" as const,
-            gif_id: null,
-            status: "sending" as const,
-            reply_to_message_id: entry.replyToMessageId,
-            branch_id: null,
-            created_at: entry.createdAt,
-            updated_at: entry.createdAt,
-            sender: senderProfile,
-          })),
+          ...missing.map((entry) => makePlaceholder(entry, "sending")),
         ];
       });
 
@@ -842,7 +864,7 @@ export default function ConversationDetail({
     } finally {
       flushingRef.current = false;
     }
-  }, [applySentEntry, conversationId, replayEntry, selfId, senderProfile]);
+  }, [applySentEntry, conversationId, makePlaceholder, replayEntry]);
 
   useEffect(() => {
     void flushOutbox();
@@ -1027,7 +1049,7 @@ export default function ConversationDetail({
       // user-side and have nothing to replay.
       if (result.stage !== "pick" && result.stage !== "compress" && compressed.full) {
         const caption = draft.trim();
-        await queueMessage({
+        const entry = await queueMessage({
           conversationId,
           content: caption,
           kind: "image",
@@ -1037,6 +1059,7 @@ export default function ConversationDetail({
             viewOnce,
           },
         });
+        insertQueuedPlaceholder(entry);
         setDraft("");
         setViewOnce(false);
       }
@@ -1078,7 +1101,14 @@ export default function ConversationDetail({
     // The attachment row exists by now; pull it in for the thumbnail.
     const attached = await fetchMessageAttachments([result.messageId]);
     setAttachments((current) => ({ ...current, ...attached }));
-  }, [conversationId, currentUser, draft, sendingImage, viewOnce]);
+  }, [
+    conversationId,
+    currentUser,
+    draft,
+    insertQueuedPlaceholder,
+    sendingImage,
+    viewOnce,
+  ]);
 
   /**
    * Send a GIF from the self-hosted library. No upload happens: the message
@@ -1100,12 +1130,13 @@ export default function ConversationDetail({
       if (!result.ok) {
         setError(result.error);
         // A gif send is a single insert with no upload, so it replays cleanly.
-        await queueMessage({
+        const entry = await queueMessage({
           conversationId,
           content: caption,
           kind: "gif",
           media: { gifId: gif.id },
         });
+        insertQueuedPlaceholder(entry);
         setDraft("");
         return;
       }
@@ -1146,7 +1177,7 @@ export default function ConversationDetail({
         ];
       });
     },
-    [conversationId, currentUser, draft, sendingGif],
+    [conversationId, currentUser, draft, insertQueuedPlaceholder, sendingGif],
   );
 
   // Send a GIF chosen from a Space gallery as soon as the chat opens.
@@ -1529,6 +1560,7 @@ export default function ConversationDetail({
               ];
             });
           }}
+          onQueued={insertQueuedPlaceholder}
         />
         <TextInput
           style={styles.input}

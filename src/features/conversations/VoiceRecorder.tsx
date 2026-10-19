@@ -5,7 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { COLORS, RADIUS, SEMANTIC_COLORS, SPACING } from "../../theme";
 import { insertAttachment, uploadAudioFile } from "../../lib/media";
 import { sendMessage } from "../../lib/conversations";
-import { queueMessage } from "../../lib/outbox";
+import { queueMessage, type OutboxEntry } from "../../lib/outbox";
 import { getSupabase } from "../../lib/supabase";
 import type { MessageRow } from "../../lib/database.types";
 
@@ -22,6 +22,8 @@ interface Props {
   disabled?: boolean;
   /** Fires once the row is linked, so the chat can render the note immediately. */
   onSent?: (message: MessageRow) => void;
+  /** Fires when a failed note is queued, so the chat can show a retry bubble. */
+  onQueued?: (entry: OutboxEntry) => void;
 }
 
 /**
@@ -41,6 +43,7 @@ export default function VoiceRecorder({
   currentUser,
   disabled = false,
   onSent,
+  onQueued,
 }: Props) {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingUri, setRecordingUri] = useState<string | null>(null);
@@ -205,11 +208,18 @@ export default function VoiceRecorder({
       });
       if (!sent.ok) throw new Error(sent.error);
 
-      const { error: linkError } = await supabase
+      // `.select()` so a zero-row update (an RLS filter matching nothing) is
+      // observable rather than reported as success -- the bug that silently
+      // left every attachment unlinked before the UPDATE policy existed.
+      const { data: linked, error: linkError } = await supabase
         .from("attachments")
         .update({ message_id: sent.message.id })
-        .eq("id", attachmentId);
+        .eq("id", attachmentId)
+        .select("id");
       if (linkError) throw new Error(linkError.message);
+      if (!linked || linked.length === 0) {
+        throw new Error("Could not link that voice note");
+      }
 
       discard();
       onSent?.(sent.message);
@@ -220,12 +230,13 @@ export default function VoiceRecorder({
       // Keep the recording instead of discarding it, so the outbox can replay
       // the send once the connection is back. The local file is a cache file,
       // so a replay after too long simply fails the same way.
-      await queueMessage({
+      const entry = await queueMessage({
         conversationId,
         content: "",
         kind: "voice",
         media: { localUri: recordingUri },
       });
+      onQueued?.(entry);
     } finally {
       setSendingVoice(false);
     }
@@ -236,6 +247,7 @@ export default function VoiceRecorder({
     conversationId,
     discard,
     onSent,
+    onQueued,
   ]);
 
   const formatDuration = (seconds: number) => {
