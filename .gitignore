@@ -3,6 +3,8 @@ node_modules/
 # stray nested copies of the project (not part of the real source)
 bro/
 brarvel/
+# nested repo that was accidentally added as a submodule gitlink
+Herald-OS/
 build/
 dist/
 web-build/
