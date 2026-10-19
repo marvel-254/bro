@@ -384,15 +384,21 @@ describe("resolveActivityDestination", () => {
   });
 
   it("resolves a message target to its conversation with a message hint", async () => {
-    const chain = createChain();
-    chain.maybeSingle.mockReturnValue(
+    const messages = createChain();
+    messages.maybeSingle.mockReturnValue(
       Promise.resolve({
-        data: { conversation_id: "conv-7" },
+        data: { conversation_id: "conv-7", branch_id: null },
         error: null,
       }),
     );
+    const branches = createChain();
+    branches.maybeSingle.mockReturnValue(
+      Promise.resolve({ data: null, error: null }),
+    );
     const supabase = makeSupabase();
-    (supabase.from as jest.Mock).mockReturnValue(chain);
+    (supabase.from as jest.Mock).mockImplementation((table: string) =>
+      table === "messages" ? messages : branches,
+    );
     mockedGetSupabase.mockReturnValue(supabase);
 
     expect(
@@ -400,7 +406,55 @@ describe("resolveActivityDestination", () => {
         item({ type: "reaction", targetType: "message", targetId: "msg-3" }),
       ),
     ).toBe("/chat/conv-7?message=msg-3");
-    expect(chain.eq).toHaveBeenCalledWith("id", "msg-3");
+    expect(messages.eq).toHaveBeenCalledWith("id", "msg-3");
+  });
+
+  it("opens the branch directly when the message already belongs to one", async () => {
+    const messages = createChain();
+    messages.maybeSingle.mockReturnValue(
+      Promise.resolve({
+        data: { conversation_id: "conv-7", branch_id: "branch-2" },
+        error: null,
+      }),
+    );
+    const branches = createChain();
+    const supabase = makeSupabase();
+    (supabase.from as jest.Mock).mockImplementation((table: string) =>
+      table === "messages" ? messages : branches,
+    );
+    mockedGetSupabase.mockReturnValue(supabase);
+
+    expect(
+      await resolveActivityDestination(
+        item({ type: "reply", targetType: "message", targetId: "msg-4" }),
+      ),
+    ).toBe("/chat/conv-7/branch/branch-2");
+    expect(branches.maybeSingle).not.toHaveBeenCalled();
+  });
+
+  it("opens the branch rooted at the message when one exists", async () => {
+    const messages = createChain();
+    messages.maybeSingle.mockReturnValue(
+      Promise.resolve({
+        data: { conversation_id: "conv-7", branch_id: null },
+        error: null,
+      }),
+    );
+    const branches = createChain();
+    branches.maybeSingle.mockReturnValue(
+      Promise.resolve({ data: { id: "branch-9" }, error: null }),
+    );
+    const supabase = makeSupabase();
+    (supabase.from as jest.Mock).mockImplementation((table: string) =>
+      table === "messages" ? messages : branches,
+    );
+    mockedGetSupabase.mockReturnValue(supabase);
+
+    expect(
+      await resolveActivityDestination(
+        item({ type: "reply", targetType: "message", targetId: "msg-5" }),
+      ),
+    ).toBe("/chat/conv-7/branch/branch-9");
   });
 
   it("returns null when a message target cannot be resolved", async () => {

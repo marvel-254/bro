@@ -65,12 +65,27 @@ export async function resolveActivityDestination(
     if (!supabase) return null;
     const { data } = await supabase
       .from("messages")
-      .select("conversation_id")
+      .select("conversation_id, branch_id")
       .eq("id", item.targetId)
-      .maybeSingle<{ conversation_id: string }>();
-    return data?.conversation_id
-      ? `/chat/${data.conversation_id}?message=${item.targetId}`
-      : null;
+      .maybeSingle<{ conversation_id: string; branch_id: string | null }>();
+    if (!data?.conversation_id) return null;
+
+    // A reply notification points at the parent message. If that message
+    // started a branch, the answer the notification is about lives in the
+    // branch, so open the branch rather than the main thread.
+    if (data.branch_id) {
+      return `/chat/${data.conversation_id}/branch/${data.branch_id}`;
+    }
+
+    const { data: branch } = await supabase
+      .from("conversation_branches")
+      .select("id")
+      .eq("root_message_id", item.targetId)
+      .maybeSingle<{ id: string }>();
+
+    return branch?.id
+      ? `/chat/${data.conversation_id}/branch/${branch.id}`
+      : `/chat/${data.conversation_id}?message=${item.targetId}`;
   }
 
   return null;

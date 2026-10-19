@@ -27,6 +27,7 @@ import {
   compareMessagesNewestFirst,
   deleteMessage,
   editMessage,
+  fetchMessageById,
   fetchMessages,
   fetchReadCursors,
   fetchReactions,
@@ -103,6 +104,12 @@ interface Props {
    * opening the chat twice from the same Space does not replay a stale pick.
    */
   pendingGifId?: string;
+  /**
+   * Message to open on. A notification for a reaction or mention carries the
+   * message id; if it is older than the first page, the context page ending at
+   * it is loaded instead so the user lands on the message, not the bottom.
+   */
+  focusMessageId?: string;
 }
 
 /** The quick-reaction set offered from the message action sheet. */
@@ -176,6 +183,7 @@ export default function ConversationDetail({
   conversationId,
   title,
   pendingGifId,
+  focusMessageId,
 }: Props) {
   const router = useRouter();
   const { user: currentUser } = useAuth();
@@ -292,7 +300,32 @@ export default function ConversationDetail({
   const load = useCallback(async () => {
     try {
       setError(null);
-      const rows = await fetchMessages(conversationId);
+      let rows = await fetchMessages(conversationId);
+
+      // A deep link can point at a message older than the first page. Load the
+      // page ending at it so the target is present, rather than opening the
+      // thread at the bottom and hoping the user scrolls up.
+      if (
+        focusMessageId &&
+        !rows.some((message) => message.id === focusMessageId)
+      ) {
+        const focused = await fetchMessageById(focusMessageId);
+        const created = focused ? Date.parse(focused.created_at) : NaN;
+        if (
+          focused &&
+          focused.conversation_id === conversationId &&
+          !focused.branch_id &&
+          !Number.isNaN(created)
+        ) {
+          const around = await fetchMessages(conversationId, MESSAGES_PAGE_SIZE, {
+            // 1ms after the target makes the cursor inclusive of it.
+            createdAt: new Date(created + 1).toISOString(),
+            id: focused.id,
+          });
+          if (around.length > 0) rows = around;
+        }
+      }
+
       setMessages(rows);
       setHasMore(rows.length >= MESSAGES_PAGE_SIZE);
       void markConversationRead(conversationId);
@@ -303,7 +336,7 @@ export default function ConversationDetail({
     } finally {
       setLoading(false);
     }
-  }, [conversationId, enrich]);
+  }, [conversationId, enrich, focusMessageId]);
 
   const loadOlder = useCallback(async () => {
     if (loadingOlder || !hasMore || messages.length === 0) return;
@@ -337,6 +370,27 @@ export default function ConversationDetail({
     setLoading(true);
     void load();
   }, [load]);
+
+  // Scroll the deep-linked message into view once it is on screen. Runs once
+  // per focused id; the list has no fixed row height, so a failure falls back
+  // to an offset-based attempt in onScrollToIndexFailed.
+  const focusHandledRef = useRef(false);
+  useEffect(() => {
+    if (focusHandledRef.current || loading || !focusMessageId) return;
+    const index = messages.findIndex(
+      (message) => message.id === focusMessageId,
+    );
+    if (index < 0) return;
+    focusHandledRef.current = true;
+    const timer = setTimeout(() => {
+      listRef.current?.scrollToIndex({
+        index,
+        animated: true,
+        viewPosition: 0.5,
+      });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [loading, messages, focusMessageId]);
 
   useEffect(() => {
     return subscribeToConversation(conversationId, {
@@ -1201,6 +1255,14 @@ export default function ConversationDetail({
           // onEndReached fires at the bottom (newest) and could never reach it.
           onStartReached={() => void loadOlder()}
           onStartReachedThreshold={0.3}
+          onScrollToIndexFailed={({ averageItemLength, index }) => {
+            // Rows are variable height, so an index scroll can miss. Jump near
+            // the target and let the list settle, rather than crashing.
+            listRef.current?.scrollToOffset({
+              offset: averageItemLength * index,
+              animated: false,
+            });
+          }}
           ListHeaderComponent={
             loadingOlder ? (
               <ActivityIndicator

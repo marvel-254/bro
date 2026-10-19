@@ -17,6 +17,7 @@ import {
   createDirectConversation,
   createGroupConversation,
   fetchProfilesByIds,
+  fetchMessageById,
 } from "../conversations";
 import { getSupabase } from "../supabase";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -989,5 +990,44 @@ describe("createGroupConversation", () => {
       ok: false,
       error: "Could not create the group",
     });
+  });
+});
+
+describe("fetchMessageById", () => {
+  it("returns null without a backend or id", async () => {
+    mockedGetSupabase.mockReturnValue(null);
+    expect(await fetchMessageById("m1")).toBeNull();
+
+    const supabase = makeSupabase();
+    mockedGetSupabase.mockReturnValue(supabase);
+    expect(await fetchMessageById("")).toBeNull();
+    expect(supabase.from).not.toHaveBeenCalled();
+  });
+
+  it("returns the row with its sender", async () => {
+    const chain = createChain();
+    chain.maybeSingle.mockReturnValue(
+      RESOLVED({ id: "m1", conversation_id: "c1", content: "hi" }),
+    );
+    const supabase = makeSupabase();
+    (supabase.from as jest.Mock).mockReturnValue(chain);
+    mockedGetSupabase.mockReturnValue(supabase);
+
+    expect(await fetchMessageById("m1")).toEqual({
+      id: "m1",
+      conversation_id: "c1",
+      content: "hi",
+    });
+    expect(chain.eq).toHaveBeenCalledWith("id", "m1");
+  });
+
+  it("returns null when the row is hidden or gone", async () => {
+    const chain = createChain();
+    chain.maybeSingle.mockReturnValue(RESOLVED(null, { message: "nope" }));
+    const supabase = makeSupabase();
+    (supabase.from as jest.Mock).mockReturnValue(chain);
+    mockedGetSupabase.mockReturnValue(supabase);
+
+    expect(await fetchMessageById("m1")).toBeNull();
   });
 });

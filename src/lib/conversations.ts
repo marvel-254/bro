@@ -49,6 +49,29 @@ export function compareMessagesNewestFirst(
   return b.id < a.id ? -1 : b.id > a.id ? 1 : 0;
 }
 
+/**
+ * One message by id, with its sender, or null when it is gone or not visible
+ * to the caller (RLS decides the latter). Used to open a deep-linked message
+ * that is older than the page the chat loaded on mount.
+ */
+export async function fetchMessageById(
+  messageId: string,
+): Promise<MessageWithSender | null> {
+  const supabase = getSupabase();
+  if (!supabase || !messageId) return null;
+
+  const { data, error } = await supabase
+    .from("messages")
+    .select(
+      "id, conversation_id, sender_id, content, type, gif_id, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone, sender:profiles!messages_sender_id_fkey (id, username, display_name, avatar_url, status, presence, presence_text, presence_emoji)",
+    )
+    .eq("id", messageId)
+    .maybeSingle<MessageWithSender>();
+
+  if (error || !data) return null;
+  return data;
+}
+
 export async function fetchMessages(
   conversationId: string,
   limit: number = MESSAGES_PAGE_SIZE,
