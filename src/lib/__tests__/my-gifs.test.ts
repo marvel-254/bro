@@ -1,4 +1,4 @@
-import { getMyGifs } from "../gifs";
+import { getGifsByIds, getMyGifs } from "../gifs";
 import { getSupabase } from "../supabase";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -129,5 +129,62 @@ describe("getMyGifs", () => {
     mockedGetSupabase.mockReturnValue(null);
 
     await expect(getMyGifs("user-1")).resolves.toEqual([]);
+  });
+});
+
+describe("getGifsByIds", () => {
+  function singleTable(rows: unknown[], opts: { error?: string } = {}) {
+    const library = createChain();
+    library.in = jest.fn(() =>
+      Promise.resolve(
+        opts.error
+          ? { data: null, error: { message: opts.error } }
+          : { data: rows, error: null },
+      ),
+    );
+    const client = {
+      from: jest.fn(() => library),
+    } as unknown as SupabaseClient;
+    return { client, library };
+  }
+
+  it("returns [] without a backend or ids", async () => {
+    mockedGetSupabase.mockReturnValue(null);
+    expect(await getGifsByIds(["g1"])).toEqual({});
+
+    mockedGetSupabase.mockReturnValue(singleTable([]).client);
+    expect(await getGifsByIds([])).toEqual({});
+    expect(await getGifsByIds(["", ""])).toEqual({});
+  });
+
+  it("maps rows by id and dedupes the requested ids", async () => {
+    const { client, library } = singleTable([libRow("g1", "cats/x.gif")]);
+    mockedGetSupabase.mockReturnValue(client);
+
+    const result = await getGifsByIds(["g1", "g1", "g2"]);
+
+    expect(library.in).toHaveBeenCalledWith("id", ["g1", "g2"]);
+    expect(Object.keys(result)).toEqual(["g1"]);
+    expect(result.g1.url).toBe(
+      "https://bro.example/storage/v1/object/public/gifs/cats/x.gif",
+    );
+    expect(result.g1.tags).toEqual(["fun"]);
+  });
+
+  it("drops rows with an unsafe storage path", async () => {
+    const { client } = singleTable([
+      libRow("g1", "cats/x.gif"),
+      libRow("g2", "../etc/passwd"),
+    ]);
+    mockedGetSupabase.mockReturnValue(client);
+
+    expect(Object.keys(await getGifsByIds(["g1", "g2"]))).toEqual(["g1"]);
+  });
+
+  it("returns {} when the query errors", async () => {
+    const { client } = singleTable([], { error: "down" });
+    mockedGetSupabase.mockReturnValue(client);
+
+    expect(await getGifsByIds(["g1"])).toEqual({});
   });
 });

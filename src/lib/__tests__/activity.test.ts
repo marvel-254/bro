@@ -7,6 +7,8 @@ import {
   subscribeToActivity,
   describeActivity,
   relativeTime,
+  resolveActivityDestination,
+  type ActivityItem,
 } from "../activity";
 import { getSupabase } from "../supabase";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -27,6 +29,7 @@ type Chain = {
   lt: jest.Mock;
   order: jest.Mock;
   limit: jest.Mock;
+  maybeSingle: jest.Mock;
 };
 
 function createChain(): Chain {
@@ -337,5 +340,97 @@ describe("subscribeToActivity", () => {
     expect(channel.subscribe).toHaveBeenCalledTimes(1);
     unsub();
     expect(supabase.removeChannel).toHaveBeenCalledWith(channel);
+  });
+});
+
+describe("resolveActivityDestination", () => {
+  function item(over: Partial<ActivityItem> = {}): ActivityItem {
+    return {
+      notificationId: "n1",
+      activityId: "a1",
+      type: "reply",
+      actorId: "u1",
+      actorName: "Sarah",
+      actorAvatarUrl: null,
+      actorPresence: null,
+      targetId: null,
+      targetType: null,
+      deepLink: null,
+      isRead: false,
+      createdAt: "2026-10-03T12:00:00Z",
+      ...over,
+    };
+  }
+
+  it("maps the static space and people links", async () => {
+    expect(
+      await resolveActivityDestination(item({ deepLink: "/spaces" })),
+    ).toBe("/spaces");
+    expect(
+      await resolveActivityDestination(item({ deepLink: "/people" })),
+    ).toBe("/people");
+  });
+
+  it("routes a conversation target straight to the chat", async () => {
+    const supabase = makeSupabase();
+    mockedGetSupabase.mockReturnValue(supabase);
+
+    expect(
+      await resolveActivityDestination(
+        item({ targetType: "conversation", targetId: "conv-1" }),
+      ),
+    ).toBe("/chat/conv-1");
+    expect(supabase.from).not.toHaveBeenCalled();
+  });
+
+  it("resolves a message target to its conversation with a message hint", async () => {
+    const chain = createChain();
+    chain.maybeSingle.mockReturnValue(
+      Promise.resolve({
+        data: { conversation_id: "conv-7" },
+        error: null,
+      }),
+    );
+    const supabase = makeSupabase();
+    (supabase.from as jest.Mock).mockReturnValue(chain);
+    mockedGetSupabase.mockReturnValue(supabase);
+
+    expect(
+      await resolveActivityDestination(
+        item({ type: "reaction", targetType: "message", targetId: "msg-3" }),
+      ),
+    ).toBe("/chat/conv-7?message=msg-3");
+    expect(chain.eq).toHaveBeenCalledWith("id", "msg-3");
+  });
+
+  it("returns null when a message target cannot be resolved", async () => {
+    const chain = createChain();
+    chain.maybeSingle.mockReturnValue(Promise.resolve({ data: null, error: null }));
+    const supabase = makeSupabase();
+    (supabase.from as jest.Mock).mockReturnValue(chain);
+    mockedGetSupabase.mockReturnValue(supabase);
+
+    expect(
+      await resolveActivityDestination(
+        item({ targetType: "message", targetId: "gone" }),
+      ),
+    ).toBeNull();
+  });
+
+  it("returns null for a message target without a backend", async () => {
+    mockedGetSupabase.mockReturnValue(null);
+    expect(
+      await resolveActivityDestination(
+        item({ targetType: "message", targetId: "msg-1" }),
+      ),
+    ).toBeNull();
+  });
+
+  it("returns null for a target it cannot open", async () => {
+    mockedGetSupabase.mockReturnValue(makeSupabase());
+    expect(
+      await resolveActivityDestination(item({ targetType: "space", targetId: "s1" })),
+    ).toBeNull();
+    expect(await resolveActivityDestination(item())).toBeNull();
   });
 });

@@ -15,6 +15,8 @@ import {
   fetchReadCursor,
   fetchReadCursors,
   createDirectConversation,
+  createGroupConversation,
+  fetchProfilesByIds,
 } from "../conversations";
 import { getSupabase } from "../supabase";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -865,6 +867,127 @@ describe("conversations", () => {
         peerId: null,
         peerName: null,
       });
+    });
+  });
+});
+
+describe("fetchProfilesByIds", () => {
+  it("returns {} without a backend or ids", async () => {
+    mockedGetSupabase.mockReturnValue(null);
+    expect(await fetchProfilesByIds(["u1"])).toEqual({});
+
+    const supabase = makeSupabase();
+    mockedGetSupabase.mockReturnValue(supabase);
+    expect(await fetchProfilesByIds([])).toEqual({});
+    expect(await fetchProfilesByIds(["", ""])).toEqual({});
+    expect(supabase.from).not.toHaveBeenCalled();
+  });
+
+  it("keys profiles by id and dedupes the request", async () => {
+    const chain = createChain();
+    chain.in.mockReturnValue(
+      RESOLVED([
+        { id: "u1", username: "sarah", display_name: "Sarah", avatar_url: null, status: "online" },
+      ]),
+    );
+    const supabase = makeSupabase();
+    (supabase.from as jest.Mock).mockReturnValue(chain);
+    mockedGetSupabase.mockReturnValue(supabase);
+
+    const result = await fetchProfilesByIds(["u1", "u1", "u2"]);
+
+    expect(chain.in).toHaveBeenCalledWith("id", ["u1", "u2"]);
+    expect(result).toEqual({
+      u1: {
+        id: "u1",
+        username: "sarah",
+        display_name: "Sarah",
+        avatar_url: null,
+        status: "online",
+      },
+    });
+  });
+
+  it("returns {} when the query errors", async () => {
+    const chain = createChain();
+    chain.in.mockReturnValue(RESOLVED(null, { message: "down" }));
+    const supabase = makeSupabase();
+    (supabase.from as jest.Mock).mockReturnValue(chain);
+    mockedGetSupabase.mockReturnValue(supabase);
+
+    expect(await fetchProfilesByIds(["u1"])).toEqual({});
+  });
+});
+
+describe("createGroupConversation", () => {
+  it("rejects a blank or overlong name before touching the backend", async () => {
+    mockedGetSupabase.mockReturnValue(null);
+    expect(await createGroupConversation("   ", ["u1"])).toEqual({
+      ok: false,
+      error: "Give the group a name (1-80 characters)",
+    });
+    expect(await createGroupConversation("x".repeat(81), ["u1"])).toEqual({
+      ok: false,
+      error: "Give the group a name (1-80 characters)",
+    });
+  });
+
+  it("requires at least one other member", async () => {
+    mockedGetSupabase.mockReturnValue(null);
+    expect(await createGroupConversation("Squad", [])).toEqual({
+      ok: false,
+      error: "Pick at least one other bro",
+    });
+    expect(await createGroupConversation("Squad", ["", ""])).toEqual({
+      ok: false,
+      error: "Pick at least one other bro",
+    });
+  });
+
+  it('returns "Backend not configured" without a client', async () => {
+    mockedGetSupabase.mockReturnValue(null);
+    expect(await createGroupConversation("Squad", ["u1"])).toEqual({
+      ok: false,
+      error: "Backend not configured",
+    });
+  });
+
+  it("calls the RPC with a trimmed title and deduped members", async () => {
+    const supabase = makeSupabase();
+    (supabase.rpc as jest.Mock).mockResolvedValue({ data: "conv-9", error: null });
+    mockedGetSupabase.mockReturnValue(supabase);
+
+    const result = await createGroupConversation("  Squad  ", ["u1", "u1", "u2"]);
+
+    expect(result).toEqual({ ok: true, conversationId: "conv-9" });
+    expect(supabase.rpc).toHaveBeenCalledWith("create_group_conversation", {
+      group_title: "Squad",
+      member_ids: ["u1", "u2"],
+    });
+  });
+
+  it("surfaces an RPC failure", async () => {
+    const supabase = makeSupabase();
+    (supabase.rpc as jest.Mock).mockResolvedValue({
+      data: null,
+      error: { message: "not allowed" },
+    });
+    mockedGetSupabase.mockReturnValue(supabase);
+
+    expect(await createGroupConversation("Squad", ["u1"])).toEqual({
+      ok: false,
+      error: "not allowed",
+    });
+  });
+
+  it("rejects an empty RPC result", async () => {
+    const supabase = makeSupabase();
+    (supabase.rpc as jest.Mock).mockResolvedValue({ data: null, error: null });
+    mockedGetSupabase.mockReturnValue(supabase);
+
+    expect(await createGroupConversation("Squad", ["u1"])).toEqual({
+      ok: false,
+      error: "Could not create the group",
     });
   });
 });

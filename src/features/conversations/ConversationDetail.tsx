@@ -42,8 +42,11 @@ import {
   flushConversation,
   queueMessage,
   readOutbox,
-  type OutboxEntry,
 } from "../../lib/outbox";
+import {
+  outboxPlaceholderText,
+  peerReadCursor,
+} from "../../lib/message-display";
 import {
   sendTyping,
   watchTyping,
@@ -54,8 +57,6 @@ import { getSupabase, isSupabaseConfigured } from "../../lib/supabase";
 import {
   DEFAULT_APPEARANCE,
   loadAppearance,
-  readableTextOn,
-  type BubbleTheme,
 } from "../../lib/chat-appearance";
 import { useAuth } from "../../lib/auth-context";
 import { useCall } from "../../lib/call-context";
@@ -65,69 +66,8 @@ import {
   fetchReplyCounts,
   branchFromReplies,
   subscribeToBranches,
-  BRANCH_SUGGEST_AT,
 } from "../../lib/branches";
 
-/**
- * Message status indicator — shows sent/delivered/read/failed state.
- * Uses the message's status field: "pending" | "sending" | "sent" | "delivered" | "seen" | "failed"
- */
-function MessageStatus({ status }: { status: string }) {
-  if (status === "pending" || status === "sending") {
-    return (
-      <Ionicons
-        name="time-outline"
-        size={14}
-        color={SEMANTIC_COLORS.textDim}
-      />
-    );
-  }
-  if (status === "sent") {
-    return (
-      <Ionicons
-        name="checkmark-outline"
-        size={14}
-        color={SEMANTIC_COLORS.textDim}
-      />
-    );
-  }
-  if (status === "delivered") {
-    return (
-      <View style={styles.doubleCheck}>
-        <Ionicons name="checkmark-outline" size={14} color={SEMANTIC_COLORS.textDim} />
-        <Ionicons
-          name="checkmark-outline"
-          size={14}
-          color={SEMANTIC_COLORS.textDim}
-          style={styles.checkOverlap}
-        />
-      </View>
-    );
-  }
-  if (status === "seen") {
-    return (
-      <View style={styles.doubleCheck}>
-        <Ionicons name="checkmark-sharp" size={14} color={COLORS.surfaceTint} />
-        <Ionicons
-          name="checkmark-sharp"
-          size={14}
-          color={COLORS.surfaceTint}
-          style={styles.checkOverlap}
-        />
-      </View>
-    );
-  }
-  if (status === "failed") {
-    return (
-      <Ionicons
-        name="alert-circle-outline"
-        size={14}
-        color={COLORS.error}
-      />
-    );
-  }
-  return null;
-}
 import {
   fetchMessageAttachments,
   sendImageMessage,
@@ -136,20 +76,8 @@ import {
   signedChatUrl,
   type AttachmentRef,
 } from "../../lib/media";
-
-/**
- * Label for a queued media message's retry bubble. Captions are optional, so
- * an image or gif can have no text, and a voice note never does.
- */
-function outboxPlaceholderText(entry: OutboxEntry): string {
-  if (entry.content.trim()) return entry.content;
-  if (entry.kind === "image") return "Photo";
-  if (entry.kind === "voice") return "Voice message";
-  if (entry.kind === "gif") return "GIF";
-  return entry.content;
-}
 import VoiceRecorder from "./VoiceRecorder";
-import VoiceMessage from "./VoiceMessage";
+import MessageBubbleRow from "./MessageBubbleRow";
 import GifPicker from "../gifs/GifPicker";
 import { getGif, getGifsByIds, type Gif } from "../../lib/gifs";
 import type {
@@ -180,138 +108,8 @@ interface Props {
 /** The quick-reaction set offered from the message action sheet. */
 const REACTION_EMOJIS = ["👍", "❤️", "😂", "🔥", "😮", "😢", "🎉", "🙏"];
 
-/**
- * Corner overrides for a bubble theme. "default" is the asymmetric BRO tail
- * (sharp corner on the sender's side); the others are purely local cosmetics.
- *
- * The rounded corners are a FIXED radius rather than RADIUS.full: with
- * "full", a long multi-line message clamps to half the bubble height and the
- * curve eats into the text column, so the shape visually breaks as the
- * message grows. A fixed radius keeps the text inside the shape at any
- * length, and the bubble's overflow:"hidden" clips the image corners to match.
- */
-function bubbleShape(theme: BubbleTheme, isMine: boolean) {
-  const round = 20;
-  const tail = 5;
-  switch (theme) {
-    case "rounded":
-      return {
-        borderTopLeftRadius: round,
-        borderTopRightRadius: round,
-        borderBottomLeftRadius: round,
-        borderBottomRightRadius: round,
-      } as const;
-    case "teardrop":
-      return isMine
-        ? {
-            borderTopLeftRadius: round,
-            borderTopRightRadius: round,
-            borderBottomLeftRadius: round,
-            borderBottomRightRadius: tail,
-          } as const
-        : {
-            borderTopLeftRadius: round,
-            borderTopRightRadius: round,
-            borderBottomLeftRadius: tail,
-            borderBottomRightRadius: round,
-          } as const;
-    default:
-      return null;
-  }
-}
-
-/**
- * Inline photo for an image message. Resolves the fast thumbnail first; the
- * full image loads on demand in the viewer. A message whose attachment row is
- * missing (deleted, or the link step failed) renders a plain placeholder
- * instead of a broken box.
- */
-function ChatImage({
-  attachment,
-  onOpen,
-}: {
-  attachment: AttachmentRef | undefined;
-  onOpen: (fullPath: string, viewOnce?: boolean) => void;
-}) {
-  const [url, setUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    let live = true;
-    if (!attachment) {
-      setUrl(null);
-      return;
-    }
-    void signedChatUrl(attachment.thumbPath ?? attachment.storagePath).then(
-      (resolved) => {
-        if (live) setUrl(resolved);
-      },
-    );
-    return () => {
-      live = false;
-    };
-  }, [attachment]);
-
-  if (!attachment) {
-    return (
-      <View style={styles.photoPlaceholder}>
-        <Text style={styles.photoPlaceholderText}>Photo unavailable</Text>
-      </View>
-    );
-  }
-
-  if (!url) {
-    return (
-      <View style={styles.photoPlaceholder}>
-        <ActivityIndicator size="small" color={SEMANTIC_COLORS.textDim} />
-      </View>
-    );
-  }
-
-  const isViewOnce = attachment.viewOnce === true;
-
-  return (
-    <Pressable
-      onPress={() => onOpen(attachment.storagePath, isViewOnce)}
-      accessibilityRole="button"
-      accessibilityLabel={isViewOnce ? "Open view-once photo" : "Open photo"}
-    >
-      <Image source={{ uri: url }} style={styles.photo} resizeMode="cover" />
-      {isViewOnce && (
-        <View style={styles.viewOnceBadge}>
-          <Ionicons name="eye-off-outline" size={12} color={COLORS.onPrimary} />
-          <Text style={styles.viewOnceBadgeText}>View once</Text>
-        </View>
-      )}
-    </Pressable>
-  );
-}
-
-/**
- * Inline GIF for a gif message. The catalogue row carries the dimensions, so
- * the bubble keeps the animation's aspect ratio instead of squashing it.
- * A missing row (deleted or the library lookup failed) shows a placeholder
- * rather than a collapsed, invisible bubble.
- */
-function GifBubble({ gif }: { gif: Gif | undefined }) {
-  if (!gif) {
-    return (
-      <View style={styles.gifPlaceholder}>
-        <ActivityIndicator size="small" color={SEMANTIC_COLORS.textDim} />
-      </View>
-    );
-  }
-
-  const ratio = gif.width > 0 && gif.height > 0 ? gif.width / gif.height : 1;
-
-  return (
-    <Image
-      source={{ uri: gif.url }}
-      style={[styles.gif, { aspectRatio: ratio }]}
-      resizeMode="cover"
-      accessibilityLabel={gif.title || "GIF"}
-    />
-  );
-}
+/** Shared empty list so a message without reactions keeps a stable prop. */
+const EMPTY_REACTIONS: MessageReactionRow[] = [];
 
 /**
  * Voice/video buttons. Rendered only for direct conversations with exactly one
@@ -457,21 +255,11 @@ export default function ConversationDetail({
     return map;
   }, [messages]);
 
-  /**
-   * The most recent point any OTHER member has read up to, in ms. A message of
-   * ours created at or before this is "seen". Derived from read cursors rather
-   * than a per-message status column, so no recipient write (and no RLS change)
-   * is needed to turn the second tick on.
-   */
-  const peerReadAt = useMemo(() => {
-    let latest: number | null = null;
-    for (const [userId, at] of Object.entries(readCursors)) {
-      if (userId === selfId || !at) continue;
-      const parsed = Date.parse(at);
-      if (latest === null || parsed > latest) latest = parsed;
-    }
-    return latest;
-  }, [readCursors, selfId]);
+  /** Latest read cursor among other members; see peerReadCursor. */
+  const peerReadAt = useMemo(
+    () => peerReadCursor(readCursors, selfId),
+    [readCursors, selfId],
+  );
 
   /**
    * Page enrichment: reactions, reply counts, branch links, attachments.
@@ -1281,198 +1069,41 @@ export default function ConversationDetail({
         Date.parse(item.created_at) - Date.parse(previous.created_at) >
           5 * 60 * 1000;
       const isMine = item.sender_id === selfId;
-      const messageReactions = reactions[item.id] ?? [];
-      const isDeleted = item.deleted_for_everyone;
-
-      // A chosen bubble colour overrides the theme default, and every text
-      // inside the bubble switches to the contrast-safe pairing for it.
-      const bubbleColor = isMine
-        ? appearance.mineColor
-        : appearance.theirsColor;
-      const bubbleTextStyle = bubbleColor
-        ? { color: readableTextOn(bubbleColor) }
-        : null;
+      const existingBranchId = branchByRoot[item.id];
 
       return (
-        <Pressable
-          style={[
-            styles.bubbleRow,
-            isMine ? styles.bubbleRowMine : styles.bubbleRowTheirs,
-          ]}
-          // A failed message is a retry target: tapping it tries again
-          // immediately rather than waiting for the automatic flush's backoff.
-          onPress={item.status === "failed" ? () => void retryMessage(item) : undefined}
-          accessibilityRole={item.status === "failed" ? "button" : undefined}
-          accessibilityLabel={
-            item.status === "failed"
-              ? "Message failed to send. Double tap to retry."
+        <MessageBubbleRow
+          item={item}
+          selfId={selfId}
+          startsGroup={startsGroup}
+          isMine={isMine}
+          reactions={reactions[item.id] ?? EMPTY_REACTIONS}
+          quotedMessage={
+            item.reply_to_message_id
+              ? messagesById[item.reply_to_message_id]
               : undefined
           }
-          onLongPress={() => setActionTarget(item)}
-          delayLongPress={350}
-        >
-          <View
-            style={[
-              styles.bubble,
-              isMine ? styles.bubbleMine : styles.bubbleTheirs,
-              !startsGroup && styles.bubbleTight,
-              bubbleShape(appearance.bubbleTheme, isMine),
-              bubbleColor ? { backgroundColor: bubbleColor } : null,
-            ]}
-          >
-            {startsGroup && !isMine && item.sender ? (
-              <Text
-                style={[styles.senderName, bubbleTextStyle]}
-              >
-                {item.sender.display_name}
-              </Text>
-            ) : null}
-
-            {item.reply_to_message_id
-              ? (() => {
-                  const quoted = messagesById[item.reply_to_message_id];
-                  const quotedName = quoted
-                    ? quoted.sender_id === selfId
-                      ? "You"
-                      : quoted.sender?.display_name ?? "Message"
-                    : "Message";
-                  const quotedBody = !quoted
-                    ? "Original message"
-                    : quoted.deleted_for_everyone
-                      ? "Message deleted"
-                      : quoted.content ||
-                        (quoted.type === "image"
-                          ? "Photo"
-                          : quoted.type === "voice"
-                            ? "Voice message"
-                            : quoted.type === "gif"
-                              ? "GIF"
-                              : "");
-                  return (
-                    <View style={styles.quote}>
-                      <Text style={styles.quoteName} numberOfLines={1}>
-                        {quotedName}
-                      </Text>
-                      <Text style={styles.quoteBody} numberOfLines={2}>
-                        {quotedBody}
-                      </Text>
-                    </View>
-                  );
-                })()
-              : null}
-
-            {item.type === "image" && !isDeleted ? (
-              <ChatImage
-                attachment={attachments[item.id]}
-                onOpen={(fullPath) => void openViewer(fullPath)}
-              />
-            ) : null}
-
-            {item.type === "voice" && !isDeleted ? (
-              <VoiceMessage attachment={attachments[item.id]} />
-            ) : null}
-
-            {item.type === "gif" && !isDeleted ? (
-              <GifBubble gif={item.gif_id ? gifs[item.gif_id] : undefined} />
-            ) : null}
-
-            {isDeleted ? (
-              <Text style={[styles.messageText, styles.deletedText]}>
-                Message deleted
-              </Text>
-            ) : item.content ? (
-              <Text style={[styles.messageText, bubbleTextStyle]}>
-                {item.content}
-              </Text>
-            ) : null}
-
-            {item.edited_at ? (
-              <Text style={[styles.editedHint, bubbleTextStyle]}>
-                edited
-              </Text>
-            ) : null}
-
-            <View style={styles.metaRow}>
-              <Text style={[styles.timestamp, bubbleTextStyle]}>
-                {new Date(item.created_at).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </Text>
-              {isMine ? (
-                <MessageStatus
-                  status={
-                    item.status === "sent" &&
-                    peerReadAt !== null &&
-                    Date.parse(item.created_at) <= peerReadAt
-                      ? "seen"
-                      : item.status
-                  }
-                />
-              ) : null}
-            </View>
-
-            {messageReactions.length > 0 ? (
-              <View style={styles.reactionRow}>
-                {messageReactions.map((reaction) => (
-                  <Pressable
-                    key={reaction.id}
-                    style={styles.reactionChip}
-                    onPress={() => onReact(item.id, reaction.emoji)}
-                  >
-                    <Text style={styles.reactionText}>{reaction.emoji}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            ) : null}
-
-            {/* Branch pill: appears once a thread is busy enough to deserve its own
-                room, or immediately when a branch already exists for this
-                message. Tapping opens the branch rather than making a second one. */}
-            {(() => {
-              const existingBranchId = branchByRoot[item.id];
-              const count = replyCounts[item.id] ?? 0;
-              if (!existingBranchId && count < BRANCH_SUGGEST_AT) return null;
-              const busy = branching === item.id;
-
-              return (
-                <Pressable
-                  style={styles.branchPill}
-                  onPress={() => void openBranch(item)}
-                  disabled={busy}
-                  accessibilityRole="button"
-                  accessibilityLabel={
-                    existingBranchId
-                      ? `Open branch, ${count} ${count === 1 ? "reply" : "replies"}`
-                      : `Move ${count} replies into a branch`
-                  }
-                >
-                  <Ionicons
-                    name="return-down-forward"
-                    size={12}
-                    color={COLORS.primaryContainer}
-                  />
-                  <Text style={styles.branchPillText}>
-                    {busy
-                      ? "opening..."
-                      : `${count} ${count === 1 ? "reply" : "replies"}${
-                          existingBranchId
-                            ? " — open branch"
-                            : " — make a branch"
-                        }`}
-                  </Text>
-                </Pressable>
-              );
-            })()}
-          </View>
-        </Pressable>
+          attachment={attachments[item.id]}
+          gif={item.gif_id ? gifs[item.gif_id] : undefined}
+          branchId={existingBranchId}
+          replyCount={replyCounts[item.id] ?? 0}
+          branching={branching === item.id}
+          bubbleTheme={appearance.bubbleTheme}
+          mineColor={appearance.mineColor}
+          theirsColor={appearance.theirsColor}
+          peerReadAt={peerReadAt}
+          onRetry={retryMessage}
+          onLongPress={setActionTarget}
+          onReact={onReact}
+          onOpenBranch={openBranch}
+          onOpenViewer={openViewer}
+        />
       );
     },
     [
       messages,
       selfId,
       reactions,
-      onReact,
       replyCounts,
       branchByRoot,
       branching,
@@ -1486,6 +1117,7 @@ export default function ConversationDetail({
       appearance.mineColor,
       appearance.theirsColor,
       retryMessage,
+      onReact,
     ],
   );
 
@@ -1546,6 +1178,13 @@ export default function ConversationDetail({
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
+          // Tuned for a long thread on a mid-range Android device: keep the
+          // first screenful mounted, grow the window in small batches, and cap
+          // how much stays resident above/below the viewport.
+          initialNumToRender={15}
+          maxToRenderPerBatch={10}
+          windowSize={11}
+          updateCellsBatchingPeriod={50}
           // Scroll to the bottom only when a NEW message lands at the end.
           // Prepending an older page keeps the same last id, so the view is
           // never yanked away from where the user is reading. The previous
@@ -1927,119 +1566,8 @@ const styles = StyleSheet.create({
     color: COLORS.error,
     textAlign: "center",
   },
-  bubbleRow: {
-    flexDirection: "row",
-    marginBottom: SPACING.spaceXs,
-  },
-  bubbleRowMine: {
-    justifyContent: "flex-end",
-  },
-  bubbleRowTheirs: {
-    justifyContent: "flex-start",
-  },
-  bubble: {
-    maxWidth: "80%",
-    borderRadius: RADIUS.DEFAULT,
-    paddingHorizontal: SPACING.spaceMd,
-    paddingVertical: SPACING.spaceSm,
-    borderWidth: StyleSheet.hairlineWidth,
-    // Clips images and text to whatever corner shape the theme draws, so a
-    // teardrop stays a teardrop even with a long message or a photo.
-    overflow: "hidden",
-    flexShrink: 1,
-  },
-  bubbleTight: {
-    marginBottom: 2,
-  },
-  bubbleMine: {
-    backgroundColor: COLORS.secondaryContainer,
-    borderColor: "transparent",
-    borderBottomRightRadius: RADIUS.sm,
-    borderTopLeftRadius: RADIUS.DEFAULT,
-    borderTopRightRadius: RADIUS.DEFAULT,
-    borderBottomLeftRadius: RADIUS.DEFAULT,
-  },
-  bubbleTheirs: {
-    backgroundColor: SEMANTIC_COLORS.surfaceLevel2,
-    borderColor: SEMANTIC_COLORS.ghostBorderLight,
-    borderBottomLeftRadius: RADIUS.sm,
-    borderTopLeftRadius: RADIUS.DEFAULT,
-    borderTopRightRadius: RADIUS.DEFAULT,
-    borderBottomRightRadius: RADIUS.DEFAULT,
-  },
-  senderName: {
-    ...TYPOGRAPHY.labelSM,
-    color: COLORS.secondary,
-    marginBottom: 2,
-  },
-  quote: {
-    borderLeftWidth: 3,
-    borderLeftColor: COLORS.surfaceTint,
-    paddingLeft: SPACING.spaceSm,
-    marginBottom: SPACING.spaceXs,
-  },
-  quoteName: {
-    ...TYPOGRAPHY.labelSM,
-    color: COLORS.surfaceTint,
-    fontWeight: "700",
-  },
-  quoteBody: {
-    ...TYPOGRAPHY.labelSM,
-    color: SEMANTIC_COLORS.textDim,
-  },
-  messageText: {
-    ...TYPOGRAPHY.bodyMD,
-    color: SEMANTIC_COLORS.textPrimary,
-  },
-  deletedText: {
-    color: SEMANTIC_COLORS.textDim,
-    fontStyle: "italic",
-  },
-  editedHint: {
-    ...TYPOGRAPHY.labelSM,
-    color: SEMANTIC_COLORS.textDim,
-    alignSelf: "flex-end",
-  },
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: SPACING.spaceXs,
-    marginTop: 2,
-  },
-  timestamp: {
-    ...TYPOGRAPHY.labelSM,
-    color: SEMANTIC_COLORS.textDim,
-  },
-  readReceipt: {
-    ...TYPOGRAPHY.labelSM,
-    color: COLORS.surfaceTint,
-  },
-  doubleCheck: {
-    flexDirection: "row",
-  },
   // Overlap the second tick with the first so the pair reads as one glyph
   // instead of two chevrons with a gap.
-  checkOverlap: {
-    marginLeft: -6,
-  },
-  reactionRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: SPACING.spaceXs,
-    marginTop: SPACING.spaceXs,
-  },
-  reactionChip: {
-    paddingHorizontal: SPACING.spaceSm,
-    paddingVertical: 2,
-    borderRadius: RADIUS.full,
-    backgroundColor: SEMANTIC_COLORS.surfaceLevel1,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: SEMANTIC_COLORS.ghostBorderLight,
-  },
-  reactionText: {
-    fontSize: 14,
-  },
   sheetBackdrop: {
     flex: 1,
     justifyContent: "flex-end",
@@ -2083,52 +1611,6 @@ const styles = StyleSheet.create({
   sheetActionDanger: {
     color: COLORS.error,
   },
-  photo: {
-    width: 220,
-    height: 180,
-    borderRadius: RADIUS.sm,
-  },
-  photoPlaceholder: {
-    width: 220,
-    height: 120,
-    borderRadius: RADIUS.sm,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: SEMANTIC_COLORS.surfaceLevel2,
-  },
-  photoPlaceholderText: {
-    ...TYPOGRAPHY.labelSM,
-    color: SEMANTIC_COLORS.textDim,
-  },
-  gif: {
-    width: 220,
-    borderRadius: RADIUS.sm,
-    backgroundColor: SEMANTIC_COLORS.surfaceLevel2,
-  },
-  gifPlaceholder: {
-    width: 220,
-    height: 120,
-    borderRadius: RADIUS.sm,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: SEMANTIC_COLORS.surfaceLevel2,
-  },
-  viewOnceBadge: {
-    position: "absolute",
-    top: SPACING.spaceXs,
-    right: SPACING.spaceXs,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-    paddingHorizontal: SPACING.spaceXs,
-    paddingVertical: 2,
-    backgroundColor: "rgba(0,0,0,0.7)",
-    borderRadius: RADIUS.sm,
-  },
-  viewOnceBadgeText: {
-    fontSize: 10,
-    color: COLORS.onPrimary,
-  },
   gifButton: {
     width: 40,
     height: 40,
@@ -2164,23 +1646,6 @@ const styles = StyleSheet.create({
   viewerImage: {
     width: "92%",
     height: "72%",
-  },
-  branchPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: SPACING.spaceXs,
-    paddingVertical: 4,
-    paddingHorizontal: SPACING.spaceXs,
-    borderRadius: RADIUS.sm,
-    borderWidth: 1,
-    borderColor: COLORS.primaryContainer,
-    alignSelf: "flex-start",
-  },
-  branchPillText: {
-    ...TYPOGRAPHY.labelSM,
-    fontWeight: "700",
-    color: COLORS.primaryContainer,
   },
   centered: {
     flex: 1,
@@ -2260,9 +1725,5 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     opacity: 0.4,
-  },
-  sendButtonText: {
-    ...TYPOGRAPHY.labelLG,
-    color: COLORS.onPrimary,
   },
 });
