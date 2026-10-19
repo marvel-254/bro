@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { COLORS, RADIUS, SEMANTIC_COLORS, SPACING } from "../../theme";
 import { insertAttachment, uploadAudioFile } from "../../lib/media";
 import { sendMessage } from "../../lib/conversations";
+import { queueMessage } from "../../lib/outbox";
 import { getSupabase } from "../../lib/supabase";
 import type { MessageRow } from "../../lib/database.types";
 
@@ -216,6 +217,15 @@ export default function VoiceRecorder({
       setError(
         err instanceof Error ? err.message : "Could not send that voice note",
       );
+      // Keep the recording instead of discarding it, so the outbox can replay
+      // the send once the connection is back. The local file is a cache file,
+      // so a replay after too long simply fails the same way.
+      await queueMessage({
+        conversationId,
+        content: "",
+        kind: "voice",
+        media: { localUri: recordingUri },
+      });
     } finally {
       setSendingVoice(false);
     }

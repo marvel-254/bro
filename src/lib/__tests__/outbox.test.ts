@@ -7,6 +7,7 @@ import {
   findEntry,
   flushConversation,
   OutboxEntry,
+  OutboxKind,
   parseOutbox,
   pruneExpired,
   queueMessage,
@@ -44,6 +45,7 @@ const entry = (over: Partial<OutboxEntry> = {}): OutboxEntry => ({
   replyToMessageId: null,
   createdAt: "2026-01-01T00:00:00.000Z",
   attempts: 0,
+  kind: "text",
   ...over,
 });
 
@@ -94,6 +96,37 @@ describe("parseOutbox", () => {
       entry({ clientId: "b", attempts: "many" as unknown as number }),
     ]);
     expect(parseOutbox(raw).map((item) => item.attempts)).toEqual([0, 0]);
+  });
+
+  it("defaults a missing kind to text and drops an unknown kind", () => {
+    const raw = JSON.stringify([
+      {
+        clientId: "a",
+        conversationId: "c",
+        content: "x",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+      entry({ clientId: "b", kind: "video" as unknown as OutboxKind }),
+    ]);
+    expect(parseOutbox(raw).map((item) => item.kind)).toEqual(["text", "text"]);
+  });
+
+  it("keeps a gif media descriptor and drops non-string fields", () => {
+    const raw = JSON.stringify([
+      entry({
+        clientId: "a",
+        kind: "gif",
+        media: { gifId: "gif-1", localUri: 7 as unknown as string },
+      }),
+    ]);
+    expect(parseOutbox(raw)[0].media).toEqual({ gifId: "gif-1" });
+  });
+
+  it("treats an empty media object as absent", () => {
+    const raw = JSON.stringify([
+      entry({ clientId: "a", media: {} }),
+    ]);
+    expect(parseOutbox(raw)[0].media).toBeUndefined();
   });
 });
 
@@ -182,6 +215,27 @@ describe("persistence", () => {
     expect(queued.clientId).toBe("stable-id");
     expect((await readOutbox())[0].clientId).toBe("stable-id");
   });
+
+  it("round-trips a media entry's kind and payload", async () => {
+    await queueMessage({
+      conversationId: "conv-1",
+      content: "caption",
+      kind: "image",
+      media: { localUri: "file:///a.jpg", thumbUri: "file:///a-thumb.jpg" },
+    });
+    const stored = (await readOutbox())[0];
+    expect(stored.kind).toBe("image");
+    expect(stored.media).toEqual({
+      localUri: "file:///a.jpg",
+      thumbUri: "file:///a-thumb.jpg",
+    });
+  });
+
+  it("defaults the kind to text for a plain message", async () => {
+    await queueMessage({ conversationId: "conv-1", content: "hi" });
+    expect((await readOutbox())[0].kind).toBe("text");
+    expect((await readOutbox())[0].media).toBeUndefined();
+  });
 });
 
 describe("flushConversation", () => {
@@ -209,6 +263,26 @@ describe("flushConversation", () => {
     expect(sent).toEqual(["first", "second"]);
     expect(result).toEqual({ sent: 2, failed: 0, remaining: 0 });
     expect(await readOutbox()).toHaveLength(0);
+  });
+
+  it("passes each entry's kind and media to send", async () => {
+    await queueMessage({
+      conversationId: "conv-1",
+      content: "",
+      kind: "voice",
+      media: { localUri: "file:///note.m4a" },
+      clientId: "c1",
+    });
+    const seen: OutboxEntry[] = [];
+    await flushConversation({
+      conversationId: "conv-1",
+      send: async (item) => {
+        seen.push(item);
+        return { ok: true, messageId: "srv-1" };
+      },
+    });
+    expect(seen[0].kind).toBe("voice");
+    expect(seen[0].media?.localUri).toBe("file:///note.m4a");
   });
 
   it("reports the server id back for each sent message", async () => {

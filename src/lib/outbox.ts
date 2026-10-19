@@ -16,6 +16,23 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
  * `clientId` is generated locally and is the identity of a queued message for
  * its whole life, so a retry can never duplicate a row that already landed.
  */
+export type OutboxKind = "text" | "image" | "voice" | "gif";
+
+/**
+ * How to replay a media send. Local URIs can vanish (cache eviction, app
+ * restart), in which case replay fails and the entry ages out — that is
+ * preferable to silently sending nothing.
+ */
+export interface OutboxMedia {
+  /** Local file to re-upload (image full / voice recording). */
+  localUri?: string;
+  /** Local thumbnail file (image only). */
+  thumbUri?: string;
+  /** Library gif id (gif only — nothing to upload). */
+  gifId?: string;
+  viewOnce?: boolean;
+}
+
 export interface OutboxEntry {
   /** Locally generated identity. Stable across retries; never sent as an id. */
   clientId: string;
@@ -25,9 +42,37 @@ export interface OutboxEntry {
   createdAt: string;
   /** How many send attempts have failed so far. Drives the backoff. */
   attempts: number;
+  /** Message family. Absent on old entries, which are all plain text. */
+  kind: OutboxKind;
+  /** Present for media kinds. */
+  media?: OutboxMedia;
 }
 
 const STORAGE_KEY = "bro:outbox:v1";
+
+function isOutboxKind(value: unknown): value is OutboxKind {
+  return (
+    value === "text" ||
+    value === "image" ||
+    value === "voice" ||
+    value === "gif"
+  );
+}
+
+/**
+ * Reads a media descriptor, keeping only string ids/uris. Anything else is
+ * treated as absent so a corrupt field cannot break replay for the entry.
+ */
+function parseMedia(value: unknown): OutboxMedia | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const raw = value as Record<string, unknown>;
+  const media: OutboxMedia = {};
+  if (typeof raw.localUri === "string") media.localUri = raw.localUri;
+  if (typeof raw.thumbUri === "string") media.thumbUri = raw.thumbUri;
+  if (typeof raw.gifId === "string") media.gifId = raw.gifId;
+  if (typeof raw.viewOnce === "boolean") media.viewOnce = raw.viewOnce;
+  return Object.keys(media).length > 0 ? media : undefined;
+}
 
 /** Entry older than this is presumed abandoned rather than in flight. */
 const MAX_ENTRY_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -71,6 +116,8 @@ export function parseOutbox(raw: string | null): OutboxEntry[] {
       typeof rawReply === "string" && rawReply.length > 0 ? rawReply : null;
 
     const attempts = candidate.attempts;
+    const kind = isOutboxKind(candidate.kind) ? candidate.kind : "text";
+    const media = parseMedia(candidate.media);
 
     entries.push({
       clientId,
@@ -79,6 +126,8 @@ export function parseOutbox(raw: string | null): OutboxEntry[] {
       replyToMessageId,
       createdAt,
       attempts: typeof attempts === "number" && attempts >= 0 ? attempts : 0,
+      kind,
+      ...(media ? { media } : {}),
     });
   }
   return entries;
@@ -166,6 +215,8 @@ export async function queueMessage(params: {
   content: string;
   replyToMessageId?: string | null;
   clientId?: string;
+  kind?: OutboxKind;
+  media?: OutboxMedia;
 }): Promise<OutboxEntry> {
   const entry: OutboxEntry = {
     clientId: params.clientId ?? randomClientId(),
@@ -174,6 +225,8 @@ export async function queueMessage(params: {
     replyToMessageId: params.replyToMessageId ?? null,
     createdAt: new Date().toISOString(),
     attempts: 0,
+    kind: params.kind ?? "text",
+    ...(params.media ? { media: params.media } : {}),
   };
   const entries = await readOutbox();
   await writeOutbox(appendEntry(entries, entry));

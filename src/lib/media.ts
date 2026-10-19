@@ -75,6 +75,10 @@ export type SendImageResult =
       stage: "pick" | "compress" | "upload" | "send" | "link";
     };
 
+export type SendVoiceResult =
+  | { ok: true; messageId: string; attachmentId: string }
+  | { ok: false; error: string };
+
 /** Long-edge resize that preserves the aspect ratio. */
 export function fitWithin(
   width: number,
@@ -400,14 +404,12 @@ export async function sendImageMessage(
   conversationId: string,
   caption: string,
   viewOnce = false,
+  onCompressed?: (compressed: CompressedPair) => void,
 ): Promise<SendImageResult> {
-  const supabase = getSupabase();
-  if (!supabase) {
+  if (!getSupabase()) {
     return { ok: false, error: "Backend not configured", stage: "pick" };
   }
-
-  const selfId = await currentUserId();
-  if (!selfId) {
+  if (!(await currentUserId())) {
     return { ok: false, error: "Not signed in", stage: "pick" };
   }
 
@@ -436,13 +438,49 @@ export async function sendImageMessage(
     };
   }
 
+  // Hand the compressed pair back before the network work starts, so a caller
+  // can hold the local files and retry a failed upload from the outbox.
+  onCompressed?.(compressed);
+
+  return sendStoredImage(
+    conversationId,
+    compressed.full.uri,
+    compressed.thumb.uri,
+    caption,
+    viewOnce,
+  );
+}
+
+/**
+ * Uploads and sends an already-compressed image pair.
+ *
+ * Separate from `sendImageMessage` so a failed send can be replayed from the
+ * outbox without re-opening the picker. `fullUri`/`thumbUri` are local files.
+ */
+export async function sendStoredImage(
+  conversationId: string,
+  fullUri: string,
+  thumbUri: string,
+  caption: string,
+  viewOnce = false,
+): Promise<SendImageResult> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return { ok: false, error: "Backend not configured", stage: "upload" };
+  }
+
+  const selfId = await currentUserId();
+  if (!selfId) {
+    return { ok: false, error: "Not signed in", stage: "upload" };
+  }
+
   let fullPath: string;
   let thumbPath: string;
   let byteCount: number;
   try {
     const [full, thumb] = await Promise.all([
-      uploadChatFile(conversationId, selfId, compressed.full.uri, ""),
-      uploadChatFile(conversationId, selfId, compressed.thumb.uri, "-thumb"),
+      uploadChatFile(conversationId, selfId, fullUri, ""),
+      uploadChatFile(conversationId, selfId, thumbUri, "-thumb"),
     ]);
     fullPath = full.path;
     thumbPath = thumb.path;
@@ -499,4 +537,57 @@ export async function sendImageMessage(
   }
 
   return { ok: true, messageId: sent.message.id, attachmentId };
+}
+
+/**
+ * Uploads and sends a voice note from a local file.
+ *
+ * `VoiceRecorder` owns recording and playback; this is the send half, factored
+ * out so a queued voice note can be replayed after a failed send.
+ */
+export async function sendStoredVoice(
+  conversationId: string,
+  localUri: string,
+): Promise<SendVoiceResult> {
+  const supabase = getSupabase();
+  if (!supabase) return { ok: false, error: "Backend not configured" };
+
+  const selfId = await currentUserId();
+  if (!selfId) return { ok: false, error: "Not signed in" };
+
+  try {
+    const { path, bytes } = await uploadAudioFile(
+      conversationId,
+      selfId,
+      localUri,
+      "-voice",
+    );
+
+    const attachmentId = await insertAttachment({
+      storagePath: path,
+      thumbPath: null,
+      mime: "audio/m4a",
+      bytes,
+      kind: "voice",
+      messageId: null,
+    });
+
+    const sent = await sendMessage(conversationId, "", {
+      messageType: "voice",
+    });
+    if (!sent.ok) throw new Error(sent.error);
+
+    const { error: linkError } = await supabase
+      .from("attachments")
+      .update({ message_id: sent.message.id })
+      .eq("id", attachmentId);
+    if (linkError) throw new Error(linkError.message);
+
+    return { ok: true, messageId: sent.message.id, attachmentId };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Could not send that voice note",
+    };
+  }
 }

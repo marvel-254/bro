@@ -42,6 +42,7 @@ import {
   flushConversation,
   queueMessage,
   readOutbox,
+  type OutboxEntry,
 } from "../../lib/outbox";
 import {
   sendTyping,
@@ -130,9 +131,23 @@ function MessageStatus({ status }: { status: string }) {
 import {
   fetchMessageAttachments,
   sendImageMessage,
+  sendStoredImage,
+  sendStoredVoice,
   signedChatUrl,
   type AttachmentRef,
 } from "../../lib/media";
+
+/**
+ * Label for a queued media message's retry bubble. Captions are optional, so
+ * an image or gif can have no text, and a voice note never does.
+ */
+function outboxPlaceholderText(entry: OutboxEntry): string {
+  if (entry.content.trim()) return entry.content;
+  if (entry.kind === "image") return "Photo";
+  if (entry.kind === "voice") return "Voice message";
+  if (entry.kind === "gif") return "GIF";
+  return entry.content;
+}
 import VoiceRecorder from "./VoiceRecorder";
 import VoiceMessage from "./VoiceMessage";
 import GifPicker from "../gifs/GifPicker";
@@ -826,7 +841,9 @@ export default function ConversationDetail({
           id: entry.clientId,
           conversation_id: conversationId,
           sender_id: currentUser?.id ?? "",
-          content: entry.content,
+          // Media captions can be empty; fall back to a label so the retry
+          // bubble is not a blank line.
+          content: outboxPlaceholderText(entry),
           type: "text" as const,
           gif_id: null,
           status: "sending" as const,
@@ -842,6 +859,37 @@ export default function ConversationDetail({
     await flushConversation({
       conversationId,
       send: async (entry) => {
+        // Media replays from the payload, not from text, so each kind has its
+        // own path. Returns the outbox clientId as the message id on success,
+        // matching the text path's optimistic-row replacement.
+        if (entry.kind === "gif" && entry.media?.gifId) {
+          const r = await sendMessage(entry.conversationId, entry.content, {
+            messageType: "gif",
+            gifId: entry.media.gifId,
+          });
+          return r.ok ? { ok: true, messageId: entry.clientId } : { ok: false };
+        }
+        if (entry.kind === "image" && entry.media?.localUri) {
+          const r = await sendStoredImage(
+            entry.conversationId,
+            entry.media.localUri,
+            entry.media.thumbUri ?? entry.media.localUri,
+            entry.content,
+            entry.media.viewOnce ?? false,
+          );
+          return r.ok
+            ? { ok: true, messageId: entry.clientId }
+            : { ok: false };
+        }
+        if (entry.kind === "voice" && entry.media?.localUri) {
+          const r = await sendStoredVoice(
+            entry.conversationId,
+            entry.media.localUri,
+          );
+          return r.ok
+            ? { ok: true, messageId: entry.clientId }
+            : { ok: false };
+        }
         const ok = await sendContent({
           content: entry.content,
           replyToMessageId: entry.replyToMessageId,
@@ -1005,12 +1053,35 @@ export default function ConversationDetail({
     if (sendingImage) return;
     setSendingImage(true);
 
-    const result = await sendImageMessage(conversationId, draft, viewOnce);
+    // Captured synchronously during the send so a failed upload can be queued
+    // with the same local files, instead of losing the photo to the error path.
+    const compressed: { full: string; thumb: string } | null = { full: "", thumb: "" };
+    const result = await sendImageMessage(conversationId, draft, viewOnce, (pair) => {
+      compressed.full = pair.full.uri;
+      compressed.thumb = pair.thumb.uri;
+    });
     setSendingImage(false);
 
     if (!result.ok) {
       if (result.error !== "cancelled") {
         setError(result.error);
+      }
+      // Only queue once the image was compressible; pick/compress failures are
+      // user-side and have nothing to replay.
+      if (result.stage !== "pick" && result.stage !== "compress" && compressed.full) {
+        const caption = draft.trim();
+        await queueMessage({
+          conversationId,
+          content: caption,
+          kind: "image",
+          media: {
+            localUri: compressed.full,
+            thumbUri: compressed.thumb,
+            viewOnce,
+          },
+        });
+        setDraft("");
+        setViewOnce(false);
       }
       return;
     }
@@ -1071,6 +1142,14 @@ export default function ConversationDetail({
 
       if (!result.ok) {
         setError(result.error);
+        // A gif send is a single insert with no upload, so it replays cleanly.
+        await queueMessage({
+          conversationId,
+          content: caption,
+          kind: "gif",
+          media: { gifId: gif.id },
+        });
+        setDraft("");
         return;
       }
 
