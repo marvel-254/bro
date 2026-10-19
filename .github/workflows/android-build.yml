@@ -202,6 +202,17 @@ jobs:
           set -euo pipefail
           shopt -s nullglob
           for apk in android/app/build/outputs/apk/release/*.apk; do
-            echo "Uploading $(basename "$apk")"
+            name=$(basename "$apk")
+            echo "Uploading $name"
             node scripts/upload-apk-blob.mjs "$apk"
+
+            # The site's primary button uses this stable alias. ABI splits mean
+            # no app-release.apk is produced any more, so without re-uploading
+            # it here the URL kept serving a stale pre-split universal build.
+            # arm64 covers modern devices; the download page also links the
+            # armeabi-v7a APK for older 32-bit hardware.
+            if [ "$name" = "app-arm64-v8a-release.apk" ]; then
+              echo "Publishing $name as the stable apk/app-release.apk"
+              node scripts/upload-apk-blob.mjs "$apk" "apk/app-release.apk"
+            fi
           done

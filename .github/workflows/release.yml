@@ -51,6 +51,22 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      # See android-build.yml: install the pinned NDK up front so Gradle does
+      # not fail mid-build on a transient SDK download.
+      - name: Install Android NDK
+        run: |
+          set -euo pipefail
+          NDK_VERSION=$(grep -oP 'ndkVersion\s*=\s*"\K[^"]+' node_modules/react-native/gradle/libs.versions.toml | head -n1)
+          if [ -z "$NDK_VERSION" ]; then
+            echo "Could not read ndkVersion from React Native's version catalog"
+            exit 1
+          fi
+          echo "Installing NDK $NDK_VERSION"
+          SDKMANAGER="${ANDROID_SDK_ROOT:-$ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          yes | "$SDKMANAGER" --install "ndk;$NDK_VERSION" > /dev/null || true
+          "$SDKMANAGER" --list_installed | grep -q "ndk;$NDK_VERSION"
+
       # Generate the native Android project from app.json / package.json.
       # The `android/` directory does not exist before this step, so it must
       # run before any Gradle invocation.
@@ -84,3 +100,26 @@ jobs:
           name: BRO-test-debug
           path: android/app/build/outputs/apk/release/*.apk
           retention-days: 30
+
+      # Keep the website's stable download URL pointing at this tagged build,
+      # not the last main-branch build. Same stable alias as android-build.yml.
+      - name: Push APK to Vercel Blob
+        env:
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          apks=(android/app/build/outputs/apk/release/*.apk)
+          if [ ${#apks[@]} -eq 0 ]; then
+            echo "No APKs found to upload"
+            exit 1
+          fi
+          for apk in "${apks[@]}"; do
+            name=$(basename "$apk")
+            echo "Uploading $name"
+            node scripts/upload-apk-blob.mjs "$apk"
+            if [ "$name" = "app-arm64-v8a-release.apk" ]; then
+              echo "Publishing $name as the stable apk/app-release.apk"
+              node scripts/upload-apk-blob.mjs "$apk" "apk/app-release.apk"
+            fi
+          done
