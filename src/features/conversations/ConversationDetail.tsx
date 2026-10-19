@@ -157,6 +157,9 @@ interface Props {
   pendingGifId?: string;
 }
 
+/** The quick-reaction set offered from the message action sheet. */
+const REACTION_EMOJIS = ["👍", "❤️", "😂", "🔥", "😮", "😢", "🎉", "🙏"];
+
 /**
  * Corner overrides for a bubble theme. "default" is the asymmetric BRO tail
  * (sharp corner on the sender's side); the others are purely local cosmetics.
@@ -388,6 +391,10 @@ export default function ConversationDetail({
   // used today.
   const [, setReadCursors] = useState<Record<string, string | null>>({});
   const [typists, setTypists] = useState<Map<string, string>>(new Map());
+  /** The message whose long-press action sheet is open. */
+  const [actionTarget, setActionTarget] = useState<MessageWithSender | null>(
+    null,
+  );
   const [replyingTo, setReplyingTo] = useState<MessageWithSender | null>(null);
   const [editing, setEditing] = useState<MessageWithSender | null>(null);
   const [hasMore, setHasMore] = useState(true);
@@ -407,11 +414,23 @@ export default function ConversationDetail({
   const listRef = useRef<FlatList<MessageWithSender>>(null);
   const lastIdRef = useRef<string | null>(null);
   const messagesRef = useRef<MessageWithSender[]>([]);
+  const reactionsRef = useRef<Record<string, MessageReactionRow[]>>({});
   const insets = useSafeAreaInsets();
   const selfId = currentUser?.id;
 
   useEffect(() => {
     messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    reactionsRef.current = reactions;
+  }, [reactions]);
+
+  /** Message lookup for reply quotes, so a reply shows what it answers. */
+  const messagesById = useMemo(() => {
+    const map: Record<string, MessageWithSender> = {};
+    for (const message of messages) map[message.id] = message;
+    return map;
   }, [messages]);
 
   /**
@@ -848,15 +867,71 @@ export default function ConversationDetail({
         text: "Delete",
         style: "destructive",
         onPress: () => {
-          void deleteMessage(message.id);
+          // Hide it immediately; restore the row if the server rejects it.
+          const previous = messagesRef.current;
+          setMessages((current) =>
+            current.map((item) =>
+              item.id === message.id
+                ? { ...item, deleted_for_everyone: true, content: "" }
+                : item,
+            ),
+          );
+          void deleteMessage(message.id).then((result) => {
+            if (!result.ok) {
+              setMessages(previous);
+              setError(result.error);
+            }
+          });
         },
       },
     ]);
   }, []);
 
-  const onReact = useCallback((messageId: string, emoji: string) => {
-    void toggleReaction(messageId, emoji);
-  }, []);
+  /**
+   * Toggle a reaction, showing it locally before the round-trip. The list is
+   * keyed by message, so only that bubble re-renders; a failed write refetches
+   * the authoritative set for the one message rather than the whole page.
+   */
+  const onReact = useCallback(
+    (messageId: string, emoji: string) => {
+      if (!selfId) return;
+      const mine = (reactionsRef.current[messageId] ?? []).find(
+        (reaction) => reaction.user_id === selfId && reaction.emoji === emoji,
+      );
+
+      setReactions((current) => {
+        const list = current[messageId] ?? [];
+        if (mine) {
+          return {
+            ...current,
+            [messageId]: list.filter(
+              (reaction) =>
+                !(reaction.user_id === selfId && reaction.emoji === emoji),
+            ),
+          };
+        }
+        const optimistic: MessageReactionRow = {
+          id: `temp-${messageId}-${emoji}-${selfId}`,
+          message_id: messageId,
+          user_id: selfId,
+          emoji,
+          created_at: new Date().toISOString(),
+        };
+        return { ...current, [messageId]: [...list, optimistic] };
+      });
+
+      void toggleReaction(messageId, emoji)
+        .then(() => fetchReactions([messageId]))
+        .then((fresh) => setReactions((current) => ({ ...current, ...fresh })))
+        .catch(() => {
+          setError("Could not update that reaction.");
+          void fetchReactions([messageId]).then((fresh) =>
+            setReactions((current) => ({ ...current, ...fresh })),
+          );
+        });
+    },
+    [selfId],
+  );
 
   const startReply = (message: MessageWithSender) => {
     setEditing(null);
@@ -1102,25 +1177,7 @@ export default function ConversationDetail({
               ? "Message failed to send. Double tap to retry."
               : undefined
           }
-          onLongPress={() => {
-            if (isMine) {
-              Alert.alert("Message", undefined, [
-                { text: "Reply", onPress: () => startReply(item) },
-                { text: "Edit", onPress: () => startEdit(item) },
-                {
-                  text: "Delete",
-                  style: "destructive",
-                  onPress: () => onDelete(item),
-                },
-                { text: "Cancel", style: "cancel" },
-              ]);
-            } else {
-              Alert.alert("Message", undefined, [
-                { text: "Reply", onPress: () => startReply(item) },
-                { text: "Cancel", style: "cancel" },
-              ]);
-            }
-          }}
+          onLongPress={() => setActionTarget(item)}
           delayLongPress={350}
         >
           <View
@@ -1140,11 +1197,38 @@ export default function ConversationDetail({
               </Text>
             ) : null}
 
-            {item.reply_to_message_id ? (
-              <Text style={[styles.replyHint, bubbleTextStyle]}>
-                ↳ replying to a message
-              </Text>
-            ) : null}
+            {item.reply_to_message_id
+              ? (() => {
+                  const quoted = messagesById[item.reply_to_message_id];
+                  const quotedName = quoted
+                    ? quoted.sender_id === selfId
+                      ? "You"
+                      : quoted.sender?.display_name ?? "Message"
+                    : "Message";
+                  const quotedBody = !quoted
+                    ? "Original message"
+                    : quoted.deleted_for_everyone
+                      ? "Message deleted"
+                      : quoted.content ||
+                        (quoted.type === "image"
+                          ? "Photo"
+                          : quoted.type === "voice"
+                            ? "Voice message"
+                            : quoted.type === "gif"
+                              ? "GIF"
+                              : "");
+                  return (
+                    <View style={styles.quote}>
+                      <Text style={styles.quoteName} numberOfLines={1}>
+                        {quotedName}
+                      </Text>
+                      <Text style={styles.quoteBody} numberOfLines={2}>
+                        {quotedBody}
+                      </Text>
+                    </View>
+                  );
+                })()
+              : null}
 
             {item.type === "image" && !isDeleted ? (
               <ChatImage
@@ -1249,7 +1333,6 @@ export default function ConversationDetail({
       messages,
       selfId,
       reactions,
-      onDelete,
       onReact,
       replyCounts,
       branchByRoot,
@@ -1257,6 +1340,7 @@ export default function ConversationDetail({
       openBranch,
       attachments,
       gifs,
+      messagesById,
       openViewer,
       appearance.bubbleTheme,
       appearance.mineColor,
@@ -1499,6 +1583,94 @@ export default function ConversationDetail({
       </View>
 
       <Modal
+        visible={actionTarget !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setActionTarget(null)}
+      >
+        <Pressable
+          style={styles.sheetBackdrop}
+          onPress={() => setActionTarget(null)}
+          accessibilityRole="button"
+          accessibilityLabel="Close message actions"
+        >
+          <View
+            style={styles.sheet}
+            onStartShouldSetResponder={() => true}
+          >
+            <View style={styles.reactionPicker}>
+              {REACTION_EMOJIS.map((emoji) => (
+                <Pressable
+                  key={emoji}
+                  style={styles.reactionPick}
+                  onPress={() => {
+                    const target = actionTarget;
+                    setActionTarget(null);
+                    if (target) onReact(target.id, emoji);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`React ${emoji}`}
+                >
+                  <Text style={styles.reactionPickEmoji}>{emoji}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <Pressable
+              style={styles.sheetAction}
+              onPress={() => {
+                const target = actionTarget;
+                setActionTarget(null);
+                if (target) startReply(target);
+              }}
+              accessibilityRole="button"
+            >
+              <Ionicons
+                name="arrow-undo-outline"
+                size={20}
+                color={SEMANTIC_COLORS.textPrimary}
+              />
+              <Text style={styles.sheetActionText}>Reply</Text>
+            </Pressable>
+            {actionTarget?.sender_id === selfId ? (
+              <Pressable
+                style={styles.sheetAction}
+                onPress={() => {
+                  const target = actionTarget;
+                  setActionTarget(null);
+                  if (target) startEdit(target);
+                }}
+                accessibilityRole="button"
+              >
+                <Ionicons
+                  name="create-outline"
+                  size={20}
+                  color={SEMANTIC_COLORS.textPrimary}
+                />
+                <Text style={styles.sheetActionText}>Edit</Text>
+              </Pressable>
+            ) : null}
+            {actionTarget?.sender_id === selfId &&
+            !actionTarget?.deleted_for_everyone ? (
+              <Pressable
+                style={styles.sheetAction}
+                onPress={() => {
+                  const target = actionTarget;
+                  setActionTarget(null);
+                  if (target) onDelete(target);
+                }}
+                accessibilityRole="button"
+              >
+                <Ionicons name="trash-outline" size={20} color={COLORS.error} />
+                <Text style={[styles.sheetActionText, styles.sheetActionDanger]}>
+                  Delete
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal
         visible={viewerUrl !== null || viewerLoading}
         transparent
         animationType="fade"
@@ -1618,11 +1790,20 @@ const styles = StyleSheet.create({
     color: COLORS.secondary,
     marginBottom: 2,
   },
-  replyHint: {
+  quote: {
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.surfaceTint,
+    paddingLeft: SPACING.spaceSm,
+    marginBottom: SPACING.spaceXs,
+  },
+  quoteName: {
+    ...TYPOGRAPHY.labelSM,
+    color: COLORS.surfaceTint,
+    fontWeight: "700",
+  },
+  quoteBody: {
     ...TYPOGRAPHY.labelSM,
     color: SEMANTIC_COLORS.textDim,
-    fontStyle: "italic",
-    marginBottom: 2,
   },
   messageText: {
     ...TYPOGRAPHY.bodyMD,
@@ -1676,6 +1857,49 @@ const styles = StyleSheet.create({
   },
   reactionText: {
     fontSize: 14,
+  },
+  sheetBackdrop: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  sheet: {
+    backgroundColor: SEMANTIC_COLORS.surfaceLevel1,
+    borderTopLeftRadius: RADIUS.lg,
+    borderTopRightRadius: RADIUS.lg,
+    paddingHorizontal: SPACING.gutter,
+    paddingTop: SPACING.spaceMd,
+    paddingBottom: SPACING.spaceXl,
+    gap: SPACING.spaceXs,
+  },
+  reactionPicker: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: SPACING.spaceSm,
+    marginBottom: SPACING.spaceXs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: SEMANTIC_COLORS.ghostBorderLight,
+  },
+  reactionPick: {
+    paddingHorizontal: SPACING.spaceXs,
+    paddingVertical: SPACING.spaceXs,
+    borderRadius: RADIUS.full,
+  },
+  reactionPickEmoji: {
+    fontSize: 26,
+  },
+  sheetAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.spaceMd,
+    paddingVertical: SPACING.spaceMd,
+  },
+  sheetActionText: {
+    ...TYPOGRAPHY.bodyMD,
+    color: SEMANTIC_COLORS.textPrimary,
+  },
+  sheetActionDanger: {
+    color: COLORS.error,
   },
   photo: {
     width: 220,

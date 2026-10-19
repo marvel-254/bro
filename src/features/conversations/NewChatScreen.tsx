@@ -13,7 +13,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { COLORS, SPACING, RADIUS, TYPOGRAPHY } from "../../theme";
 import { Avatar } from "../../components/ui/Avatar";
 import { usePeople } from "../../lib/people-context";
-import { createDirectConversation } from "../../lib/conversations";
+import {
+  createDirectConversation,
+  createGroupConversation,
+} from "../../lib/conversations";
 import {
   LoadingState,
   ErrorState,
@@ -22,7 +25,8 @@ import {
 
 /**
  * New chat — pick a person from your circle to start (or resume) a direct
- * conversation. Uses the same roster as Who's Around until friendships exist.
+ * conversation, or flip into group mode and name a group of several people.
+ * Uses the same roster as Who's Around until friendships exist.
  */
 
 export default function NewChatScreen() {
@@ -30,6 +34,10 @@ export default function NewChatScreen() {
   const { people, loading, error, refresh } = usePeople();
   const [query, setQuery] = useState("");
   const [starting, setStarting] = useState<string | null>(null);
+  const [groupMode, setGroupMode] = useState(false);
+  const [groupName, setGroupName] = useState("");
+  const [selected, setSelected] = useState<string[]>([]);
+  const [creating, setCreating] = useState(false);
 
   const filtered = query.trim()
     ? people.filter(
@@ -53,43 +61,127 @@ export default function NewChatScreen() {
     [router],
   );
 
-  const renderPerson = ({ item }: { item: (typeof people)[number] }) => (
-    <TouchableOpacity
-      style={styles.row}
-      onPress={() => void start(item.userId)}
-      disabled={starting === item.userId}
-      accessibilityRole="button"
-      accessibilityLabel={`Message ${item.displayName}`}
-    >
-      <Avatar
-        uri={item.avatarUrl}
-        name={item.displayName}
-        size={46}
-        presence={item.presence}
-      />
-      <View style={styles.rowBody}>
-        <Text style={styles.rowName}>{item.displayName}</Text>
-        <Text style={styles.rowHandle}>@{item.username ?? "user"}</Text>
-      </View>
-      <Ionicons
-        name="chatbubble-outline"
-        size={20}
-        color={COLORS.semantic.textDim}
-      />
-    </TouchableOpacity>
-  );
+  const toggleSelect = useCallback((userId: string) => {
+    setSelected((current) =>
+      current.includes(userId)
+        ? current.filter((id) => id !== userId)
+        : [...current, userId],
+    );
+  }, []);
+
+  const leaveGroupMode = useCallback(() => {
+    setGroupMode(false);
+    setGroupName("");
+    setSelected([]);
+  }, []);
+
+  const createGroup = useCallback(async () => {
+    if (creating) return;
+    setCreating(true);
+    const result = await createGroupConversation(groupName, selected);
+    setCreating(false);
+    if (result.ok) {
+      router.replace(`/chat/${result.conversationId}`);
+    } else {
+      Alert.alert("Could not create group", result.error);
+    }
+  }, [creating, groupName, selected, router]);
+
+  const renderPerson = ({ item }: { item: (typeof people)[number] }) => {
+    const isSelected = selected.includes(item.userId);
+    const busy = starting === item.userId;
+    return (
+      <TouchableOpacity
+        style={styles.row}
+        onPress={() =>
+          groupMode ? toggleSelect(item.userId) : void start(item.userId)
+        }
+        disabled={busy}
+        accessibilityRole={groupMode ? "checkbox" : "button"}
+        accessibilityState={groupMode ? { checked: isSelected } : undefined}
+        accessibilityLabel={
+          groupMode
+            ? `${isSelected ? "Deselect" : "Select"} ${item.displayName}`
+            : `Message ${item.displayName}`
+        }
+      >
+        <Avatar
+          uri={item.avatarUrl}
+          name={item.displayName}
+          size={46}
+          presence={item.presence}
+        />
+        <View style={styles.rowBody}>
+          <Text style={styles.rowName}>{item.displayName}</Text>
+          <Text style={styles.rowHandle}>@{item.username ?? "user"}</Text>
+        </View>
+        {groupMode ? (
+          <Ionicons
+            name={isSelected ? "checkmark-circle" : "ellipse-outline"}
+            size={24}
+            color={isSelected ? COLORS.primary : COLORS.semantic.textDim}
+          />
+        ) : (
+          <Ionicons
+            name="chatbubble-outline"
+            size={20}
+            color={COLORS.semantic.textDim}
+          />
+        )}
+      </TouchableOpacity>
+    );
+  };
+
+  const canCreate = groupName.trim().length > 0 && selected.length > 0;
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => (groupMode ? leaveGroupMode() : router.back())}
           accessibilityRole="button"
+          accessibilityLabel={groupMode ? "Cancel new group" : "Back"}
         >
           <Ionicons name="arrow-back" size={24} color={COLORS.onSurface} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>New chat</Text>
+        <Text style={styles.headerTitle}>
+          {groupMode ? "New group" : "New chat"}
+        </Text>
+        <TouchableOpacity
+          style={styles.headerAction}
+          onPress={() => {
+            if (groupMode) {
+              leaveGroupMode();
+            } else {
+              setGroupMode(true);
+              setQuery("");
+            }
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={groupMode ? "Cancel" : "New group"}
+        >
+          <Ionicons
+            name={groupMode ? "close" : "people-outline"}
+            size={22}
+            color={COLORS.primary}
+          />
+        </TouchableOpacity>
       </View>
+
+      {groupMode ? (
+        <View style={styles.groupNameBar}>
+          <Ionicons name="pricetag-outline" size={18} color={COLORS.semantic.textDim} />
+          <TextInput
+            style={styles.groupNameInput}
+            placeholder="Group name"
+            placeholderTextColor={COLORS.semantic.textDim}
+            value={groupName}
+            onChangeText={setGroupName}
+            maxLength={80}
+            accessibilityLabel="Group name"
+          />
+        </View>
+      ) : null}
 
       <View style={styles.searchBar}>
         <Ionicons name="search" size={18} color={COLORS.semantic.textDim} />
@@ -126,6 +218,29 @@ export default function NewChatScreen() {
           contentContainerStyle={styles.listContent}
         />
       )}
+
+      {groupMode ? (
+        <View style={styles.groupFooter}>
+          <TouchableOpacity
+            style={[
+              styles.createButton,
+              !canCreate && styles.createButtonDisabled,
+            ]}
+            onPress={() => void createGroup()}
+            disabled={!canCreate || creating}
+            accessibilityRole="button"
+            accessibilityLabel="Create group"
+          >
+            <Text style={styles.createButtonText}>
+              {creating
+                ? "Creating…"
+                : selected.length > 0
+                  ? `Create group (${selected.length})`
+                  : "Create group"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -146,6 +261,28 @@ const styles = StyleSheet.create({
   headerTitle: {
     ...TYPOGRAPHY.headlineSM,
     color: COLORS.semantic.textPrimary,
+    flex: 1,
+  },
+  headerAction: {
+    padding: SPACING.spaceXs,
+  },
+  groupNameBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.spaceSm,
+    marginHorizontal: SPACING.gutter,
+    marginBottom: SPACING.spaceSm,
+    paddingHorizontal: SPACING.spaceMd,
+    backgroundColor: COLORS.semantic.surfaceLevel1,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.semantic.ghostBorder,
+    borderRadius: RADIUS.sm,
+  },
+  groupNameInput: {
+    flex: 1,
+    ...TYPOGRAPHY.bodyMD,
+    color: COLORS.semantic.textPrimary,
+    paddingVertical: SPACING.spaceMd,
   },
   searchBar: {
     flexDirection: "row",
@@ -189,5 +326,25 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.labelSM,
     color: COLORS.semantic.textDim,
     fontFamily: "monospace",
+  },
+  groupFooter: {
+    paddingHorizontal: SPACING.gutter,
+    paddingTop: SPACING.spaceMd,
+    paddingBottom: SPACING.spaceXl,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.semantic.ghostBorderLight,
+  },
+  createButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.sm,
+    paddingVertical: SPACING.spaceMd,
+    alignItems: "center",
+  },
+  createButtonDisabled: {
+    opacity: 0.4,
+  },
+  createButtonText: {
+    ...TYPOGRAPHY.labelMD,
+    color: COLORS.onPrimary,
   },
 });
