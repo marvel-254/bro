@@ -68,9 +68,13 @@ jobs:
         working-directory: android
         run: ./gradlew assembleDebug
 
+      # The ABI splits in plugins/withApkSizeOptimization.js apply to every
+      # variant, so assembleDebug emits one APK per ABI and no universal
+      # app-debug.apk. Glob them all; install the one matching the device.
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: BRO-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
           retention-days: 7
