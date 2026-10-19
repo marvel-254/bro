@@ -405,7 +405,8 @@ describe("conversations", () => {
       });
 
       expect(channel.subscribe).toHaveBeenCalledTimes(1);
-      expect(channel.on).toHaveBeenCalledTimes(3);
+      // messages INSERT/UPDATE, message_reactions, conversation_members UPDATE
+      expect(channel.on).toHaveBeenCalledTimes(4);
       unsub();
       expect(supabase.removeChannel).toHaveBeenCalledWith(channel);
     });

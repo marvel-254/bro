@@ -43,7 +43,12 @@ import {
   queueMessage,
   readOutbox,
 } from "../../lib/outbox";
-import { sendTyping, watchTyping, releaseTypingChannel } from "../../lib/presence";
+import {
+  sendTyping,
+  watchTyping,
+  watchPresence,
+  releaseTypingChannel,
+} from "../../lib/presence";
 import { getSupabase, isSupabaseConfigured } from "../../lib/supabase";
 import {
   DEFAULT_APPEARANCE,
@@ -365,6 +370,7 @@ export default function ConversationDetail({
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [olderError, setOlderError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reactions, setReactions] = useState<
@@ -380,6 +386,8 @@ export default function ConversationDetail({
   const [gifs, setGifs] = useState<Record<string, Gif>>({});
   /** Header name resolved from the conversation when no title prop is given. */
   const [resolvedTitle, setResolvedTitle] = useState<string | null>(null);
+  /** Whether any other member is currently present in the conversation. */
+  const [peerOnline, setPeerOnline] = useState(false);
   const [sendingImage, setSendingImage] = useState(false);
   /** When armed, the next photo is flagged view-once instead of permanent. */
   const [viewOnce, setViewOnce] = useState(false);
@@ -387,9 +395,10 @@ export default function ConversationDetail({
   const [sendingGif, setSendingGif] = useState(false);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [viewerLoading, setViewerLoading] = useState(false);
-  // Read cursors are tracked for future read-receipt UI; only the writer is
-  // used today.
-  const [, setReadCursors] = useState<Record<string, string | null>>({});
+  // Per-member read cursors, used to derive read receipts.
+  const [readCursors, setReadCursors] = useState<Record<string, string | null>>(
+    {},
+  );
   const [typists, setTypists] = useState<Map<string, string>>(new Map());
   /** The message whose long-press action sheet is open. */
   const [actionTarget, setActionTarget] = useState<MessageWithSender | null>(
@@ -432,6 +441,22 @@ export default function ConversationDetail({
     for (const message of messages) map[message.id] = message;
     return map;
   }, [messages]);
+
+  /**
+   * The most recent point any OTHER member has read up to, in ms. A message of
+   * ours created at or before this is "seen". Derived from read cursors rather
+   * than a per-message status column, so no recipient write (and no RLS change)
+   * is needed to turn the second tick on.
+   */
+  const peerReadAt = useMemo(() => {
+    let latest: number | null = null;
+    for (const [userId, at] of Object.entries(readCursors)) {
+      if (userId === selfId || !at) continue;
+      const parsed = Date.parse(at);
+      if (latest === null || parsed > latest) latest = parsed;
+    }
+    return latest;
+  }, [readCursors, selfId]);
 
   /**
    * Page enrichment: reactions, reply counts, branch links, attachments.
@@ -480,6 +505,7 @@ export default function ConversationDetail({
   const loadOlder = useCallback(async () => {
     if (loadingOlder || !hasMore || messages.length === 0) return;
     setLoadingOlder(true);
+    setOlderError(null);
     try {
       const oldest = messages[0];
       const older = await fetchMessages(conversationId, MESSAGES_PAGE_SIZE, {
@@ -493,8 +519,12 @@ export default function ConversationDetail({
       } else {
         setHasMore(false);
       }
-    } catch {
-      // Non-fatal: keep the list as-is.
+    } catch (err) {
+      // Keep the list as-is, but surface a retry instead of silently stopping,
+      // so a dropped request does not look like the start of history.
+      setOlderError(
+        err instanceof Error ? err.message : "Could not load older messages",
+      );
     } finally {
       setLoadingOlder(false);
     }
@@ -557,13 +587,20 @@ export default function ConversationDetail({
           ),
         );
       },
-      onReactionChange: () => {
+      onReactionChange: (messageId) => {
+        // Reactions are only delivered with the message id, so a reaction on
+        // another thread is ignored rather than forcing a refetch here.
+        if (!messageId) return;
+        if (!messagesRef.current.some((message) => message.id === messageId)) {
+          return;
+        }
         void (async () => {
-          const ids = messagesRef.current.map((message) => message.id);
-          if (ids.length > 0) {
-            setReactions(await fetchReactions(ids));
-          }
+          const fresh = await fetchReactions([messageId]);
+          setReactions((current) => ({ ...current, ...fresh }));
         })();
+      },
+      onReadCursorChange: () => {
+        void fetchReadCursors(conversationId).then(setReadCursors);
       },
     });
   }, [conversationId]);
@@ -582,6 +619,21 @@ export default function ConversationDetail({
       stopWatching();
       releaseTypingChannel(conversationId);
     };
+  }, [conversationId, selfId]);
+
+  // Live presence for the header: are any of the other members here now?
+  useEffect(() => {
+    if (!selfId) return;
+    return watchPresence(conversationId, selfId, (present) => {
+      let online = false;
+      for (const id of present.keys()) {
+        if (id !== selfId) {
+          online = true;
+          break;
+        }
+      }
+      setPeerOnline(online);
+    });
   }, [conversationId, selfId]);
 
   // Resolve the header name from the conversation itself when the route did
@@ -1269,7 +1321,15 @@ export default function ConversationDetail({
                 })}
               </Text>
               {isMine ? (
-                <MessageStatus status={item.status} />
+                <MessageStatus
+                  status={
+                    item.status === "sent" &&
+                    peerReadAt !== null &&
+                    Date.parse(item.created_at) <= peerReadAt
+                      ? "seen"
+                      : item.status
+                  }
+                />
               ) : null}
             </View>
 
@@ -1341,6 +1401,7 @@ export default function ConversationDetail({
       attachments,
       gifs,
       messagesById,
+      peerReadAt,
       openViewer,
       appearance.bubbleTheme,
       appearance.mineColor,
@@ -1373,9 +1434,17 @@ export default function ConversationDetail({
       keyboardVerticalOffset={insets.top}
     >
       <View style={styles.header}>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {resolvedTitle ?? title ?? "Conversation"}
-        </Text>
+        <View style={styles.headerTitleWrap}>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {resolvedTitle ?? title ?? "Conversation"}
+          </Text>
+          {peerOnline ? (
+            <View style={styles.presenceRow}>
+              <View style={styles.presenceDot} />
+              <Text style={styles.presenceText}>Online</Text>
+            </View>
+          ) : null}
+        </View>
         <CallButtons conversationId={conversationId} />
       </View>
 
@@ -1420,6 +1489,17 @@ export default function ConversationDetail({
                 color={COLORS.surfaceTint}
                 style={styles.olderLoader}
               />
+            ) : olderError ? (
+              <Pressable
+                style={styles.olderLoader}
+                onPress={() => void loadOlder()}
+                accessibilityRole="button"
+                accessibilityLabel="Retry loading older messages"
+              >
+                <Text style={styles.olderErrorText}>
+                  Couldn&apos;t load older messages. Tap to retry.
+                </Text>
+              </Pressable>
             ) : null
           }
           ListEmptyComponent={
@@ -1727,10 +1807,28 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: SEMANTIC_COLORS.ghostBorderLight,
   },
+  headerTitleWrap: {
+    flex: 1,
+  },
   headerTitle: {
     ...TYPOGRAPHY.headlineSM,
     color: SEMANTIC_COLORS.textPrimary,
-    flex: 1,
+  },
+  presenceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.spaceXs,
+    marginTop: 1,
+  },
+  presenceDot: {
+    width: 7,
+    height: 7,
+    borderRadius: RADIUS.full,
+    backgroundColor: "#3DD68C",
+  },
+  presenceText: {
+    ...TYPOGRAPHY.labelSM,
+    color: SEMANTIC_COLORS.textDim,
   },
   callButtons: {
     flexDirection: "row",
@@ -1744,6 +1842,11 @@ const styles = StyleSheet.create({
   },
   olderLoader: {
     paddingVertical: SPACING.spaceMd,
+  },
+  olderErrorText: {
+    ...TYPOGRAPHY.labelSM,
+    color: COLORS.error,
+    textAlign: "center",
   },
   bubbleRow: {
     flexDirection: "row",

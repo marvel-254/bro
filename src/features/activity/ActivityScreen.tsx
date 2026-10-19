@@ -19,6 +19,7 @@ import {
   subscribeToActivity,
   describeActivity,
   relativeTime,
+  resolveActivityDestination,
   type ActivityItem,
 } from "../../lib/activity";
 import {
@@ -90,20 +91,12 @@ export default function ActivityScreen() {
       );
       void markActivityRead([item.notificationId]);
 
-      if (item.deepLink === "/spaces") {
-        router.push("/spaces");
-        return;
-      }
-      if (item.deepLink === "/people") {
-        router.push("/people");
-        return;
-      }
-      // Message and conversation activity resolves to the parent conversation.
-      if (item.targetType === "conversation" && item.targetId) {
-        router.push(`/chat/${item.targetId}`);
-        return;
-      }
-      router.push("/chats");
+      // Resolve the destination (reply/reaction activity carries a message id
+      // that must be turned into its conversation) then navigate. Falls back to
+      // the chat list when nothing concrete can be opened.
+      void resolveActivityDestination(item).then((destination) => {
+        router.push((destination ?? "/chats") as never);
+      });
     },
     [router],
   );

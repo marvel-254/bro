@@ -45,6 +45,37 @@ export interface ActivityItem {
 
 export const ACTIVITY_PAGE_SIZE = 30;
 
+/**
+ * Where an activity row should navigate, or null when nothing sensible can be
+ * opened. Reply/reaction activity targets a *message* id, so it is resolved to
+ * its conversation here — otherwise the tap would land on a route with no id.
+ */
+export async function resolveActivityDestination(
+  item: ActivityItem,
+): Promise<string | null> {
+  if (item.deepLink === "/spaces") return "/spaces";
+  if (item.deepLink === "/people") return "/people";
+
+  if (item.targetType === "conversation" && item.targetId) {
+    return `/chat/${item.targetId}`;
+  }
+
+  if (item.targetType === "message" && item.targetId) {
+    const supabase = getSupabase();
+    if (!supabase) return null;
+    const { data } = await supabase
+      .from("messages")
+      .select("conversation_id")
+      .eq("id", item.targetId)
+      .maybeSingle<{ conversation_id: string }>();
+    return data?.conversation_id
+      ? `/chat/${data.conversation_id}?message=${item.targetId}`
+      : null;
+  }
+
+  return null;
+}
+
 /** Short, plain-English lines. No slang here — these can be about other people. */
 export function describeActivity(
   type: ActivityType,

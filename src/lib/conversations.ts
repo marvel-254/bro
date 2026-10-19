@@ -353,7 +353,10 @@ export function subscribeToConversation(
   handlers: {
     onInsert: (message: MessageRow) => void;
     onUpdate: (message: MessageRow) => void;
-    onReactionChange: () => void;
+    /** Carries the affected message id so callers can ignore other threads. */
+    onReactionChange: (messageId?: string | null) => void;
+    /** A member's read cursor moved (drives read receipts). */
+    onReadCursorChange?: () => void;
   },
 ): () => void {
   const supabase = getSupabase();
@@ -386,7 +389,23 @@ export function subscribeToConversation(
     .on(
       "postgres_changes",
       { event: "*", schema: "public", table: "message_reactions" },
-      () => handlers.onReactionChange(),
+      (payload: {
+        new?: { message_id?: string };
+        old?: { message_id?: string };
+      }) =>
+        handlers.onReactionChange(
+          payload.new?.message_id ?? payload.old?.message_id ?? null,
+        ),
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "conversation_members",
+        filter: `conversation_id=eq.${conversationId}`,
+      },
+      () => handlers.onReadCursorChange?.(),
     )
     .subscribe();
 

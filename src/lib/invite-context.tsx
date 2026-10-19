@@ -14,6 +14,7 @@ import {
   getPendingInvite,
   clearPendingInvite,
 } from "./invites";
+import { createDirectConversation } from "./conversations";
 
 interface InviteContextValue {
   pendingInvite: InvitePayload | null;
@@ -98,7 +99,10 @@ export function InviteProvider({ children }: { children: ReactNode }) {
       if (invite.targetType === "space" && invite.spaceId) {
         destination = `/spaces/${invite.spaceId}`;
       } else if (invite.targetType === "user" && invite.targetId) {
-        destination = `/chat/${invite.targetId}`;
+        // targetId is a USER id: resolve (or create) the direct conversation
+        // between the two, since a user id is not a conversation id.
+        const result = await createDirectConversation(invite.targetId);
+        destination = result.ok ? `/chat/${result.conversationId}` : "/new-chat";
       } else {
         destination = "/(tabs)";
       }
