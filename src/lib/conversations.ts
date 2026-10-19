@@ -782,9 +782,16 @@ export async function createGroupConversation(
   return { ok: true, conversationId: data };
 }
 
+/** How long to coalesce list-affecting message events before refetching. */
+export const CONVERSATION_LIST_DEBOUNCE_MS = 400;
+
 /**
  * Subscribe to any new message in any conversation the caller belongs to, so
  * the conversation list can reorder and update unread counts live.
+ *
+ * Events are coalesced: sending a burst of messages would otherwise refetch
+ * the whole summary list once per message. One refetch per burst is enough,
+ * since the summaries are a snapshot, not an incremental feed.
  */
 export function subscribeToConversationList(handlers: {
   onChange: () => void;
@@ -794,21 +801,31 @@ export function subscribeToConversationList(handlers: {
     return () => {};
   }
 
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const schedule = () => {
+    if (timer) return;
+    timer = setTimeout(() => {
+      timer = null;
+      handlers.onChange();
+    }, CONVERSATION_LIST_DEBOUNCE_MS);
+  };
+
   const channel = supabase
     .channel("conversation-list")
     .on(
       "postgres_changes",
       { event: "INSERT", schema: "public", table: "messages" },
-      () => handlers.onChange(),
+      schedule,
     )
     .on(
       "postgres_changes",
       { event: "UPDATE", schema: "public", table: "messages" },
-      () => handlers.onChange(),
+      schedule,
     )
     .subscribe();
 
   return () => {
+    if (timer) clearTimeout(timer);
     void supabase.removeChannel(channel);
   };
 }

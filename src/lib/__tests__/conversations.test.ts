@@ -8,6 +8,7 @@ import {
   fetchConversationPeer,
   subscribeToConversation,
   subscribeToConversationList,
+  CONVERSATION_LIST_DEBOUNCE_MS,
   fetchReactions,
   toggleReaction,
   editMessage,
@@ -432,6 +433,59 @@ describe("conversations", () => {
       subscribeToConversationList({ onChange: jest.fn() });
       expect(channel.subscribe).toHaveBeenCalledTimes(1);
       expect(channel.on).toHaveBeenCalledTimes(2);
+    });
+
+    it("coalesces a burst of events into one refetch", () => {
+      jest.useFakeTimers();
+      try {
+        const channel = createChannel();
+        const supabase = makeSupabase();
+        (supabase.channel as jest.Mock).mockReturnValue(channel);
+        mockedGetSupabase.mockReturnValue(supabase);
+
+        const onChange = jest.fn();
+        subscribeToConversationList({ onChange });
+
+        // Grab the handler registered for the message INSERT event and fire a
+        // burst, as if several messages land at once.
+        const insertCall = channel.on.mock.calls.find(
+          (call) => (call[1] as { event?: string }).event === "INSERT",
+        );
+        const handler = insertCall?.[2] as () => void;
+        handler();
+        handler();
+        handler();
+
+        expect(onChange).not.toHaveBeenCalled();
+        jest.advanceTimersByTime(CONVERSATION_LIST_DEBOUNCE_MS);
+        expect(onChange).toHaveBeenCalledTimes(1);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it("cancels a pending refetch on unsubscribe", () => {
+      jest.useFakeTimers();
+      try {
+        const channel = createChannel();
+        const supabase = makeSupabase();
+        (supabase.channel as jest.Mock).mockReturnValue(channel);
+        mockedGetSupabase.mockReturnValue(supabase);
+
+        const onChange = jest.fn();
+        const unsub = subscribeToConversationList({ onChange });
+
+        const insertCall = channel.on.mock.calls.find(
+          (call) => (call[1] as { event?: string }).event === "INSERT",
+        );
+        (insertCall?.[2] as () => void)();
+
+        unsub();
+        jest.advanceTimersByTime(CONVERSATION_LIST_DEBOUNCE_MS * 2);
+        expect(onChange).not.toHaveBeenCalled();
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 
