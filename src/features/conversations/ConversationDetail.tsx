@@ -449,13 +449,34 @@ export default function ConversationDetail({
       onReactionChange: (messageId) => {
         // Reactions are only delivered with the message id, so a reaction on
         // another thread is ignored rather than forcing a refetch here.
-        if (!messageId) return;
-        if (!messagesRef.current.some((message) => message.id === messageId)) {
+        if (messageId) {
+          if (!messagesRef.current.some((message) => message.id === messageId)) {
+            return;
+          }
+          void (async () => {
+            const fresh = await fetchReactions([messageId]);
+            // Set the key explicitly: fetchReactions omits messages with no
+            // reactions, so a plain merge would keep the last removed reaction
+            // on screen.
+            setReactions((current) => ({
+              ...current,
+              [messageId]: fresh[messageId] ?? [],
+            }));
+          })();
           return;
         }
+        // No message id means the realtime payload did not carry one (see
+        // 20261019000200_reaction_replica_identity.sql). Rather than drop the
+        // change, refresh every reaction on the loaded page.
         void (async () => {
-          const fresh = await fetchReactions([messageId]);
-          setReactions((current) => ({ ...current, ...fresh }));
+          const ids = messagesRef.current.map((message) => message.id);
+          if (ids.length === 0) return;
+          const fresh = await fetchReactions(ids);
+          setReactions((current) => {
+            const next = { ...current };
+            for (const id of ids) next[id] = fresh[id] ?? [];
+            return next;
+          });
         })();
       },
       onReadCursorChange: () => {
