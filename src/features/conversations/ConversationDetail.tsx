@@ -53,7 +53,7 @@ import {
 } from "../../lib/chat-appearance";
 import { useAuth } from "../../lib/auth-context";
 import { useCall } from "../../lib/call-context";
-import { fetchConversationPeer } from "../../lib/conversations";
+import { fetchConversationPeer, fetchProfilesByIds } from "../../lib/conversations";
 import {
   fetchBranchesByRoot,
   fetchReplyCounts,
@@ -89,7 +89,12 @@ function MessageStatus({ status }: { status: string }) {
     return (
       <View style={styles.doubleCheck}>
         <Ionicons name="checkmark-outline" size={14} color={SEMANTIC_COLORS.textDim} />
-        <Ionicons name="checkmark-outline" size={14} color={SEMANTIC_COLORS.textDim} />
+        <Ionicons
+          name="checkmark-outline"
+          size={14}
+          color={SEMANTIC_COLORS.textDim}
+          style={styles.checkOverlap}
+        />
       </View>
     );
   }
@@ -97,7 +102,12 @@ function MessageStatus({ status }: { status: string }) {
     return (
       <View style={styles.doubleCheck}>
         <Ionicons name="checkmark-sharp" size={14} color={COLORS.surfaceTint} />
-        <Ionicons name="checkmark-sharp" size={14} color={COLORS.surfaceTint} />
+        <Ionicons
+          name="checkmark-sharp"
+          size={14}
+          color={COLORS.surfaceTint}
+          style={styles.checkOverlap}
+        />
       </View>
     );
   }
@@ -121,7 +131,7 @@ import {
 import VoiceRecorder from "./VoiceRecorder";
 import VoiceMessage from "./VoiceMessage";
 import GifPicker from "../gifs/GifPicker";
-import { getGif, type Gif } from "../../lib/gifs";
+import { getGif, getGifsByIds, type Gif } from "../../lib/gifs";
 import type {
   MessageReactionRow,
   MessageWithSender,
@@ -254,6 +264,33 @@ function ChatImage({
 }
 
 /**
+ * Inline GIF for a gif message. The catalogue row carries the dimensions, so
+ * the bubble keeps the animation's aspect ratio instead of squashing it.
+ * A missing row (deleted or the library lookup failed) shows a placeholder
+ * rather than a collapsed, invisible bubble.
+ */
+function GifBubble({ gif }: { gif: Gif | undefined }) {
+  if (!gif) {
+    return (
+      <View style={styles.gifPlaceholder}>
+        <ActivityIndicator size="small" color={SEMANTIC_COLORS.textDim} />
+      </View>
+    );
+  }
+
+  const ratio = gif.width > 0 && gif.height > 0 ? gif.width / gif.height : 1;
+
+  return (
+    <Image
+      source={{ uri: gif.url }}
+      style={[styles.gif, { aspectRatio: ratio }]}
+      resizeMode="cover"
+      accessibilityLabel={gif.title || "GIF"}
+    />
+  );
+}
+
+/**
  * Voice/video buttons. Rendered only for direct conversations with exactly one
  * resolvable peer, because calls are 1:1 in v1 — a group header with a call
  * button that fails would be a dead button, which the docs forbid.
@@ -336,6 +373,10 @@ export default function ConversationDetail({
   const [attachments, setAttachments] = useState<Record<string, AttachmentRef>>(
     {},
   );
+  /** Gif catalogue rows keyed by gif id, for rendering gif messages. */
+  const [gifs, setGifs] = useState<Record<string, Gif>>({});
+  /** Header name resolved from the conversation when no title prop is given. */
+  const [resolvedTitle, setResolvedTitle] = useState<string | null>(null);
   const [sendingImage, setSendingImage] = useState(false);
   /** When armed, the next photo is flagged view-once instead of permanent. */
   const [viewOnce, setViewOnce] = useState(false);
@@ -378,18 +419,27 @@ export default function ConversationDetail({
    * Every page gets the same treatment — an older page rendering as bare
    * bubbles is a bug, not a performance win.
    */
-  const enrich = useCallback(async (ids: string[]) => {
-    if (ids.length === 0) return;
-    const [fetchedReactions, counts, branches, attached] = await Promise.all([
-      fetchReactions(ids),
-      fetchReplyCounts(ids),
-      fetchBranchesByRoot(ids),
-      fetchMessageAttachments(ids),
-    ]);
+  const enrich = useCallback(async (rows: MessageWithSender[]) => {
+    if (rows.length === 0) return;
+    const ids = rows.map((message) => message.id);
+    const gifIds = rows
+      .filter((message) => message.type === "gif" && message.gif_id)
+      .map((message) => message.gif_id as string);
+    const [fetchedReactions, counts, branches, attached, fetchedGifs] =
+      await Promise.all([
+        fetchReactions(ids),
+        fetchReplyCounts(ids),
+        fetchBranchesByRoot(ids),
+        fetchMessageAttachments(ids),
+        getGifsByIds(gifIds),
+      ]);
     setReactions((current) => ({ ...current, ...fetchedReactions }));
     setReplyCounts((current) => ({ ...current, ...counts }));
     setBranchByRoot((current) => ({ ...current, ...branches }));
     setAttachments((current) => ({ ...current, ...attached }));
+    if (Object.keys(fetchedGifs).length > 0) {
+      setGifs((current) => ({ ...current, ...fetchedGifs }));
+    }
   }, []);
 
   const load = useCallback(async () => {
@@ -399,7 +449,7 @@ export default function ConversationDetail({
       setMessages(rows);
       setHasMore(rows.length >= MESSAGES_PAGE_SIZE);
       void markConversationRead(conversationId);
-      await enrich(rows.map((message) => message.id));
+      await enrich(rows);
       setReadCursors(await fetchReadCursors(conversationId));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load messages");
@@ -420,7 +470,7 @@ export default function ConversationDetail({
       if (older.length > 0) {
         setMessages((current) => [...older, ...current]);
         setHasMore(older.length >= MESSAGES_PAGE_SIZE);
-        await enrich(older.map((message) => message.id));
+        await enrich(older);
       } else {
         setHasMore(false);
       }
@@ -454,12 +504,31 @@ export default function ConversationDetail({
             (a, b) => -compareMessagesNewestFirst(a, b),
           );
         });
-        // An arriving image needs its attachment row for the thumbnail.
-        if (incoming.type === "image") {
+        // A live message carries its payload-shaped gaps: photo/voice need
+        // their attachment row, a gif needs its library row, and every
+        // arriving message needs its sender profile (the realtime payload has
+        // no join), or a group message shows no name until a reload.
+        if (incoming.type === "image" || incoming.type === "voice") {
           void fetchMessageAttachments([incoming.id]).then((attached) => {
             setAttachments((current) => ({ ...current, ...attached }));
           });
         }
+        if (incoming.type === "gif" && incoming.gif_id) {
+          void getGifsByIds([incoming.gif_id]).then((fetched) => {
+            if (Object.keys(fetched).length > 0) {
+              setGifs((current) => ({ ...current, ...fetched }));
+            }
+          });
+        }
+        void fetchProfilesByIds([incoming.sender_id]).then((profiles) => {
+          const sender = profiles[incoming.sender_id];
+          if (!sender) return;
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === incoming.id ? { ...message, sender } : message,
+            ),
+          );
+        });
         void markConversationRead(conversationId);
       },
       onUpdate: (updated) => {
@@ -496,6 +565,29 @@ export default function ConversationDetail({
     };
   }, [conversationId, selfId]);
 
+  // Resolve the header name from the conversation itself when the route did
+  // not pass one. Direct -> the peer's name; group/space -> the stored name.
+  useEffect(() => {
+    if (title) {
+      setResolvedTitle(title);
+      return;
+    }
+    let live = true;
+    void fetchConversationPeer(conversationId).then((peer) => {
+      if (!live || !peer) return;
+      if (peer.type === "direct") {
+        setResolvedTitle(peer.peerName ?? "Conversation");
+      } else {
+        setResolvedTitle(
+          peer.name ?? (peer.type === "space" ? "Space chat" : "Group chat"),
+        );
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, [conversationId, title]);
+
   const onDraftChange = (text: string) => {
     setDraft(text);
     if (selfId) {
@@ -507,6 +599,22 @@ export default function ConversationDetail({
       );
     }
   };
+
+  /**
+   * Broadcast that we've stopped typing. Clearing the draft directly bypasses
+   * `onDraftChange`, so without this the peer's "typing…" lingers for the full
+   * timeout after every sent message.
+   */
+  const stopTyping = useCallback(() => {
+    if (selfId) {
+      sendTyping(
+        conversationId,
+        selfId,
+        currentUser?.displayName ?? "Someone",
+        false,
+      );
+    }
+  }, [conversationId, selfId, currentUser]);
 
   const senderProfile = useMemo(
     () =>
@@ -604,6 +712,7 @@ export default function ConversationDetail({
 
     setDraft("");
     setReplyingTo(null);
+    stopTyping();
 
     const sent = await sendContent({ content, replyToMessageId, clientId });
 
@@ -622,7 +731,7 @@ export default function ConversationDetail({
     }
 
     setSending(false);
-  }, [conversationId, draft, replyingTo, sendContent, sending]);
+  }, [conversationId, draft, replyingTo, sendContent, sending, stopTyping]);
 
   /**
    * Replays everything the outbox holds for this conversation.
@@ -726,10 +835,11 @@ export default function ConversationDetail({
     if (result.ok) {
       setDraft("");
       setEditing(null);
+      stopTyping();
     } else {
       setError(result.error);
     }
-  }, [editing, draft]);
+  }, [editing, draft, stopTyping]);
 
   const onDelete = useCallback((message: MessageWithSender) => {
     Alert.alert("Delete message", "Delete for everyone?", [
@@ -838,6 +948,9 @@ export default function ConversationDetail({
       }
 
       setDraft("");
+      // Cache the picked row so the bubble renders immediately, without
+      // waiting for the enrichment pass to come back around.
+      setGifs((current) => ({ ...current, [gif.id]: gif }));
       const now = new Date().toISOString();
       setMessages((current) => {
         if (current.some((message) => message.id === result.message.id)) {
@@ -1044,6 +1157,10 @@ export default function ConversationDetail({
               <VoiceMessage attachment={attachments[item.id]} />
             ) : null}
 
+            {item.type === "gif" && !isDeleted ? (
+              <GifBubble gif={item.gif_id ? gifs[item.gif_id] : undefined} />
+            ) : null}
+
             {isDeleted ? (
               <Text style={[styles.messageText, styles.deletedText]}>
                 Message deleted
@@ -1139,6 +1256,7 @@ export default function ConversationDetail({
       branching,
       openBranch,
       attachments,
+      gifs,
       openViewer,
       appearance.bubbleTheme,
       appearance.mineColor,
@@ -1172,7 +1290,7 @@ export default function ConversationDetail({
     >
       <View style={styles.header}>
         <Text style={styles.headerTitle} numberOfLines={1}>
-          {title ?? "Conversation"}
+          {resolvedTitle ?? title ?? "Conversation"}
         </Text>
         <CallButtons conversationId={conversationId} />
       </View>
@@ -1530,13 +1648,17 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.labelSM,
     color: SEMANTIC_COLORS.textDim,
   },
-readReceipt: {
+  readReceipt: {
     ...TYPOGRAPHY.labelSM,
     color: COLORS.surfaceTint,
   },
   doubleCheck: {
     flexDirection: "row",
-    gap: -2,
+  },
+  // Overlap the second tick with the first so the pair reads as one glyph
+  // instead of two chevrons with a gap.
+  checkOverlap: {
+    marginLeft: -6,
   },
   reactionRow: {
     flexDirection: "row",
@@ -1571,6 +1693,19 @@ readReceipt: {
   photoPlaceholderText: {
     ...TYPOGRAPHY.labelSM,
     color: SEMANTIC_COLORS.textDim,
+  },
+  gif: {
+    width: 220,
+    borderRadius: RADIUS.sm,
+    backgroundColor: SEMANTIC_COLORS.surfaceLevel2,
+  },
+  gifPlaceholder: {
+    width: 220,
+    height: 120,
+    borderRadius: RADIUS.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: SEMANTIC_COLORS.surfaceLevel2,
   },
   viewOnceBadge: {
     position: "absolute",

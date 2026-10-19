@@ -570,6 +570,8 @@ export interface ConversationPeer {
   /** The other member of a direct conversation, if there is exactly one. */
   peerId: string | null;
   peerName: string | null;
+  /** The conversation's own name, for groups and spaces (null for direct). */
+  name: string | null;
 }
 
 /**
@@ -591,7 +593,7 @@ export async function fetchConversationPeer(conversationId: string): Promise<Con
 
   const { data: conversation, error: conversationError } = await supabase
     .from("conversations")
-    .select("id, type")
+    .select("id, type, name")
     .eq("id", conversationId)
     .maybeSingle();
 
@@ -599,9 +601,9 @@ export async function fetchConversationPeer(conversationId: string): Promise<Con
     return null;
   }
 
-  const row = conversation as { id: string; type: string };
+  const row = conversation as { id: string; type: string; name: string | null };
   if (row.type !== "direct") {
-    return { type: row.type, peerId: null, peerName: null };
+    return { type: row.type, peerId: null, peerName: null, name: row.name };
   }
 
   const { data: members } = await supabase
@@ -615,14 +617,43 @@ export async function fetchConversationPeer(conversationId: string): Promise<Con
     profile: { display_name: string } | null;
   }>;
   if (peers.length !== 1) {
-    return { type: row.type, peerId: null, peerName: null };
+    return { type: row.type, peerId: null, peerName: null, name: row.name };
   }
 
   return {
     type: row.type,
     peerId: peers[0].user_id,
     peerName: peers[0].profile?.display_name ?? "Someone",
+    name: row.name,
   };
+}
+
+/**
+ * Public sender profiles for a set of user ids, keyed by id. Used to hydrate
+ * the sender of a message that arrived over realtime, where the payload has
+ * no joined profile.
+ */
+export async function fetchProfilesByIds(
+  ids: string[],
+): Promise<Record<string, NonNullable<MessageWithSender["sender"]>>> {
+  const supabase = getSupabase();
+  const unique = [
+    ...new Set(ids.filter((id) => typeof id === "string" && id.length > 0)),
+  ];
+  if (!supabase || unique.length === 0) return {};
+
+  const { data } = await supabase
+    .from("profiles")
+    .select("id, username, display_name, avatar_url, status")
+    .in("id", unique);
+
+  const byId: Record<string, NonNullable<MessageWithSender["sender"]>> = {};
+  for (const row of (data ?? []) as unknown as Array<
+    NonNullable<MessageWithSender["sender"]>
+  >) {
+    byId[row.id] = row;
+  }
+  return byId;
 }
 
 /**

@@ -127,6 +127,34 @@ export async function getGif(gifId: string): Promise<Gif | null> {
   );
 }
 
+/**
+ * Batch lookup keyed by id, for rendering a screen's worth of gif messages in
+ * one request instead of one `getGif` per bubble.
+ */
+export async function getGifsByIds(
+  ids: string[],
+): Promise<Record<string, Gif>> {
+  const supabase = getSupabase();
+  const unique = [
+    ...new Set(ids.filter((id) => typeof id === "string" && id.length > 0)),
+  ];
+  if (!supabase || unique.length === 0) return {};
+
+  const { data, error } = await supabase
+    .from("gif_library")
+    .select("id, storage_path, title, tags, width, height, size_bytes")
+    .in("id", unique);
+  if (error) return {};
+
+  const baseUrl = publicBase(process.env.EXPO_PUBLIC_SUPABASE_URL ?? "");
+  const byId: Record<string, Gif> = {};
+  for (const row of (data ?? []) as unknown as GifRow[]) {
+    if (!isSafeGifPath(row.storage_path)) continue;
+    byId[row.id] = toGif(row, baseUrl);
+  }
+  return byId;
+}
+
 export type MyGifsOptions = { limit?: number };
 
 /**
