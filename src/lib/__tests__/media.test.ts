@@ -503,14 +503,17 @@ describe("sendImageMessage", () => {
     mockedRead.mockResolvedValue(Buffer.from([9, 9]).toString("base64"));
   }
 
-  function attachmentsChain(attachId = "att-1") {
+  function attachmentsChain(attachId = "att-1", linked: unknown[] = [{ id: attachId }]) {
     const chain = createChain();
     chain.select.mockReturnValue(chain);
     chain.single.mockResolvedValue({ data: { id: attachId }, error: null });
-    const updateEq = jest.fn().mockResolvedValue({ data: null, error: null });
+    // The link step is `.update(...).eq(...).select(...)`; the trailing select
+    // is what makes a zero-row (RLS-filtered) update observable.
+    const linkSelect = jest.fn().mockResolvedValue({ data: linked, error: null });
+    const updateEq = jest.fn().mockReturnValue({ select: linkSelect });
     chain.update.mockReturnValue({ eq: updateEq });
     chain.insert.mockReturnValue(chain);
-    return { chain, updateEq };
+    return { chain, updateEq, linkSelect };
   }
 
   it("reports the backend is missing with the pick stage", async () => {
@@ -559,7 +562,7 @@ describe("sendImageMessage", () => {
 
   it("sends with type image and links the attachment", async () => {
     successSetup();
-    const { chain, updateEq } = attachmentsChain();
+    const { chain, updateEq, linkSelect } = attachmentsChain();
     const { supabase, storage } = makeSupabase({ attachments: chain });
     mockedGetSupabase.mockReturnValue(supabase);
     storage.upload.mockResolvedValue({ data: { path: "x" }, error: null });
@@ -581,6 +584,28 @@ describe("sendImageMessage", () => {
       messageType: "image",
     });
     expect(updateEq).toHaveBeenCalledWith("id", "att-1");
+    expect(linkSelect).toHaveBeenCalledWith("id");
+  });
+
+  it("fails at the link stage when the update affects no rows", async () => {
+    // Regression: an RLS-filtered update reports success but matches nothing,
+    // which silently left every photo unlinked before the attachments UPDATE
+    // policy existed.
+    successSetup();
+    const { chain } = attachmentsChain("att-1", []);
+    const { supabase, storage } = makeSupabase({ attachments: chain });
+    mockedGetSupabase.mockReturnValue(supabase);
+    storage.upload.mockResolvedValue({ data: { path: "x" }, error: null });
+    mockedSendMessage.mockResolvedValue({
+      ok: true,
+      message: { id: "m1", content: "", type: "image" } as never,
+    });
+
+    expect(await sendImageMessage("c1", "")).toEqual({
+      ok: false,
+      error: "Could not link the photo",
+      stage: "link",
+    });
   });
 
   it("reports a send failure with the send stage", async () => {

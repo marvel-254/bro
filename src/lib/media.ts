@@ -521,12 +521,20 @@ export async function sendStoredImage(
   }
 
   try {
-    const { error } = await supabase
+    // `.select()` makes PostgREST return the affected rows. Without it a
+    // zero-row update (e.g. an RLS policy filtering the row out) reports
+    // success, which is how every photo silently ended up unlinked before
+    // 20261019000100_attachment_link_policy.sql.
+    const { data: linked, error } = await supabase
       .from("attachments")
       .update({ message_id: sent.message.id })
-      .eq("id", attachmentId);
+      .eq("id", attachmentId)
+      .select("id");
     if (error) {
       throw new Error(error.message);
+    }
+    if (!linked || linked.length === 0) {
+      throw new Error("Could not link the photo");
     }
   } catch (err) {
     return {
@@ -577,11 +585,15 @@ export async function sendStoredVoice(
     });
     if (!sent.ok) throw new Error(sent.error);
 
-    const { error: linkError } = await supabase
+    const { data: linked, error: linkError } = await supabase
       .from("attachments")
       .update({ message_id: sent.message.id })
-      .eq("id", attachmentId);
+      .eq("id", attachmentId)
+      .select("id");
     if (linkError) throw new Error(linkError.message);
+    if (!linked || linked.length === 0) {
+      throw new Error("Could not link that voice note");
+    }
 
     return { ok: true, messageId: sent.message.id, attachmentId };
   } catch (err) {
