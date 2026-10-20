@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -12,9 +13,12 @@ import {
   Text,
   TextInput,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import {
   COLORS,
@@ -251,6 +255,34 @@ export default function ConversationDetail({
   const insets = useSafeAreaInsets();
   const selfId = currentUser?.id;
 
+  // A read receipt is only honest while the user is actually looking at the
+  // newest message: the screen focused, the app in the foreground, and the
+  // list scrolled to the end. Without this the cursor advanced on every insert
+  // and focus, even from a backgrounded screen, and the sender saw "seen" for
+  // a message nobody had on screen.
+  const focusedRef = useRef(true);
+  const appActiveRef = useRef(AppState.currentState === "active");
+  const atBottomRef = useRef(true);
+  const lastMarkedReadRef = useRef<string | null>(null);
+
+  /**
+   * Advance the read cursor to a message timestamp, if the conditions above
+   * hold. `force` is for the initial load, which opens the thread at the end.
+   */
+  const markReadUpTo = useCallback(
+    (readAt: string | null | undefined, force = false) => {
+      if (!readAt) return;
+      // Never write a receipt while the app is backgrounded: nobody saw it.
+      if (!appActiveRef.current) return;
+      if (!force && (!focusedRef.current || !atBottomRef.current)) return;
+      const previous = lastMarkedReadRef.current;
+      if (previous && Date.parse(readAt) <= Date.parse(previous)) return;
+      lastMarkedReadRef.current = readAt;
+      void markConversationRead(conversationId, readAt);
+    },
+    [conversationId],
+  );
+
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
@@ -258,6 +290,50 @@ export default function ConversationDetail({
   useEffect(() => {
     reactionsRef.current = reactions;
   }, [reactions]);
+
+  // Regaining focus (coming back from another screen) counts as looking at the
+  // newest message, but only if the list is still at the end.
+  useFocusEffect(
+    useCallback(() => {
+      focusedRef.current = true;
+      markReadUpTo(
+        messagesRef.current[messagesRef.current.length - 1]?.created_at,
+      );
+      return () => {
+        focusedRef.current = false;
+      };
+    }, [markReadUpTo]),
+  );
+
+  // A backgrounded app is not reading anything. Foregrounding re-checks.
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      appActiveRef.current = state === "active";
+      if (state === "active") {
+        markReadUpTo(
+          messagesRef.current[messagesRef.current.length - 1]?.created_at,
+        );
+      }
+    });
+    return () => subscription.remove();
+  }, [markReadUpTo]);
+
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, contentSize, layoutMeasurement } =
+        event.nativeEvent;
+      const distanceFromBottom =
+        contentSize.height - layoutMeasurement.height - contentOffset.y;
+      const wasAtBottom = atBottomRef.current;
+      atBottomRef.current = distanceFromBottom <= 48;
+      if (atBottomRef.current && !wasAtBottom) {
+        markReadUpTo(
+          messagesRef.current[messagesRef.current.length - 1]?.created_at,
+        );
+      }
+    },
+    [markReadUpTo],
+  );
 
   /** Message lookup for reply quotes, so a reply shows what it answers. */
   const messagesById = useMemo(() => {
@@ -331,7 +407,10 @@ export default function ConversationDetail({
 
       setMessages(rows);
       setHasMore(rows.length >= MESSAGES_PAGE_SIZE);
-      void markConversationRead(conversationId);
+      // The thread opens at the end (except for a deep link, which is still
+      // the newest page around the target), so everything loaded is seen.
+      atBottomRef.current = true;
+      markReadUpTo(rows[rows.length - 1]?.created_at, true);
       await enrich(rows);
       setReadCursors(await fetchReadCursors(conversationId));
     } catch (err) {
@@ -339,7 +418,7 @@ export default function ConversationDetail({
     } finally {
       setLoading(false);
     }
-  }, [conversationId, enrich, focusMessageId]);
+  }, [conversationId, enrich, focusMessageId, markReadUpTo]);
 
   const loadOlder = useCallback(async () => {
     if (loadingOlder || !hasMore || messages.length === 0) return;
@@ -438,7 +517,9 @@ export default function ConversationDetail({
             ),
           );
         });
-        void markConversationRead(conversationId);
+        // If the user has scrolled back, leave the cursor alone so the unread
+        // badge and the sender's "delivered" state stay truthful.
+        markReadUpTo(incoming.created_at);
       },
       onUpdate: (updated) => {
         setMessages((current) =>
@@ -484,7 +565,7 @@ export default function ConversationDetail({
         void fetchReadCursors(conversationId).then(setReadCursors);
       },
     });
-  }, [conversationId]);
+  }, [conversationId, markReadUpTo]);
 
   // Branch creation and counter changes must refresh the pills, otherwise a
   // branch spun off in another client leaves a stale count here.
@@ -1419,6 +1500,10 @@ export default function ConversationDetail({
               listRef.current?.scrollToEnd({ animated: false });
             }
           }}
+          // Read receipts follow the viewport: scrolling back to the newest
+          // message is what marks it read, not merely receiving it.
+          onScroll={handleScroll}
+          scrollEventThrottle={100}
           // The list runs oldest -> newest, so older history lives at the TOP.
           // onEndReached fires at the bottom (newest) and could never reach it.
           onStartReached={() => void loadOlder()}

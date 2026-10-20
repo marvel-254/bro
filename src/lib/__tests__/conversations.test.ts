@@ -354,35 +354,49 @@ describe("conversations", () => {
   describe("markConversationRead", () => {
     it("does nothing when Supabase is null", async () => {
       mockedGetSupabase.mockReturnValue(null);
-      await expect(markConversationRead("conv-1")).resolves.toBeUndefined();
+      await expect(
+        markConversationRead("conv-1", "2026-10-20T10:00:00Z"),
+      ).resolves.toBeUndefined();
     });
 
-    it("does nothing when not signed in", async () => {
+    it("does nothing without a usable timestamp", async () => {
       const supabase = makeSupabase();
-      (supabase.auth.getUser as jest.Mock).mockResolvedValue({
-        data: { user: null },
+      mockedGetSupabase.mockReturnValue(supabase);
+      await markConversationRead("conv-1", "");
+      await markConversationRead("conv-1", "not-a-date");
+      expect(supabase.rpc).not.toHaveBeenCalled();
+    });
+
+    it("advances the cursor through the monotonic RPC", async () => {
+      // The cursor must be a server timestamp from the message, never the
+      // device clock: a phone running behind would otherwise never mark a
+      // newer message read.
+      const supabase = makeSupabase();
+      (supabase.rpc as jest.Mock).mockResolvedValue({
+        data: "2026-10-20T10:00:00Z",
         error: null,
       });
       mockedGetSupabase.mockReturnValue(supabase);
-      await expect(markConversationRead("conv-1")).resolves.toBeUndefined();
+
+      await markConversationRead("conv-1", "2026-10-20T10:00:00Z");
+
+      expect(supabase.rpc).toHaveBeenCalledWith("mark_conversation_read", {
+        p_conversation_id: "conv-1",
+        p_read_at: "2026-10-20T10:00:00Z",
+      });
     });
 
-    it("updates last_read_at when signed in", async () => {
-      const chain = createChain();
-      chain.eq.mockReturnValueOnce(chain).mockReturnValueOnce(RESOLVED(null));
+    it("swallows RPC failures so a receipt cannot break the thread", async () => {
       const supabase = makeSupabase();
-      (supabase.from as jest.Mock).mockReturnValue(chain);
-      (supabase.auth.getUser as jest.Mock).mockResolvedValue({
-        data: { user: { id: "user-1" } },
-        error: null,
+      (supabase.rpc as jest.Mock).mockResolvedValue({
+        data: null,
+        error: { message: "boom" },
       });
       mockedGetSupabase.mockReturnValue(supabase);
 
-      await markConversationRead("conv-1");
-      expect(chain.update).toHaveBeenCalledWith(
-        expect.objectContaining({ last_read_at: expect.any(String) }),
-      );
-      expect(chain.eq).toHaveBeenCalledTimes(2);
+      await expect(
+        markConversationRead("conv-1", "2026-10-20T10:00:00Z"),
+      ).resolves.toBeUndefined();
     });
   });
 

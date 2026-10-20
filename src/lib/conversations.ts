@@ -245,25 +245,32 @@ export async function sendMessage(
   return { ok: true, message: data as MessageRow };
 }
 
-/** Move the caller's read cursor forward for a conversation. */
+/**
+ * Move the caller's read cursor forward to a message's timestamp.
+ *
+ * `readAt` must be the `created_at` of the newest message actually read, not a
+ * device clock reading: a phone running behind would otherwise write a cursor
+ * earlier than the message and the sender would never see "seen". The RPC is
+ * monotonic and clamps to now(), so calling it out of order is safe.
+ *
+ * Failures are ignored: a read receipt must not break the thread.
+ */
 export async function markConversationRead(
   conversationId: string,
+  readAt: string,
 ): Promise<void> {
   const supabase = getSupabase();
-  if (!supabase) {
+  if (!supabase || !conversationId || !readAt) {
+    return;
+  }
+  if (Number.isNaN(Date.parse(readAt))) {
     return;
   }
 
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) {
-    return;
-  }
-
-  await supabase
-    .from("conversation_members")
-    .update({ last_read_at: new Date().toISOString() })
-    .eq("conversation_id", conversationId)
-    .eq("user_id", userData.user.id);
+  await supabase.rpc("mark_conversation_read", {
+    p_conversation_id: conversationId,
+    p_read_at: readAt,
+  });
 }
 
 export interface ConversationPreview {
