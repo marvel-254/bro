@@ -14,6 +14,7 @@ import {
   signedChatUrl,
   sendImageMessage,
   sendStoredImage,
+  sendSharedImageMessage,
 } from "../media";
 import { getSupabase } from "../supabase";
 import { fetchMessageIdByClientId, sendMessage } from "../conversations";
@@ -759,5 +760,98 @@ describe("sendImageMessage", () => {
       "",
       expect.objectContaining({ clientId: "local-1" }),
     );
+  });
+});
+
+describe("sendSharedImageMessage", () => {
+  function chainForAttachment() {
+    const chain = createChain();
+    chain.select.mockReturnValue(chain);
+    chain.single.mockResolvedValue({ data: { id: "att-1" }, error: null });
+    const linkSelect = jest
+      .fn()
+      .mockResolvedValue({ data: [{ id: "att-1" }], error: null });
+    chain.update.mockReturnValue({ eq: jest.fn().mockReturnValue({ select: linkSelect }) });
+    chain.insert.mockReturnValue(chain);
+    return chain;
+  }
+
+  it("rejects types outside the supported image set before uploading", async () => {
+    const { supabase, storage } = makeSupabase();
+    mockedGetSupabase.mockReturnValue(supabase);
+
+    const result = await sendSharedImageMessage(
+      "c1",
+      "file:///clip.mp4",
+      "video/mp4",
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      error: "That attachment type is not supported.",
+      stage: "pick",
+    });
+    expect(storage.upload).not.toHaveBeenCalled();
+  });
+
+  it("rejects files over the 10MB bucket limit", async () => {
+    const { supabase, storage } = makeSupabase();
+    mockedGetSupabase.mockReturnValue(supabase);
+    mockedInfo.mockResolvedValue({ exists: true, size: MAX_IMAGE_BYTES + 1 });
+
+    const result = await sendSharedImageMessage(
+      "c1",
+      "file:///big.png",
+      "image/png",
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      error: "That attachment is over 10MB.",
+      stage: "upload",
+    });
+    expect(storage.upload).not.toHaveBeenCalled();
+  });
+
+  it("keeps GIF bytes and MIME type instead of recompressing to JPEG", async () => {
+    const chain = chainForAttachment();
+    const { supabase, storage } = makeSupabase({ attachments: chain });
+    mockedGetSupabase.mockReturnValue(supabase);
+    mockedInfo.mockResolvedValue({ exists: true, size: 2048 });
+    mockedRead.mockResolvedValue(Buffer.from([1, 2, 3]).toString("base64"));
+    storage.upload.mockResolvedValue({ data: { path: "x" }, error: null });
+    mockedSendMessage.mockResolvedValue({
+      ok: true,
+      message: { id: "m1", content: "", type: "image" } as never,
+    });
+
+    const result = await sendSharedImageMessage(
+      "c1",
+      "file:///keyboard.gif",
+      "image/gif",
+      "look",
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      messageId: "m1",
+      attachmentId: "att-1",
+    });
+    expect(storage.upload).toHaveBeenCalledWith(
+      expect.stringMatching(/^c1\/self-.*-shared\.gif$/),
+      expect.any(Uint8Array),
+      { contentType: "image/gif", upsert: false },
+    );
+    expect(chain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mime_type: "image/gif",
+        thumb_path: null,
+        kind: "image",
+      }),
+    );
+    expect(mockedSendMessage).toHaveBeenCalledWith("c1", "look", {
+      messageType: "image",
+      clientId: undefined,
+    });
   });
 });

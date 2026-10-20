@@ -1,0 +1,7 @@
+{
+  "name": "bro-ime",
+  "version": "1.0.0",
+  "description": "Receives image content committed by Android keyboards (GIF/sticker/picture).",
+  "main": "index.ts",
+  "private": true
+}

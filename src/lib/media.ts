@@ -619,6 +619,150 @@ export async function sendStoredImage(
   return { ok: true, messageId: sent.message.id, attachmentId };
 }
 
+
+/** Image types a keyboard/share source may hand us. */
+export const SHARED_IMAGE_MIMES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+] as const;
+
+const SHARED_EXTENSIONS: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+};
+
+function sharedStorageName(
+  conversationId: string,
+  senderId: string,
+  extension: string,
+): string {
+  return `${conversationId}/${senderId}-${Date.now()}-shared.${extension}`;
+}
+
+/**
+ * Send an image that arrived from outside the picker (Android keyboard rich
+ * content or a share target).
+ *
+ * Unlike `sendImageMessage` this keeps the original bytes and MIME type, so a
+ * GIF stays animated and a WebP stays a WebP. The content URI has already
+ * been copied to the app cache by the native receiver, which is why uploading
+ * from a local `file://` URI is safe here.
+ */
+export async function sendSharedImageMessage(
+  conversationId: string,
+  localUri: string,
+  mimeType: string,
+  caption = "",
+  clientId?: string,
+): Promise<SendImageResult> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return { ok: false, error: "Backend not configured", stage: "pick" };
+  }
+
+  const mime = mimeType.toLowerCase();
+  const extension = SHARED_EXTENSIONS[mime];
+  if (!extension) {
+    return {
+      ok: false,
+      error: "That attachment type is not supported.",
+      stage: "pick",
+    };
+  }
+
+  const selfId = await currentUserId();
+  if (!selfId) {
+    return { ok: false, error: "Not signed in", stage: "upload" };
+  }
+
+  const info = await FileSystem.getInfoAsync(localUri);
+  if (!info.exists) {
+    return {
+      ok: false,
+      error: "That attachment is gone. Try again.",
+      stage: "pick",
+    };
+  }
+  if ((info.size ?? 0) > MAX_IMAGE_BYTES) {
+    return {
+      ok: false,
+      error: "That attachment is over 10MB.",
+      stage: "upload",
+    };
+  }
+
+  let path: string;
+  let byteCount: number;
+  try {
+    const base64 = await FileSystem.readAsStringAsync(localUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    const bytes = base64ToBytes(base64);
+    path = sharedStorageName(conversationId, selfId, extension);
+    const { error } = await supabase.storage
+      .from("chat-media")
+      .upload(path, bytes, { contentType: mime, upsert: false });
+    if (error) throw new Error(error.message);
+    byteCount = bytes.length;
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Upload failed",
+      stage: "upload",
+    };
+  }
+
+  let attachmentId: string;
+  try {
+    attachmentId = await insertAttachment({
+      storagePath: path,
+      thumbPath: null,
+      mime,
+      bytes: byteCount,
+      messageId: null,
+      kind: "image",
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Could not save the image",
+      stage: "upload",
+    };
+  }
+
+  const sent = await sendMessage(conversationId, caption, {
+    messageType: "image",
+    clientId,
+  });
+  if (!sent.ok) {
+    return { ok: false, error: sent.error, stage: "send" };
+  }
+
+  try {
+    const { data: linked, error } = await supabase
+      .from("attachments")
+      .update({ message_id: sent.message.id })
+      .eq("id", attachmentId)
+      .select("id");
+    if (error) throw new Error(error.message);
+    if (!linked || linked.length === 0) {
+      throw new Error("Could not link the image");
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Could not link the image",
+      stage: "link",
+    };
+  }
+
+  return { ok: true, messageId: sent.message.id, attachmentId };
+}
+
 /**
  * Uploads and sends a voice note from a local file.
  *

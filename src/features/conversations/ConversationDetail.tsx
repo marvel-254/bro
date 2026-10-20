@@ -23,6 +23,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { useReducedMotion } from "../../hooks/useReducedMotion";
+import {
+  enableKeyboardRichContent,
+  onKeyboardRichContent,
+} from "../../../modules/bro-ime";
 import { Ionicons } from "@expo/vector-icons";
 import {
   COLORS,
@@ -91,6 +95,7 @@ import {
   fetchMessageAttachments,
   fetchMessageAttachmentWithRetry,
   sendImageMessage,
+  sendSharedImageMessage,
   sendStoredImage,
   sendStoredVoice,
   signedChatUrl,
@@ -306,6 +311,12 @@ export default function ConversationDetail({
   >(null);
   const [requestedBy, setRequestedBy] = useState<string | null>(null);
   const [requestBusy, setRequestBusy] = useState(false);
+  /** A GIF/sticker/image handed over by the Android keyboard. */
+  const [keyboardImage, setKeyboardImage] = useState<{
+    uri: string;
+    mimeType: string;
+  } | null>(null);
+  const [sendingKeyboardImage, setSendingKeyboardImage] = useState(false);
   const [sendingImage, setSendingImage] = useState(false);
   /** When armed, the next photo is flagged view-once instead of permanent. */
   const [viewOnce, setViewOnce] = useState(false);
@@ -387,6 +398,32 @@ export default function ConversationDetail({
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  // Android keyboards commit rich content through the native module. The
+  // module has already copied the transient content:// URI into the cache, so
+  // this handler only previews and sends a stable local file.
+  useEffect(() => {
+    const subscription = onKeyboardRichContent((payload) => {
+      if (payload.error) {
+        Alert.alert("Keyboard attachment", payload.error);
+        return;
+      }
+      if (!payload.uri || !payload.mimeType) return;
+      if (conversationStatus !== "accepted") {
+        Alert.alert(
+          "Attachment not sent",
+          "Message requests can only contain text until they are accepted.",
+        );
+        return;
+      }
+      setKeyboardImage({ uri: payload.uri, mimeType: payload.mimeType });
+    });
+    return () => subscription?.remove();
+  }, [conversationStatus]);
+
+  useEffect(() => {
+    if (conversationStatus !== "accepted") setKeyboardImage(null);
+  }, [conversationStatus]);
 
   useEffect(() => {
     hasNewerRef.current = hasNewer;
@@ -1345,6 +1382,50 @@ export default function ConversationDetail({
   };
 
   /**
+   * Send the image the keyboard handed us. It bypasses the picker/compressor
+   * on purpose: GIF and WebP must keep their original bytes and MIME type.
+   */
+  const sendKeyboardImage = useCallback(async () => {
+    if (!keyboardImage || sendingKeyboardImage) return;
+    if (conversationStatus !== "accepted") return;
+    setSendingKeyboardImage(true);
+    const caption = draft.trim();
+    const result = await sendSharedImageMessage(
+      conversationId,
+      keyboardImage.uri,
+      keyboardImage.mimeType,
+      caption,
+    );
+    setSendingKeyboardImage(false);
+
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+
+    setKeyboardImage(null);
+    setDraft("");
+    const [message, attachmentRows] = await Promise.all([
+      fetchMessageById(result.messageId),
+      fetchMessageAttachments([result.messageId]),
+    ]);
+    if (message) {
+      setMessages((current) =>
+        current.some((row) => row.id === message.id)
+          ? current
+          : [...current, message],
+      );
+    }
+    setAttachments((current) => ({ ...current, ...attachmentRows }));
+  }, [
+    conversationId,
+    conversationStatus,
+    draft,
+    keyboardImage,
+    sendingKeyboardImage,
+  ]);
+
+  /**
    * Send a photo with the composer text as the caption. Cancellation is silent
    * (the user changed their mind); every other failure names its stage so the
    * error says what actually went wrong.
@@ -1908,6 +1989,51 @@ export default function ConversationDetail({
         </View>
       ) : null}
 
+      {keyboardImage ? (
+        <View style={styles.keyboardPreview}>
+          <Image
+            source={{ uri: keyboardImage.uri }}
+            style={styles.keyboardPreviewImage}
+            resizeMode="cover"
+            accessibilityLabel="Keyboard attachment preview"
+          />
+          <View style={styles.keyboardPreviewBody}>
+            <Text style={styles.keyboardPreviewTitle} numberOfLines={1}>
+              {keyboardImage.mimeType === "image/gif" ? "GIF" : "Image"} from keyboard
+            </Text>
+            <Text style={styles.keyboardPreviewHint} numberOfLines={1}>
+              {draft.trim() ? "Will send with your caption" : "Ready to send"}
+            </Text>
+          </View>
+          <Pressable
+            style={styles.keyboardPreviewAction}
+            onPress={() => setKeyboardImage(null)}
+            disabled={sendingKeyboardImage}
+            accessibilityRole="button"
+            accessibilityLabel="Discard keyboard attachment"
+          >
+            <Ionicons
+              name="close"
+              size={20}
+              color={SEMANTIC_COLORS.textSecondary}
+            />
+          </Pressable>
+          <Pressable
+            style={[styles.keyboardPreviewSend, sendingKeyboardImage && styles.btnBusy]}
+            onPress={() => void sendKeyboardImage()}
+            disabled={sendingKeyboardImage}
+            accessibilityRole="button"
+            accessibilityLabel="Send keyboard attachment"
+          >
+            {sendingKeyboardImage ? (
+              <ActivityIndicator size="small" color={COLORS.onPrimary} />
+            ) : (
+              <Ionicons name="send" size={18} color={COLORS.onPrimary} />
+            )}
+          </Pressable>
+        </View>
+      ) : null}
+
       {canCompose ? (
         <View
           style={[
@@ -2018,6 +2144,7 @@ export default function ConversationDetail({
           placeholderTextColor={SEMANTIC_COLORS.textDim}
           value={draft}
           onChangeText={onDraftChange}
+          onFocus={enableKeyboardRichContent}
           multiline
           accessibilityLabel="Message input"
         />
@@ -2450,6 +2577,47 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.spaceMd,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: SEMANTIC_COLORS.ghostBorderLight,
+  },
+  keyboardPreview: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.spaceMd,
+    paddingHorizontal: SPACING.gutter,
+    paddingVertical: SPACING.spaceSm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: SEMANTIC_COLORS.ghostBorderLight,
+    backgroundColor: SEMANTIC_COLORS.surfaceLevel1,
+  },
+  keyboardPreviewImage: {
+    width: 48,
+    height: 48,
+    borderRadius: RADIUS.sm,
+    backgroundColor: SEMANTIC_COLORS.surfaceLevel2,
+  },
+  keyboardPreviewBody: {
+    flex: 1,
+  },
+  keyboardPreviewTitle: {
+    ...TYPOGRAPHY.labelMD,
+    color: SEMANTIC_COLORS.textPrimary,
+  },
+  keyboardPreviewHint: {
+    ...TYPOGRAPHY.labelSM,
+    color: SEMANTIC_COLORS.textSecondary,
+  },
+  keyboardPreviewAction: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  keyboardPreviewSend: {
+    minWidth: 44,
+    minHeight: 44,
+    borderRadius: RADIUS.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.primaryContainer,
   },
   requestBar: {
     flexDirection: "row",
