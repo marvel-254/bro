@@ -114,12 +114,20 @@ jobs:
             echo "No APKs found to upload"
             exit 1
           fi
+          arm64_url=""
+          armeabi_url=""
           for apk in "${apks[@]}"; do
             name=$(basename "$apk")
             echo "Uploading $name"
-            node scripts/upload-apk-blob.mjs "$apk"
+            url=$(node scripts/upload-apk-blob.mjs "$apk")
+            echo "  $url"
             if [ "$name" = "app-arm64-v8a-release.apk" ]; then
               echo "Publishing $name as the stable apk/app-release.apk"
               node scripts/upload-apk-blob.mjs "$apk" "apk/app-release.apk"
+              arm64_url="$url"
+            elif [ "$name" = "app-armeabi-v7a-release.apk" ]; then
+              armeabi_url="$url"
             fi
           done
+          # Keep the download page's pointer current on tagged releases too.
+          node scripts/publish-apk-manifest.mjs "$arm64_url" "$armeabi_url"

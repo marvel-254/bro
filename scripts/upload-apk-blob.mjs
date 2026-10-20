@@ -41,6 +41,12 @@ try {
     allowOverwrite: true,
     addRandomSuffix: false,
     contentType: 'application/vnd.android.package-archive',
+    // These pathnames are overwritten on every release. The Blob default is a
+    // 30-day `max-age`, which would let browsers and the CDN keep handing out
+    // the previous APK for a month after an overwrite. A short TTL keeps the
+    // download page's stable link honest; the page adds a `?v=` cache-buster
+    // from apk/latest.json for browsers that already hold an old copy.
+    cacheControlMaxAge: 60,
   });
   console.log(`${pathname} -> ${blob.url}`);
   if (process.env.GITHUB_ENV) {

@@ -69,9 +69,9 @@ code{font-family:var(--mono);font-size:12px;color:var(--cyan);background:rgba(0,
     <div class="dots" style="justify-content:center" aria-hidden="true"><i></i><i></i><i></i></div>
     <h2 class="display">Latest build</h2>
     <p><span class="pulse-dot"></span>&nbsp; Continuous — rebuilt on every release, hosted for instant download.</p>
-    <a href="https://x3zj3ht2vzg6otli.public.blob.vercel-storage.com/apk/app-release.apk" class="btn btn-magenta"><span>⬇ Download APK</span></a>
+    <a data-download="arm64" href="https://x3zj3ht2vzg6otli.public.blob.vercel-storage.com/apk/app-release.apk" class="btn btn-magenta"><span>⬇ Download APK</span></a>
     <p class="meta build-line">Release build with the app bundled inside — no dev server needed. Android 7+ · 64-bit · ~39 MB <span class="cursor"></span></p>
-    <p class="meta" style="margin-top:8px">On an older 32-bit phone? <a href="https://x3zj3ht2vzg6otli.public.blob.vercel-storage.com/apk/app-armeabi-v7a-release.apk">Get the 32-bit build (~30 MB)</a>.</p>
+    <p class="meta" style="margin-top:8px">On an older 32-bit phone? <a data-download="armeabi" href="https://x3zj3ht2vzg6otli.public.blob.vercel-storage.com/apk/app-armeabi-v7a-release.apk">Get the 32-bit build (~30 MB)</a>.</p>
   </div>
 </section>
 
@@ -104,6 +104,28 @@ code{font-family:var(--mono);font-size:12px;color:var(--cyan);background:rgba(0,
   Built for BRO · <a href="/PRIVACY.md">Privacy</a> · <a href="/TERMS.md">Terms</a>
 </footer>
 
+<script>
+// APK pathnames are stable and get overwritten each release, so a page cached
+// on a phone (or served from an older deploy) can point at an old build. Ask
+// the blob which build is current and append its timestamp: that discovers the
+// newest APK and busts any cached old copy. If the fetch fails the static hrefs
+// above still work.
+(function () {
+  var MANIFEST = "https://x3zj3ht2vzg6otli.public.blob.vercel-storage.com/apk/latest.json";
+  fetch(MANIFEST, { cache: "no-store" })
+    .then(function (res) { return res.ok ? res.json() : null; })
+    .then(function (m) {
+      if (!m || !m.builtAt) return;
+      var v = "?v=" + encodeURIComponent(m.builtAt);
+      var pairs = [["arm64", m.arm64], ["armeabi", m.armeabi]];
+      for (var i = 0; i < pairs.length; i++) {
+        var el = document.querySelector('[data-download="' + pairs[i][0] + '"]');
+        if (el && pairs[i][1]) el.href = pairs[i][1] + v;
+      }
+    })
+    .catch(function () {});
+})();
+</script>
 <script>
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {

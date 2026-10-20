@@ -201,10 +201,13 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
+          arm64_url=""
+          armeabi_url=""
           for apk in android/app/build/outputs/apk/release/*.apk; do
             name=$(basename "$apk")
             echo "Uploading $name"
-            node scripts/upload-apk-blob.mjs "$apk"
+            url=$(node scripts/upload-apk-blob.mjs "$apk")
+            echo "  $url"
 
             # The site's primary button uses this stable alias. ABI splits mean
             # no app-release.apk is produced any more, so without re-uploading
@@ -214,5 +217,12 @@ jobs:
             if [ "$name" = "app-arm64-v8a-release.apk" ]; then
               echo "Publishing $name as the stable apk/app-release.apk"
               node scripts/upload-apk-blob.mjs "$apk" "apk/app-release.apk"
+              arm64_url="$url"
+            elif [ "$name" = "app-armeabi-v7a-release.apk" ]; then
+              armeabi_url="$url"
             fi
           done
+
+          # The download page reads this pointer, so even a cached HTML page
+          # resolves to the build just uploaded instead of an old one.
+          node scripts/publish-apk-manifest.mjs "$arm64_url" "$armeabi_url"
