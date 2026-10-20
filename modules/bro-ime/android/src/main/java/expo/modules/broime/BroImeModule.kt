@@ -6,10 +6,10 @@ import android.view.View
 import android.webkit.MimeTypeMap
 import androidx.core.view.OnReceiveContentListener
 import androidx.core.view.ViewCompat
-import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.io.File
+import kotlinx.coroutines.launch
 
 /**
  * Receives image content committed by an Android IME (Gboard, Samsung
@@ -38,12 +38,17 @@ class BroImeModule : Module() {
     Events("onRichContent")
 
     Function("enableRichContent") {
-      val activity = appContext.currentActivity ?: return@Function
-      val focused = activity.window?.decorView?.findFocus()
-      if (focused is android.widget.TextView) {
-        attachListener(activity, focused)
+      val activity = appContext.currentActivity
+      if (activity != null) {
+        appContext.mainQueue.launch {
+          val focused = activity.window?.decorView?.findFocus()
+          if (focused is android.widget.TextView) {
+            attachListener(activity, focused)
+          }
+        }
       }
-    }.runOnQueue(Queues.MAIN)
+      Unit
+    }
   }
 
   private fun attachListener(activity: android.app.Activity, view: View) {
