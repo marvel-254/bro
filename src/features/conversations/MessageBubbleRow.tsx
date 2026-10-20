@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
   Image,
   Pressable,
   StyleSheet,
@@ -25,6 +26,7 @@ import type {
   MessageWithSender,
 } from "../../lib/database.types";
 import VoiceMessage from "./VoiceMessage";
+import { useReducedMotion } from "../../hooks/useReducedMotion";
 
 /**
  * Message status indicator — shows sent/delivered/read/failed state.
@@ -299,6 +301,12 @@ export interface MessageBubbleRowProps {
   theirsColor: string | null;
   /** Newest read cursor among other members, in epoch ms. */
   peerReadAt: number | null;
+  /**
+   * Transient reaction animation. The parent only sets this for the message
+   * the local user just reacted to, so opening history or receiving someone
+   * else's reaction never replays effects.
+   */
+  burst?: { emoji: string; token: number } | null;
   onRetry: (item: MessageWithSender) => void;
   onLongPress: (item: MessageWithSender) => void;
   onReact: (messageId: string, emoji: string) => void;
@@ -324,6 +332,7 @@ function MessageBubbleRowImpl({
   mineColor,
   theirsColor,
   peerReadAt,
+  burst,
   onRetry,
   onLongPress,
   onReact,
@@ -332,6 +341,31 @@ function MessageBubbleRowImpl({
 }: MessageBubbleRowProps) {
   const messageReactions = reactions.length > 0 ? reactions : EMPTY_REACTIONS;
   const isDeleted = item.deleted_for_everyone;
+
+  const reducedMotion = useReducedMotion();
+  const burstProgress = useRef(new Animated.Value(0)).current;
+  const [burstVisible, setBurstVisible] = useState(false);
+
+  useEffect(() => {
+    if (!burst) return;
+    if (reducedMotion) {
+      // Still acknowledge the reaction briefly, just without movement.
+      setBurstVisible(true);
+      const timeout = setTimeout(() => setBurstVisible(false), 450);
+      return () => clearTimeout(timeout);
+    }
+    setBurstVisible(true);
+    burstProgress.setValue(0);
+    const animation = Animated.timing(burstProgress, {
+      toValue: 1,
+      duration: 620,
+      useNativeDriver: true,
+    });
+    animation.start(({ finished }) => {
+      if (finished) setBurstVisible(false);
+    });
+    return () => animation.stop();
+  }, [burst, burstProgress, reducedMotion]);
 
   // A chosen bubble colour overrides the theme default, and every text
   // inside the bubble switches to the contrast-safe pairing for it.
@@ -378,6 +412,39 @@ function MessageBubbleRowImpl({
       onLongPress={() => onLongPress(item)}
       delayLongPress={350}
     >
+      {burstVisible && burst ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.burst,
+            isMine ? styles.burstMine : styles.burstTheirs,
+            reducedMotion
+              ? styles.burstReduced
+              : {
+                  opacity: burstProgress.interpolate({
+                    inputRange: [0, 0.15, 0.7, 1],
+                    outputRange: [0, 1, 1, 0],
+                  }),
+                  transform: [
+                    {
+                      translateY: burstProgress.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [6, -22],
+                      }),
+                    },
+                    {
+                      scale: burstProgress.interpolate({
+                        inputRange: [0, 0.25, 1],
+                        outputRange: [0.6, 1.15, 0.95],
+                      }),
+                    },
+                  ],
+                },
+          ]}
+        >
+          <Text style={styles.burstEmoji}>{burst.emoji}</Text>
+        </Animated.View>
+      ) : null}
       <View
         style={[
           styles.bubble,
@@ -597,6 +664,23 @@ const styles = StyleSheet.create({
   // instead of two chevrons with a gap.
   checkOverlap: {
     marginLeft: -6,
+  },
+  burst: {
+    position: "absolute",
+    top: -10,
+    zIndex: 2,
+  },
+  burstMine: {
+    right: 12,
+  },
+  burstTheirs: {
+    left: 12,
+  },
+  burstReduced: {
+    opacity: 0.9,
+  },
+  burstEmoji: {
+    fontSize: 28,
   },
   reactionRow: {
     flexDirection: "row",

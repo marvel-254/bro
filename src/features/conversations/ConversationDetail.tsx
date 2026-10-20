@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   Alert,
+  Animated,
   AppState,
+  Easing,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -19,6 +22,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
+import { useReducedMotion } from "../../hooks/useReducedMotion";
 import { Ionicons } from "@expo/vector-icons";
 import {
   COLORS,
@@ -127,6 +131,61 @@ interface Props {
   focusMessageId?: string;
 }
 
+
+/**
+ * Three-dot typing animation for the direct-chat header.
+ *
+ * The dots are decoration only: the adjacent "Typing…" label is the state a
+ * screen reader announces, and reduced-motion users see the label without the
+ * loop. The component unmounts with the typing state, so no animation keeps
+ * running in the background.
+ */
+function TypingDots() {
+  const reduced = useReducedMotion();
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (reduced) return;
+    const loop = Animated.loop(
+      Animated.timing(pulse, {
+        toValue: 1,
+        duration: 900,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse, reduced]);
+
+  return (
+    <View style={styles.typingRow} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <Text style={styles.presenceText}>Typing</Text>
+      {[0, 1, 2].map((index) => (
+        <Animated.View
+          key={index}
+          style={[
+            styles.typingDot,
+            reduced
+              ? null
+              : {
+                  opacity: pulse.interpolate({
+                    inputRange: [0, 0.25, 0.5, 1],
+                    outputRange:
+                      index === 0
+                        ? [0.3, 1, 0.3, 0.3]
+                        : index === 1
+                          ? [0.3, 0.3, 1, 0.3]
+                          : [0.3, 0.3, 0.3, 1],
+                  }),
+                },
+          ]}
+        />
+      ))}
+    </View>
+  );
+}
+
 /** The quick-reaction set offered from the message action sheet. */
 const REACTION_EMOJIS = ["👍", "❤️", "😂", "🔥", "😮", "😢", "🎉", "🙏"];
 
@@ -210,6 +269,12 @@ export default function ConversationDetail({
   const [olderError, setOlderError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reactionBurst, setReactionBurst] = useState<{
+    messageId: string;
+    emoji: string;
+    token: number;
+  } | null>(null);
+  const reactionBurstToken = useRef(0);
   const [reactions, setReactions] = useState<
     Record<string, MessageReactionRow[]>
   >({});
@@ -1219,6 +1284,17 @@ export default function ConversationDetail({
         (reaction) => reaction.user_id === selfId && reaction.emoji === emoji,
       );
 
+      // Only a reaction the local user adds animates. Removing one and
+      // incoming reactions update the persistent chip without a burst.
+      if (!mine) {
+        reactionBurstToken.current += 1;
+        setReactionBurst({
+          messageId,
+          emoji,
+          token: reactionBurstToken.current,
+        });
+      }
+
       setReactions((current) => {
         const list = current[messageId] ?? [];
         if (mine) {
@@ -1580,6 +1656,9 @@ export default function ConversationDetail({
           mineColor={appearance.mineColor}
           theirsColor={appearance.theirsColor}
           peerReadAt={peerReadAt}
+          burst={
+            reactionBurst?.messageId === item.id ? reactionBurst : null
+          }
           onRetry={retryMessage}
           onLongPress={setActionTarget}
           onReact={onReact}
@@ -1600,6 +1679,7 @@ export default function ConversationDetail({
       gifs,
       messagesById,
       peerReadAt,
+      reactionBurst,
       openViewer,
       appearance.bubbleTheme,
       appearance.mineColor,
@@ -1608,6 +1688,20 @@ export default function ConversationDetail({
       onReact,
     ],
   );
+
+  // Hooks must run before the configuration early return. This flag mirrors
+  // the header state: direct chat, accepted, at least one active typist.
+  const directTypingActive =
+    peerId != null &&
+    conversationStatus === "accepted" &&
+    typists.size > 0;
+  const wasDirectTyping = useRef(false);
+  useEffect(() => {
+    if (directTypingActive && !wasDirectTyping.current) {
+      AccessibilityInfo.announceForAccessibility("Typing");
+    }
+    wasDirectTyping.current = directTypingActive;
+  }, [directTypingActive]);
 
   if (!isSupabaseConfigured) {
     return (
@@ -1625,6 +1719,8 @@ export default function ConversationDetail({
     typists.size > 0
       ? `${[...typists.values()].join(", ")} ${typists.size > 1 ? "are" : "is"} typing…`
       : null;
+  const isDirectChat = peerId != null;
+  const directTyping = directTypingActive;
 
   const isRequestOutgoing =
     conversationStatus === "requested" && requestedBy === selfId;
@@ -1663,7 +1759,9 @@ export default function ConversationDetail({
           <Text style={styles.headerTitle} numberOfLines={1}>
             {resolvedTitle ?? title ?? "Conversation"}
           </Text>
-          {peerOnline && conversationStatus === "accepted" ? (
+          {directTyping ? (
+            <TypingDots />
+          ) : peerOnline && conversationStatus === "accepted" ? (
             <View style={styles.presenceRow}>
               <View style={styles.presenceDot} />
               <Text style={styles.presenceText}>Online</Text>
@@ -1778,7 +1876,9 @@ export default function ConversationDetail({
         />
       )}
 
-      {typistText ? <Text style={styles.typingText}>{typistText}</Text> : null}
+      {typistText && !isDirectChat ? (
+        <Text style={styles.typingText}>{typistText}</Text>
+      ) : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       {replyingTo ? (
@@ -2168,6 +2268,18 @@ const styles = StyleSheet.create({
   presenceText: {
     ...TYPOGRAPHY.labelSM,
     color: SEMANTIC_COLORS.textDim,
+  },
+  typingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    marginTop: 1,
+  },
+  typingDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: SEMANTIC_COLORS.textSecondary,
   },
   callButtons: {
     flexDirection: "row",
