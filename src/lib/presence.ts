@@ -69,7 +69,9 @@ export function watchPresence(
   conversationId: string,
   selfId: string,
   onChange: (present: Map<string, PresencePayload>) => void,
+  options: { broadcast?: boolean } = {},
 ): () => void {
+  const broadcastSelf = options.broadcast !== false;
   const supabase = supabaseOrNull();
   if (!supabase) {
     return () => {};
@@ -97,7 +99,7 @@ export function watchPresence(
     .on("presence", { event: "join" }, () => emit())
     .on("presence", { event: "leave" }, () => emit())
     .subscribe(async (status) => {
-      if (status === "SUBSCRIBED") {
+      if (status === "SUBSCRIBED" && broadcastSelf) {
         await channel.track({
           userId: selfId,
           presence: "online",
@@ -140,14 +142,38 @@ export async function persistPresence(
     return;
   }
 
-  await supabase
+  // Presence and last-seen are both opt-in. Read the switches at write time so
+  // a change on another device takes effect without a restart. Hiding presence
+  // also clears the activity line: it is presence by another name.
+  const { data: privacy } = await supabase
     .from("profiles")
-    .update({
-      presence,
-      presence_text: statusText ?? null,
-      presence_emoji: emoji ?? null,
-    })
-    .eq("id", userData.user.id);
+    .select("share_presence, share_last_active")
+    .eq("id", userData.user.id)
+    .maybeSingle();
+
+  const sharePresence =
+    (privacy as { share_presence?: boolean } | null)?.share_presence ?? true;
+  const shareLastActive =
+    (privacy as { share_last_active?: boolean } | null)?.share_last_active ??
+    false;
+
+  const update: Record<string, unknown> = sharePresence
+    ? {
+        presence,
+        presence_text: statusText ?? null,
+        presence_emoji: emoji ?? null,
+      }
+    : {
+        presence: "offline",
+        presence_text: null,
+        presence_emoji: null,
+      };
+
+  if (shareLastActive) {
+    update.last_seen_at = new Date().toISOString();
+  }
+
+  await supabase.from("profiles").update(update).eq("id", userData.user.id);
 }
 
 /**

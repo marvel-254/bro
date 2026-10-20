@@ -52,6 +52,7 @@ const PROFILE_ROW = {
   presence: "online",
   last_seen_at: "2026-10-20T10:00:00Z",
   is_verified: true,
+  share_last_active: false,
 };
 
 beforeEach(() => {
@@ -108,7 +109,10 @@ describe("fetchProfileView", () => {
 
   it("combines the profile with the relationship and counts", async () => {
     const profiles = createChain();
-    profiles.maybeSingle.mockResolvedValue({ data: PROFILE_ROW, error: null });
+    profiles.maybeSingle.mockResolvedValue({
+      data: { ...PROFILE_ROW, share_last_active: true },
+      error: null,
+    });
     const follows = createChain();
     follows.maybeSingle.mockResolvedValue({
       data: { followee_id: "peer-1" },
@@ -136,6 +140,17 @@ describe("fetchProfileView", () => {
     expect(view?.isSelf).toBe(false);
     expect(view?.followerCount).toBe(12);
     expect(view?.followingCount).toBe(3);
+    expect(view?.lastActiveAt).toBe("2026-10-20T10:00:00Z");
+  });
+
+  it("hides last-active unless the person shares it", async () => {
+    const profiles = createChain();
+    profiles.maybeSingle.mockResolvedValue({ data: PROFILE_ROW, error: null });
+    mockedGetSupabase.mockReturnValue(makeSupabase({ profiles }));
+
+    const view = await fetchProfileView("peer-1");
+    expect(view?.lastActiveAt).toBeNull();
+    expect(view?.profile.lastSeenAt).toBe("2026-10-20T10:00:00Z");
   });
 
   it("marks the signed-in user's own profile", async () => {

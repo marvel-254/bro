@@ -29,6 +29,7 @@ import { followUser, unfollowUser } from "../../lib/follows";
 import { blockUser, unblockUser } from "../../lib/blocks";
 import { createDirectConversation } from "../../lib/conversations";
 import { PRESENCE_LABELS } from "../../lib/presence";
+import { formatRelativeTime } from "../../lib/utils";
 
 /**
  * Someone else's profile, reached from a direct-chat header or People.
@@ -287,6 +288,10 @@ export default function ProfileScreen({ userId }: { userId: string }) {
             <Text style={styles.presence} numberOfLines={1}>
               {presence}
             </Text>
+          ) : view.lastActiveAt ? (
+            <Text style={styles.lastActive} numberOfLines={1}>
+              Last active {formatRelativeTime(view.lastActiveAt)}
+            </Text>
           ) : null}
         </View>
       </View>
@@ -435,6 +440,10 @@ const styles = StyleSheet.create({
   presence: {
     ...TYPOGRAPHY.labelMD,
     color: COLORS.tertiaryContainer,
+  },
+  lastActive: {
+    ...TYPOGRAPHY.labelMD,
+    color: COLORS.onSurfaceVariant,
   },
   blockedBanner: {
     flexDirection: "row",

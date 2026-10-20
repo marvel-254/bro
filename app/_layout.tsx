@@ -9,6 +9,7 @@ import { ActivityBadgeProvider } from '../src/lib/activity-badge-context';
 import { CallProvider } from '../src/lib/call-context';
 import IncomingCallOverlay from '../src/features/calls/IncomingCallOverlay';
 import { InviteProvider } from '../src/lib/invite-context';
+import { PrivacyProvider } from '../src/lib/privacy-context';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import ErrorBoundary from '../src/components/feedback/ErrorBoundary';
@@ -16,16 +17,18 @@ import ErrorBoundary from '../src/components/feedback/ErrorBoundary';
 function AppProviders({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   return (
-    <PresenceProvider user={user}>
-      <PeopleProvider userId={user?.id ?? null}>
-        <ActivityBadgeProvider userId={user?.id ?? null}>
-          <CallProvider userId={user?.id ?? null}>
-            {children}
-            <IncomingCallOverlay />
-          </CallProvider>
-        </ActivityBadgeProvider>
-      </PeopleProvider>
-    </PresenceProvider>
+    <PrivacyProvider userId={user?.id ?? null}>
+      <PresenceProvider user={user}>
+        <PeopleProvider userId={user?.id ?? null}>
+          <ActivityBadgeProvider userId={user?.id ?? null}>
+            <CallProvider userId={user?.id ?? null}>
+              {children}
+              <IncomingCallOverlay />
+            </CallProvider>
+          </ActivityBadgeProvider>
+        </PeopleProvider>
+      </PresenceProvider>
+    </PrivacyProvider>
   );
 }
 

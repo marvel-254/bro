@@ -474,6 +474,24 @@ export default function YouScreen() {
           </View>
           <Ionicons name="chevron-forward" size={18} color={COLORS.outline} />
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.quickRow}
+          onPress={() => router.push("/settings/privacy")}
+          accessibilityRole="button"
+          accessibilityLabel="Open privacy settings"
+        >
+          <View style={[styles.quickIcon, styles.quickIconCyan]}>
+            <Ionicons name="lock-closed-outline" size={18} color={COLORS.onPrimary} />
+          </View>
+          <View style={styles.quickBody}>
+            <Text style={styles.quickTitle}>Privacy</Text>
+            <Text style={styles.quickSub} numberOfLines={1}>
+              Presence, typing and read receipts
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={COLORS.outline} />
+        </TouchableOpacity>
       </View>
 
       {loading ? (

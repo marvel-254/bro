@@ -69,6 +69,7 @@ import {
   loadAppearance,
 } from "../../lib/chat-appearance";
 import { useAuth } from "../../lib/auth-context";
+import { usePrivacy } from "../../lib/privacy-context";
 import { useCall } from "../../lib/call-context";
 import { fetchConversationPeer, fetchProfilesByIds } from "../../lib/conversations";
 import {
@@ -197,6 +198,7 @@ export default function ConversationDetail({
 }: Props) {
   const router = useRouter();
   const { user: currentUser } = useAuth();
+  const { settings: privacy } = usePrivacy();
   const [messages, setMessages] = useState<MessageWithSender[]>([]);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
@@ -668,17 +670,24 @@ export default function ConversationDetail({
   // Live presence for the header: are any of the other members here now?
   useEffect(() => {
     if (!selfId) return;
-    return watchPresence(conversationId, selfId, (present) => {
-      let online = false;
-      for (const id of present.keys()) {
-        if (id !== selfId) {
-          online = true;
-          break;
+    return watchPresence(
+      conversationId,
+      selfId,
+      (present) => {
+        let online = false;
+        for (const id of present.keys()) {
+          if (id !== selfId) {
+            online = true;
+            break;
+          }
         }
-      }
-      setPeerOnline(online);
-    });
-  }, [conversationId, selfId]);
+        setPeerOnline(online);
+      },
+      // A hidden presence must not be broadcast: readers would otherwise see
+      // "Online" from the live roster even though the stored row says offline.
+      { broadcast: privacy.sharePresence },
+    );
+  }, [conversationId, selfId, privacy.sharePresence]);
 
   // Resolve the header name from the conversation itself when the route did
   // not pass one. Direct -> the peer's name; group/space -> the stored name.
@@ -707,7 +716,7 @@ export default function ConversationDetail({
 
   const onDraftChange = (text: string) => {
     setDraft(text);
-    if (selfId) {
+    if (selfId && privacy.shareTyping) {
       sendTyping(
         conversationId,
         selfId,
@@ -723,7 +732,7 @@ export default function ConversationDetail({
    * timeout after every sent message.
    */
   const stopTyping = useCallback(() => {
-    if (selfId) {
+    if (selfId && privacy.shareTyping) {
       sendTyping(
         conversationId,
         selfId,
@@ -731,7 +740,7 @@ export default function ConversationDetail({
         false,
       );
     }
-  }, [conversationId, selfId, currentUser]);
+  }, [conversationId, selfId, currentUser, privacy.shareTyping]);
 
   // Keyed on primitives, not the `currentUser` object: the auth provider used
   // to rebuild that object every render, and a changing identity here would

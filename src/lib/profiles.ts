@@ -24,6 +24,8 @@ export interface PublicProfile {
 
 export interface ProfileView {
   profile: PublicProfile;
+  /** Last-seen timestamp, but only when the person shares it. */
+  lastActiveAt: string | null;
   /** Whether the signed-in user follows this person. */
   following: boolean;
   /** Whether an accepted friendship exists in either direction. */
@@ -45,6 +47,7 @@ interface ProfileRow {
   presence: Presence | null;
   last_seen_at: string | null;
   is_verified: boolean | null;
+  share_last_active?: boolean | null;
 }
 
 function toPublicProfile(row: ProfileRow): PublicProfile {
@@ -97,7 +100,7 @@ export async function fetchProfileView(
   const profilePromise = supabase
     .from("profiles")
     .select(
-      "id, display_name, username, avatar_url, bio, interests, presence, last_seen_at, is_verified",
+      "id, display_name, username, avatar_url, bio, interests, presence, last_seen_at, is_verified, share_last_active",
     )
     .eq("id", userId)
     .maybeSingle();
@@ -145,9 +148,11 @@ export async function fetchProfileView(
     following_count: number | null;
   }>;
   const first = counts[0];
+  const row = profileResult.data as unknown as ProfileRow;
 
   return {
-    profile: toPublicProfile(profileResult.data as unknown as ProfileRow),
+    profile: toPublicProfile(row),
+    lastActiveAt: row.share_last_active ? row.last_seen_at : null,
     following: Boolean(followResult.data),
     friends: Boolean(friendshipResult.data),
     blocked: Boolean(blockResult.data),

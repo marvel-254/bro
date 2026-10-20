@@ -880,13 +880,17 @@ describe("conversations", () => {
         { user_id: "user-1", last_read_at: "2026-10-03T12:00:00Z" },
         { user_id: "user-2", last_read_at: null },
       ];
-      const chain = createChain();
-      chain.eq.mockReturnValue(RESOLVED(rows));
       const supabase = makeSupabase();
-      (supabase.from as jest.Mock).mockReturnValue(chain);
+      (supabase.rpc as jest.Mock).mockResolvedValue({
+        data: rows,
+        error: null,
+      });
       mockedGetSupabase.mockReturnValue(supabase);
 
       const result = await fetchReadCursors("conv-1");
+      expect(supabase.rpc).toHaveBeenCalledWith("conversation_read_cursors", {
+        p_conversation_id: "conv-1",
+      });
       expect(result).toEqual({
         "user-1": "2026-10-03T12:00:00Z",
         "user-2": null,

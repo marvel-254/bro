@@ -683,10 +683,12 @@ export async function fetchReadCursors(
     return {};
   }
 
-  const { data } = await supabase
-    .from("conversation_members")
-    .select("user_id, last_read_at")
-    .eq("conversation_id", conversationId);
+  // The RPC filters peers who disabled read receipts and always returns the
+  // caller's own cursor. Reading conversation_members directly would expose a
+  // cursor the member asked not to share.
+  const { data } = await supabase.rpc("conversation_read_cursors", {
+    p_conversation_id: conversationId,
+  });
 
   const cursors: Record<string, string | null> = {};
   for (const row of (data ?? []) as Array<{
