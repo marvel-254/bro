@@ -1,11 +1,11 @@
 # BRO — Handoff / State of Work
 
-Date: 2026-10-04 (updated after Welcome screen customization, Invites deep-linking, and futuristic Profile Setup Wizard)
+Date: 2026-10-20 (updated after chat hardening, idempotent sends, read-cursor fix, and distribution freshness)
 Project root: `/home/marvel/Projects/bro/`
 Branch: `feat/supabase-chat` (working branch, pushed, PR #3 open → main)
 App name: **bro** (NOT "BROS" — sir confirmed the name stays `bro`, package `app.bro`)
 
-Current state: typecheck clean, lint 0 errors on this work (2 warnings are the review agent's invites.test.ts), 349/349 tests pass across 17 suites.
+Current state: typecheck clean, lint 0 errors (3 known warnings: ErrorBoundary no-console + two `any` in invites.test.ts), 486/486 tests pass across 26 suites. Release + debug CI green, production JS bundle verified.
 
 **Read section 5 before trusting any screen.** Three of them were hardcoded mock
 data or unreachable placeholders until this session.
@@ -533,3 +533,65 @@ confirmation OFF in the dashboard.
 5. Two-device realtime + calls test (never done; most important unverified item).
 6. Service-role key rotation (pasted in chat + local `.env`).
 7. Decide the review agent's uncommitted reformat: commit separately or drop.
+
+## 13. Session handoff — 2026-10-20 (chat hardening, idempotent sends, read cursor)
+
+Branch `feat/supabase-chat`, tip `e188cdd`. 486/486 tests across 26 suites,
+typecheck 0, lint 0 errors (3 known warnings). Release and debug CI green; the
+release workflow's production JS bundle check passes.
+
+**Landed, in order:**
+- `039b3a6`–`dc9215f`: GIF rendering, reaction picker/action sheet/reply quotes/
+  group creation, read receipts + presence + deep links + paged retry, media
+  outbox (`sendStoredImage`, `sendStoredVoice`, `flushConversation`), memoized
+  message rows, notification deep links to the exact message.
+- `f34e513`, `f902c33`: debounced conversation-list refetch; 16 original memes.
+- `5e82c7c` attachment UPDATE policy + zero-row link guards; `0997e21` queued
+  media replays return the server id; `186cf85` clearing the last reaction;
+  `d6c0f00` activity deep link skips branch routing; `74bc86a` queued-media
+  placeholder bubble; `5040d9c` idempotent sends via `client_id`.
+- Distribution: `85a7710` debug APK upload glob; `08227e6` removed the
+  `Herald-OS` gitlink that blocked checkout; `88ca2dd` NDK pre-install;
+  `059a94e` blob serves the newest APK; `8bf1213` short blob TTL +
+  `apk/latest.json` + network-first SW; `85887a2` manifest URL validation.
+
+**Critical: three migrations had never reached the live DB.**
+`20261019000100` (attachment link policy) and `20261019000200` (message_reactions
+replica identity) were unapplied, so those fixes were never live, and
+`20261011000100` was broken (indexed a non-existent
+`conversations.last_message_at`). Fixed the broken migration, hardened
+`mark_attachment_viewed` with a `conversation_members` check, then applied every
+pending migration including `20261020000100` (client_id) and `20261020000200`
+(mark_conversation_read). `supabase migration list` is now in sync. **Always run
+it after adding a migration.**
+
+**Read receipts** (`e188cdd`) now advance only when the screen is focused, the
+app is foregrounded, and the list is at the end. The value is the newest
+message's server `created_at`, and the `mark_conversation_read` RPC keeps the
+maximum and clamps to `now()`, so a device clock running behind can no longer
+suppress "seen" and racing writes cannot move the cursor backwards.
+
+**Distribution freshness** (verified live):
+- `apk/app-release.apk` = arm64, ~39.26 MB; `app-armeabi-v7a-release.apk`
+  ~29.64 MB. ABI splits mean there is no universal APK.
+- Blob cache-control is 60s (was 30 days, which pinned stale APKs).
+- `apk/latest.json` names the current commit; `download.html` fetches it with
+  `no-store` and appends `?v=<builtAt>`; `sw.js` is `bro-v4` and network-first
+  for documents.
+- `bro.omixsystems.store` deploys manually from `website/` via
+  `vercel deploy --prod --yes` (no Git integration). It was 14 days stale; the
+  old "~200 MB" number came from the debug APK, not the site source.
+
+**Remaining review findings (not yet fixed):**
+1. A deep link to an old message can page older but not newer.
+2. Mention notifications still route to `/chats` rather than the conversation.
+3. Live media hydration race: realtime insert can beat the attachment link.
+4. Manual retry of a queued voice note can double-show the outbox entry.
+5. A missing GIF renders an infinite spinner.
+6. A few unhandled promise rejections remain.
+7. `focusHandledRef` never resets when the deep-link target changes.
+8. View-once media is effectively dead (pre-existing).
+
+**Still open from before:** rotate the service-role key; two-device realtime +
+call test; push notifications; device-test voice notes; group calls; drops/
+statuses/squads UI; delete the smoke-test user/conversation.
