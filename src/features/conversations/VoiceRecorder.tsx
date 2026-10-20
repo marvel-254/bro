@@ -5,7 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { COLORS, RADIUS, SEMANTIC_COLORS, SPACING } from "../../theme";
 import { insertAttachment, uploadAudioFile } from "../../lib/media";
 import { sendMessage } from "../../lib/conversations";
-import { queueMessage, type OutboxEntry } from "../../lib/outbox";
+import { newClientId, queueMessage, type OutboxEntry } from "../../lib/outbox";
 import { getSupabase } from "../../lib/supabase";
 import type { MessageRow } from "../../lib/database.types";
 
@@ -183,6 +183,9 @@ export default function VoiceRecorder({
     if (!recordingUri || sendingVoice || !currentUser) return;
     setSendingVoice(true);
     setError(null);
+    // Generated before the first attempt so a replay reuses it and cannot
+    // create a second copy of the same voice note.
+    const clientId = newClientId();
     try {
       const supabase = getSupabase();
       if (!supabase) throw new Error("Backend not configured");
@@ -205,6 +208,7 @@ export default function VoiceRecorder({
 
       const sent = await sendMessage(conversationId, "", {
         messageType: "voice",
+        clientId,
       });
       if (!sent.ok) throw new Error(sent.error);
 
@@ -233,6 +237,7 @@ export default function VoiceRecorder({
       const entry = await queueMessage({
         conversationId,
         content: "",
+        clientId,
         kind: "voice",
         media: { localUri: recordingUri },
       });

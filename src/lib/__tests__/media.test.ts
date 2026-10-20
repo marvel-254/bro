@@ -12,16 +12,20 @@ import {
   fetchMessageAttachments,
   signedChatUrl,
   sendImageMessage,
+  sendStoredImage,
 } from "../media";
 import { getSupabase } from "../supabase";
-import { sendMessage } from "../conversations";
+import { fetchMessageIdByClientId, sendMessage } from "../conversations";
 import * as ImagePicker from "expo-image-picker";
 import { manipulateAsync } from "expo-image-manipulator";
 import * as FileSystem from "expo-file-system";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 jest.mock("../supabase", () => ({ getSupabase: jest.fn() }));
-jest.mock("../conversations", () => ({ sendMessage: jest.fn() }));
+jest.mock("../conversations", () => ({
+  sendMessage: jest.fn(),
+  fetchMessageIdByClientId: jest.fn(),
+}));
 jest.mock("expo-image-picker", () => ({
   requestMediaLibraryPermissionsAsync: jest.fn(),
   launchImageLibraryAsync: jest.fn(),
@@ -43,6 +47,10 @@ const mockedGetSupabase = getSupabase as jest.MockedFunction<
 const mockedSendMessage = sendMessage as jest.MockedFunction<
   typeof sendMessage
 >;
+const mockedFetchByClientId =
+  fetchMessageIdByClientId as jest.MockedFunction<
+    typeof fetchMessageIdByClientId
+  >;
 const mockedPick =
   ImagePicker.requestMediaLibraryPermissionsAsync as unknown as jest.Mock;
 const mockedLaunch =
@@ -621,5 +629,66 @@ describe("sendImageMessage", () => {
       error: "RLS denied",
       stage: "send",
     });
+  });
+
+  it("reports the existing send when the message and its media already landed", async () => {
+    // A retry after a lost response must not upload a second copy or attach a
+    // second image to the message.
+    const { chain } = attachmentsChain("att-1");
+    chain.limit.mockResolvedValue({ data: [{ id: "att-0" }], error: null });
+    const { supabase, storage } = makeSupabase({ attachments: chain });
+    mockedGetSupabase.mockReturnValue(supabase);
+    mockedFetchByClientId.mockResolvedValue("m-existing");
+
+    const result = await sendStoredImage(
+      "c1",
+      "file:///full.jpg",
+      "file:///thumb.jpg",
+      "beach day",
+      false,
+      "local-1",
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      messageId: "m-existing",
+      attachmentId: null,
+    });
+    expect(storage.upload).not.toHaveBeenCalled();
+    expect(mockedSendMessage).not.toHaveBeenCalled();
+  });
+
+  it("repairs a message whose link step failed instead of deduplicating it", async () => {
+    const { chain } = attachmentsChain("att-1");
+    chain.limit.mockResolvedValue({ data: [], error: null });
+    const { supabase, storage } = makeSupabase({ attachments: chain });
+    mockedGetSupabase.mockReturnValue(supabase);
+    storage.upload.mockResolvedValue({ data: { path: "x" }, error: null });
+    mockedFetchByClientId.mockResolvedValue("m-existing");
+    mockedSendMessage.mockResolvedValue({
+      ok: true,
+      message: { id: "m-existing" } as never,
+    });
+
+    const result = await sendStoredImage(
+      "c1",
+      "file:///full.jpg",
+      "file:///thumb.jpg",
+      "",
+      false,
+      "local-1",
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      messageId: "m-existing",
+      attachmentId: "att-1",
+    });
+    expect(storage.upload).toHaveBeenCalledTimes(2);
+    expect(mockedSendMessage).toHaveBeenCalledWith(
+      "c1",
+      "",
+      expect.objectContaining({ clientId: "local-1" }),
+    );
   });
 });

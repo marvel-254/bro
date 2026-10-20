@@ -256,6 +256,99 @@ describe("conversations", () => {
       expect(insertArg.reply_to_message_id).toBe("parent-1");
       expect(insertArg.branch_id).toBe("br-1");
     });
+
+    it("sends the idempotency key with the insert", async () => {
+      const chain = createChain();
+      chain.single.mockReturnValue(RESOLVED({ id: "msg-1" }));
+      const supabase = makeSupabase();
+      (supabase.from as jest.Mock).mockReturnValue(chain);
+      (supabase.auth.getUser as jest.Mock).mockResolvedValue({
+        data: { user: { id: "user-1" } },
+        error: null,
+      });
+      mockedGetSupabase.mockReturnValue(supabase);
+
+      await sendMessage("conv-1", "hello", { clientId: "local-1" });
+
+      expect(chain.insert.mock.calls[0][0].client_id).toBe("local-1");
+    });
+
+    it("returns the existing row when a retry hits the client_id unique key", async () => {
+      const saved = {
+        id: "msg-1",
+        conversation_id: "conv-1",
+        sender_id: "user-1",
+        content: "hello",
+        type: "text",
+        gif_id: null,
+        status: "sent",
+        reply_to_message_id: null,
+        branch_id: null,
+        client_id: "local-1",
+        created_at: "2026-10-03T12:00:00Z",
+        updated_at: "2026-10-03T12:00:00Z",
+      };
+
+      const insertChain = createChain();
+      insertChain.single.mockReturnValue(
+        Promise.resolve({
+          data: null,
+          error: { code: "23505", message: "duplicate key value" },
+        }),
+      );
+      const lookupChain = createChain();
+      lookupChain.maybeSingle.mockReturnValue(RESOLVED({ id: "msg-1" }));
+      const rowChain = createChain();
+      rowChain.maybeSingle.mockReturnValue(RESOLVED(saved));
+
+      const supabase = makeSupabase();
+      (supabase.from as jest.Mock)
+        .mockReturnValueOnce(insertChain)
+        .mockReturnValueOnce(lookupChain)
+        .mockReturnValueOnce(rowChain);
+      (supabase.auth.getUser as jest.Mock).mockResolvedValue({
+        data: { user: { id: "user-1" } },
+        error: null,
+      });
+      mockedGetSupabase.mockReturnValue(supabase);
+
+      const result = await sendMessage("conv-1", "hello", {
+        clientId: "local-1",
+      });
+
+      // The retry must look like a success, not an error the user cannot act on.
+      expect(result).toEqual({ ok: true, message: saved });
+      expect(lookupChain.eq).toHaveBeenCalledWith("client_id", "local-1");
+      expect(lookupChain.eq).toHaveBeenCalledWith("conversation_id", "conv-1");
+    });
+
+    it("still reports a unique violation that is not the retry key", async () => {
+      const chain = createChain();
+      chain.single.mockReturnValue(
+        Promise.resolve({
+          data: null,
+          error: { code: "23505", message: "duplicate key value" },
+        }),
+      );
+      const lookupChain = createChain();
+      lookupChain.maybeSingle.mockReturnValue(RESOLVED(null));
+
+      const supabase = makeSupabase();
+      (supabase.from as jest.Mock)
+        .mockReturnValueOnce(chain)
+        .mockReturnValueOnce(lookupChain);
+      (supabase.auth.getUser as jest.Mock).mockResolvedValue({
+        data: { user: { id: "user-1" } },
+        error: null,
+      });
+      mockedGetSupabase.mockReturnValue(supabase);
+
+      const result = await sendMessage("conv-1", "hello", {
+        clientId: "local-1",
+      });
+
+      expect(result.ok).toBe(false);
+    });
   });
 
   describe("markConversationRead", () => {

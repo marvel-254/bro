@@ -25,11 +25,22 @@ security definer
 set search_path = public
 as $$
 begin
-  update public.attachments
+  -- security definer bypasses RLS, so membership is checked explicitly. Without
+  -- this, any signed-in user who guessed an attachment id could burn someone
+  -- else's view-once media.
+  update public.attachments a
   set viewed_at = now()
-  where id = attachment_id
-    and view_once = true
-    and viewed_at is null;
+  where a.id = attachment_id
+    and a.view_once = true
+    and a.viewed_at is null
+    and exists (
+      select 1
+      from public.messages m
+      join public.conversation_members cm
+        on cm.conversation_id = m.conversation_id
+      where m.id = a.message_id
+        and cm.user_id = auth.uid()
+    );
 end;
 $$;
 
@@ -39,12 +50,16 @@ grant execute on function public.mark_attachment_viewed(uuid) to authenticated;
 -- ---------------------------------------------------------------------------
 -- Chat pinning
 -- ---------------------------------------------------------------------------
--- Conversations already have is_pinned column, add index for sorting
+-- Add function to toggle pin.
+--
+-- There is no conversations.last_message_at column, so the incomplete version
+-- of this migration failed on a CREATE INDEX against it and was never applied.
+-- Recent-activity ordering is computed by conversation_previews, so the pin
+-- index is simply not needed; the partial index below only covers pinned rows.
 create index if not exists conversations_is_pinned_idx
-  on public.conversations (is_pinned desc, last_message_at desc nulls last)
+  on public.conversations (created_at desc)
   where is_pinned = true;
 
--- Add function to toggle pin
 create or replace function public.toggle_conversation_pin(conversation_id uuid)
 returns boolean
 language plpgsql

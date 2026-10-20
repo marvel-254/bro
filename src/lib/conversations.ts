@@ -113,6 +113,37 @@ export async function fetchMessages(
   return rows.reverse();
 }
 
+/**
+ * Columns returned for the sender's own row. Kept in one place because the
+ * idempotency path below must return exactly the same shape as the insert.
+ */
+const MESSAGE_ROW_COLUMNS =
+  "id, conversation_id, sender_id, content, type, gif_id, status, reply_to_message_id, branch_id, client_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone";
+
+/**
+ * Resolve a client idempotency key to the row it already created, if any.
+ *
+ * Scoped to the conversation: a retry is always for the same thread, and this
+ * keeps a stale key from matching something unrelated.
+ */
+export async function fetchMessageIdByClientId(
+  conversationId: string,
+  clientId: string,
+): Promise<string | null> {
+  const supabase = getSupabase();
+  if (!supabase || !clientId) return null;
+
+  const { data, error } = await supabase
+    .from("messages")
+    .select("id")
+    .eq("conversation_id", conversationId)
+    .eq("client_id", clientId)
+    .maybeSingle<{ id: string }>();
+
+  if (error || !data) return null;
+  return data.id;
+}
+
 /** Send a text message. RLS enforces that the sender is the authenticated user. */
 export async function sendMessage(
   conversationId: string,
@@ -130,6 +161,12 @@ export async function sendMessage(
     messageType?: "text" | "image" | "file" | "voice" | "gif";
     /** Self-hosted library entry, required when messageType is "gif". */
     gifId?: string | null;
+    /**
+     * Idempotency key from the outbox. Reused across every retry of the same
+     * message; the unique index on (sender_id, client_id) rejects a second
+     * insert, and this function returns the row that already exists.
+     */
+    clientId?: string | null;
   } = {},
 ): Promise<SendResult> {
   const supabase = getSupabase();
@@ -169,6 +206,7 @@ export async function sendMessage(
       status: "sent",
       reply_to_message_id: options.replyToMessageId ?? null,
       branch_id: options.branchId ?? null,
+      client_id: options.clientId ?? null,
       expires_at:
         options.expiresInSeconds == null
           ? null
@@ -177,11 +215,30 @@ export async function sendMessage(
             ).toISOString(),
     })
     .select(
-      "id, conversation_id, sender_id, content, type, gif_id, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone",
+      MESSAGE_ROW_COLUMNS,
     )
     .single();
 
   if (error) {
+    // 23505 = unique_violation. The outbox replayed a send whose response was
+    // lost even though the row committed. Return that row instead of an error
+    // the user cannot act on -- and without ever creating a second message.
+    if (error.code === "23505" && options.clientId) {
+      const existingId = await fetchMessageIdByClientId(
+        conversationId,
+        options.clientId,
+      );
+      if (existingId) {
+        const { data: existing } = await supabase
+          .from("messages")
+          .select(MESSAGE_ROW_COLUMNS)
+          .eq("id", existingId)
+          .maybeSingle();
+        if (existing) {
+          return { ok: true, message: existing as MessageRow };
+        }
+      }
+    }
     return { ok: false, error: error.message };
   }
 
@@ -514,7 +571,7 @@ export async function editMessage(
     .update({ content: trimmed, edited_at: new Date().toISOString() })
     .eq("id", messageId)
     .select(
-      "id, conversation_id, sender_id, content, type, gif_id, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone",
+      MESSAGE_ROW_COLUMNS,
     )
     .single();
 
@@ -544,7 +601,7 @@ export async function deleteMessage(messageId: string): Promise<SendResult> {
     })
     .eq("id", messageId)
     .select(
-      "id, conversation_id, sender_id, content, type, gif_id, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone",
+      MESSAGE_ROW_COLUMNS,
     )
     .single();
 

@@ -2,7 +2,7 @@ import * as ImagePicker from "expo-image-picker";
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 import * as FileSystem from "expo-file-system";
 import { getSupabase } from "./supabase";
-import { sendMessage } from "./conversations";
+import { fetchMessageIdByClientId, sendMessage } from "./conversations";
 
 /**
  * Media pipeline: pick -> compress -> upload -> attach -> send.
@@ -68,7 +68,9 @@ export interface AttachmentRef {
 }
 
 export type SendImageResult =
-  | { ok: true; messageId: string; attachmentId: string }
+  // `attachmentId` is null when the send was deduplicated: the row already
+  // existed, so this attempt created no new attachment.
+  | { ok: true; messageId: string; attachmentId: string | null }
   | {
       ok: false;
       error: string;
@@ -76,7 +78,7 @@ export type SendImageResult =
     };
 
 export type SendVoiceResult =
-  | { ok: true; messageId: string; attachmentId: string }
+  | { ok: true; messageId: string; attachmentId: string | null }
   | { ok: false; error: string };
 
 /** Long-edge resize that preserves the aspect ratio. */
@@ -400,11 +402,32 @@ export async function signedChatUrl(
  * Full send-an-image flow. The returned `stage` tells the caller exactly where
  * a failure happened so the UI can say something useful instead of "error".
  */
+/**
+ * Whether a message already has media linked to it.
+ *
+ * A retry must distinguish "the send fully succeeded and only the response was
+ * lost" from "the message row landed but the link step failed". In the first
+ * case re-uploading would attach a second copy of the same photo; in the second
+ * the retry is the only way to repair the message, so it has to proceed.
+ */
+async function messageHasAttachment(messageId: string): Promise<boolean> {
+  const supabase = getSupabase();
+  if (!supabase) return false;
+  const { data, error } = await supabase
+    .from("attachments")
+    .select("id")
+    .eq("message_id", messageId)
+    .limit(1);
+  if (error) return false;
+  return (data?.length ?? 0) > 0;
+}
+
 export async function sendImageMessage(
   conversationId: string,
   caption: string,
   viewOnce = false,
   onCompressed?: (compressed: CompressedPair) => void,
+  clientId?: string,
 ): Promise<SendImageResult> {
   if (!getSupabase()) {
     return { ok: false, error: "Backend not configured", stage: "pick" };
@@ -448,6 +471,7 @@ export async function sendImageMessage(
     compressed.thumb.uri,
     caption,
     viewOnce,
+    clientId,
   );
 }
 
@@ -463,6 +487,7 @@ export async function sendStoredImage(
   thumbUri: string,
   caption: string,
   viewOnce = false,
+  clientId?: string,
 ): Promise<SendImageResult> {
   const supabase = getSupabase();
   if (!supabase) {
@@ -472,6 +497,17 @@ export async function sendStoredImage(
   const selfId = await currentUserId();
   if (!selfId) {
     return { ok: false, error: "Not signed in", stage: "upload" };
+  }
+
+  // The previous attempt may have committed even though its response was lost.
+  // If its media is linked, report that as the send. If the row exists but the
+  // link failed, fall through: sendMessage returns the existing row (duplicate
+  // key) and this upload is linked to it, repairing the message.
+  if (clientId) {
+    const existing = await fetchMessageIdByClientId(conversationId, clientId);
+    if (existing && (await messageHasAttachment(existing))) {
+      return { ok: true, messageId: existing, attachmentId: null };
+    }
   }
 
   let fullPath: string;
@@ -515,6 +551,7 @@ export async function sendStoredImage(
 
   const sent = await sendMessage(conversationId, caption, {
     messageType: "image",
+    clientId,
   });
   if (!sent.ok) {
     return { ok: false, error: sent.error, stage: "send" };
@@ -556,12 +593,21 @@ export async function sendStoredImage(
 export async function sendStoredVoice(
   conversationId: string,
   localUri: string,
+  clientId?: string,
 ): Promise<SendVoiceResult> {
   const supabase = getSupabase();
   if (!supabase) return { ok: false, error: "Backend not configured" };
 
   const selfId = await currentUserId();
   if (!selfId) return { ok: false, error: "Not signed in" };
+
+  // Same idempotency rule as images, including the link-stage repair case.
+  if (clientId) {
+    const existing = await fetchMessageIdByClientId(conversationId, clientId);
+    if (existing && (await messageHasAttachment(existing))) {
+      return { ok: true, messageId: existing, attachmentId: null };
+    }
+  }
 
   try {
     const { path, bytes } = await uploadAudioFile(
@@ -582,6 +628,7 @@ export async function sendStoredVoice(
 
     const sent = await sendMessage(conversationId, "", {
       messageType: "voice",
+      clientId,
     });
     if (!sent.ok) throw new Error(sent.error);
 

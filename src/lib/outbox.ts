@@ -197,7 +197,14 @@ export function backoffDelayMs(attempts: number): number {
   return Math.min(delay, 5 * 60 * 1000);
 }
 
-function randomClientId(): string {
+/**
+ * Generates an idempotency key for one message.
+ *
+ * Callers generate it *before* the first send attempt and reuse it for every
+ * retry, both in the outbox entry and in the server request, so a send whose
+ * response was lost cannot land twice.
+ */
+export function newClientId(): string {
   return `local-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
@@ -219,7 +226,7 @@ export async function queueMessage(params: {
   media?: OutboxMedia;
 }): Promise<OutboxEntry> {
   const entry: OutboxEntry = {
-    clientId: params.clientId ?? randomClientId(),
+    clientId: params.clientId ?? newClientId(),
     conversationId: params.conversationId,
     content: params.content,
     replyToMessageId: params.replyToMessageId ?? null,

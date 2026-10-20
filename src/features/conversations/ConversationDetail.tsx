@@ -43,6 +43,7 @@ import {
   flushConversation,
   queueMessage,
   readOutbox,
+  newClientId,
   recordFailure,
   type OutboxEntry,
 } from "../../lib/outbox";
@@ -621,6 +622,7 @@ export default function ConversationDetail({
             status: "sending" as const,
             reply_to_message_id: params.replyToMessageId,
             branch_id: null,
+            client_id: optimisticId,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             sender: senderProfile,
@@ -630,6 +632,7 @@ export default function ConversationDetail({
 
       const result = await sendMessage(conversationId, params.content, {
         replyToMessageId: params.replyToMessageId,
+        clientId: params.clientId,
       });
 
       if (result.ok) {
@@ -668,7 +671,7 @@ export default function ConversationDetail({
     const replyToMessageId = replyingTo?.id ?? null;
     // One identity for the placeholder, the outbox entry and every retry, so
     // a message can never land twice.
-    const clientId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const clientId = newClientId();
 
     setDraft("");
     setReplyingTo(null);
@@ -711,6 +714,7 @@ export default function ConversationDetail({
       status,
       reply_to_message_id: entry.replyToMessageId,
       branch_id: null,
+      client_id: entry.clientId,
       created_at: entry.createdAt,
       updated_at: entry.createdAt,
       sender: senderProfile,
@@ -781,6 +785,7 @@ export default function ConversationDetail({
         const r = await sendMessage(entry.conversationId, entry.content, {
           messageType: "gif",
           gifId: entry.media.gifId,
+          clientId: entry.clientId,
         });
         return r.ok
           ? { ok: true, messageId: r.message.id }
@@ -793,6 +798,7 @@ export default function ConversationDetail({
           entry.media.thumbUri ?? entry.media.localUri,
           entry.content,
           entry.media.viewOnce ?? false,
+          entry.clientId,
         );
         return r.ok
           ? { ok: true, messageId: r.messageId }
@@ -802,6 +808,7 @@ export default function ConversationDetail({
         const r = await sendStoredVoice(
           entry.conversationId,
           entry.media.localUri,
+          entry.clientId,
         );
         return r.ok
           ? { ok: true, messageId: r.messageId }
@@ -1035,10 +1042,19 @@ export default function ConversationDetail({
     // Captured synchronously during the send so a failed upload can be queued
     // with the same local files, instead of losing the photo to the error path.
     const compressed: { full: string; thumb: string } | null = { full: "", thumb: "" };
-    const result = await sendImageMessage(conversationId, draft, viewOnce, (pair) => {
-      compressed.full = pair.full.uri;
-      compressed.thumb = pair.thumb.uri;
-    });
+    // Generated before the first attempt so a retry reuses it and the server
+    // can reject a duplicate instead of creating a second photo message.
+    const clientId = newClientId();
+    const result = await sendImageMessage(
+      conversationId,
+      draft,
+      viewOnce,
+      (pair) => {
+        compressed.full = pair.full.uri;
+        compressed.thumb = pair.thumb.uri;
+      },
+      clientId,
+    );
     setSendingImage(false);
 
     if (!result.ok) {
@@ -1052,6 +1068,7 @@ export default function ConversationDetail({
         const entry = await queueMessage({
           conversationId,
           content: caption,
+          clientId,
           kind: "image",
           media: {
             localUri: compressed.full,
@@ -1084,6 +1101,7 @@ export default function ConversationDetail({
           status: "sent",
           reply_to_message_id: null,
           branch_id: null,
+          client_id: clientId,
           created_at: now,
           updated_at: now,
           sender: currentUser
@@ -1120,10 +1138,12 @@ export default function ConversationDetail({
       setGifPickerOpen(false);
       setSendingGif(true);
       const caption = draft.trim();
+      const clientId = newClientId();
 
       const result = await sendMessage(conversationId, caption, {
         messageType: "gif",
         gifId: gif.id,
+        clientId,
       });
       setSendingGif(false);
 
@@ -1133,6 +1153,7 @@ export default function ConversationDetail({
         const entry = await queueMessage({
           conversationId,
           content: caption,
+          clientId,
           kind: "gif",
           media: { gifId: gif.id },
         });
@@ -1162,6 +1183,7 @@ export default function ConversationDetail({
             status: "sent",
             reply_to_message_id: null,
             branch_id: null,
+            client_id: clientId,
             created_at: now,
             updated_at: now,
             sender: currentUser

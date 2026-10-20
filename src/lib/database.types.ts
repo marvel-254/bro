@@ -66,6 +66,11 @@ export interface MessageRow {
   status: "pending" | "sending" | "sent" | "delivered" | "seen" | "failed";
   reply_to_message_id: string | null;
   branch_id: string | null;
+  /**
+   * Client-generated idempotency key, unique per sender. Stable across retries
+   * of the same message so a lost response cannot produce a duplicate row.
+   */
+  client_id: string | null;
   created_at: string;
   updated_at: string;
 }
