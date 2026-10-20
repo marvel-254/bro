@@ -63,6 +63,7 @@ import {
   releaseTypingChannel,
 } from "../../lib/presence";
 import { getSupabase, isSupabaseConfigured } from "../../lib/supabase";
+import { createKeyedLock } from "../../lib/keyed-lock";
 import {
   DEFAULT_APPEARANCE,
   loadAppearance,
@@ -932,11 +933,19 @@ export default function ConversationDetail({
     [],
   );
 
+  /**
+   * A flush on mount and a manual tap can replay the same entry at once.
+   * Serialise per client id so the second attempt sees the first one's message
+   * and dedupes instead of racing the attachment link.
+   */
+  const withEntryLock = useMemo(() => createKeyedLock(), []);
+
   /** Replays one outbox entry by its kind, returning the server message id. */
   const replayEntry = useCallback(
-    async (
+    (
       entry: OutboxEntry,
-    ): Promise<{ ok: boolean; messageId?: string; error?: string }> => {
+    ): Promise<{ ok: boolean; messageId?: string; error?: string }> =>
+      withEntryLock(entry.clientId, async () => {
       if (entry.kind === "gif" && entry.media?.gifId) {
         const r = await sendMessage(entry.conversationId, entry.content, {
           messageType: "gif",
@@ -976,8 +985,8 @@ export default function ConversationDetail({
         clientId: entry.clientId,
       });
       return { ok, messageId: ok ? entry.clientId : undefined };
-    },
-    [sendContent],
+      }),
+    [sendContent, withEntryLock],
   );
 
   /**
