@@ -58,6 +58,8 @@ export interface CompressedPair {
 
 export interface AttachmentRef {
   viewOnce?: boolean;
+  /** When a recipient consumed a view-once attachment; null until then. */
+  viewedAt?: string | null;
   id: string;
   storagePath: string;
   thumbPath: string | null;
@@ -321,7 +323,9 @@ export async function fetchMessageAttachments(
 
   const { data, error } = await supabase
     .from("attachments")
-    .select("id, message_id, storage_path, thumb_path, mime_type, size_bytes")
+    .select(
+      "id, message_id, storage_path, thumb_path, mime_type, size_bytes, view_once, viewed_at",
+    )
     .in("message_id", messageIds);
 
   if (error) {
@@ -337,12 +341,16 @@ export async function fetchMessageAttachments(
     thumb_path: string | null;
     mime_type: string;
     size_bytes: number;
+    view_once: boolean;
+    viewed_at: string | null;
   }>) {
     if (!byMessage[row.message_id]) {
       byMessage[row.message_id] = {
         id: row.id,
         storagePath: row.storage_path,
         thumbPath: row.thumb_path,
+        viewOnce: row.view_once,
+        viewedAt: row.viewed_at,
         mime: row.mime_type,
         bytes: row.size_bytes,
       };

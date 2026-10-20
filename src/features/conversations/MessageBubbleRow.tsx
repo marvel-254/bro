@@ -135,18 +135,24 @@ function bubbleShape(theme: BubbleTheme, isMine: boolean) {
  */
 function ChatImage({
   attachment,
+  isMine,
   onOpen,
 }: {
   attachment: AttachmentRef | undefined;
+  isMine: boolean;
   onOpen: (fullPath: string, viewOnce?: boolean) => void;
 }) {
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const isViewOnce = attachment?.viewOnce === true;
+  const consumed = isViewOnce && Boolean(attachment?.viewedAt);
 
   useEffect(() => {
     let live = true;
     setFailed(false);
-    if (!attachment) {
+    // Never resolve the thumbnail of an unopened view-once attachment: showing
+    // it in the bubble would defeat the whole point.
+    if (!attachment || (attachment.viewOnce && !attachment.viewedAt)) {
       setUrl(null);
       return;
     }
@@ -182,11 +188,43 @@ function ChatImage({
     );
   }
 
-  const isViewOnce = attachment.viewOnce === true;
+  if (isViewOnce && !consumed) {
+    return (
+      <Pressable
+        onPress={() => onOpen(attachment.storagePath, !isMine)}
+        accessibilityRole="button"
+        accessibilityLabel="Open view-once photo"
+        style={styles.viewOnceTile}
+      >
+        <Ionicons
+          name="eye-off-outline"
+          size={22}
+          color={SEMANTIC_COLORS.textDim}
+        />
+        <Text style={styles.viewOnceTileText}>View once photo</Text>
+      </Pressable>
+    );
+  }
+
+  if (isViewOnce && consumed && !isMine) {
+    return (
+      <View
+        style={styles.viewOnceTile}
+        accessibilityLabel="View-once photo opened"
+      >
+        <Ionicons
+          name="eye-off-outline"
+          size={22}
+          color={SEMANTIC_COLORS.textDim}
+        />
+        <Text style={styles.viewOnceTileText}>Opened</Text>
+      </View>
+    );
+  }
 
   return (
     <Pressable
-      onPress={() => onOpen(attachment.storagePath, isViewOnce)}
+      onPress={() => onOpen(attachment.storagePath, isViewOnce && !isMine)}
       accessibilityRole="button"
       accessibilityLabel={isViewOnce ? "Open view-once photo" : "Open photo"}
     >
@@ -194,7 +232,9 @@ function ChatImage({
       {isViewOnce && (
         <View style={styles.viewOnceBadge}>
           <Ionicons name="eye-off-outline" size={12} color={COLORS.onPrimary} />
-          <Text style={styles.viewOnceBadgeText}>View once</Text>
+          <Text style={styles.viewOnceBadgeText}>
+            {consumed ? "Opened" : "View once"}
+          </Text>
         </View>
       )}
     </Pressable>
@@ -365,7 +405,11 @@ function MessageBubbleRowImpl({
         ) : null}
 
         {item.type === "image" && !isDeleted ? (
-          <ChatImage attachment={attachment} onOpen={onOpenViewer} />
+          <ChatImage
+            attachment={attachment}
+            isMine={isMine}
+            onOpen={onOpenViewer}
+          />
         ) : null}
 
         {item.type === "voice" && !isDeleted ? (
@@ -575,6 +619,19 @@ const styles = StyleSheet.create({
     width: 220,
     height: 180,
     borderRadius: RADIUS.sm,
+  },
+  viewOnceTile: {
+    width: 220,
+    height: 160,
+    borderRadius: RADIUS.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: SPACING.spaceXs,
+    backgroundColor: SEMANTIC_COLORS.surfaceLevel2,
+  },
+  viewOnceTileText: {
+    ...TYPOGRAPHY.labelSM,
+    color: SEMANTIC_COLORS.textDim,
   },
   photoPlaceholder: {
     width: 220,

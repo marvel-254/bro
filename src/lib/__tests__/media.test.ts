@@ -406,6 +406,8 @@ describe("fetchMessageAttachments", () => {
             thumb_path: "t1",
             mime_type: "image/jpeg",
             size_bytes: 10,
+            view_once: false,
+            viewed_at: null,
           },
           {
             id: "a2",
@@ -414,6 +416,8 @@ describe("fetchMessageAttachments", () => {
             thumb_path: null,
             mime_type: "image/jpeg",
             size_bytes: 11,
+            view_once: false,
+            viewed_at: null,
           },
         ],
         error: null,
@@ -424,6 +428,33 @@ describe("fetchMessageAttachments", () => {
 
     const result = await fetchMessageAttachments(["m1"]);
     expect(result.m1.id).toBe("a1");
+  });
+
+  it("carries view-once state so the bubble can burn the thumbnail", async () => {
+    const chain = createChain();
+    chain.in.mockReturnValue(
+      Promise.resolve({
+        data: [
+          {
+            id: "a1",
+            message_id: "m1",
+            storage_path: "p1",
+            thumb_path: "t1",
+            mime_type: "image/jpeg",
+            size_bytes: 10,
+            view_once: true,
+            viewed_at: "2026-10-20T10:00:00Z",
+          },
+        ],
+        error: null,
+      }),
+    );
+    const { supabase } = makeSupabase({ attachments: chain });
+    mockedGetSupabase.mockReturnValue(supabase);
+
+    const result = await fetchMessageAttachments(["m1"]);
+    expect(result.m1.viewOnce).toBe(true);
+    expect(result.m1.viewedAt).toBe("2026-10-20T10:00:00Z");
   });
 
   it("swallows errors so a missing thumb never breaks chat", async () => {

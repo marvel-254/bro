@@ -1392,9 +1392,25 @@ export default function ConversationDetail({
             .eq("view_once", true)
             .maybeSingle();
           if (attachment) {
-            await supabase.rpc("mark_attachment_viewed", {
+            const { error } = await supabase.rpc("mark_attachment_viewed", {
               attachment_id: attachment.id,
             });
+            if (!error) {
+              // Reflect the burn immediately: the sender sees "Opened" and the
+              // recipient never gets a thumbnail or a second open.
+              setAttachments((current) => {
+                const next = { ...current };
+                for (const [messageId, ref] of Object.entries(next)) {
+                  if (ref.storagePath === fullPath) {
+                    next[messageId] = {
+                      ...ref,
+                      viewedAt: new Date().toISOString(),
+                    };
+                  }
+                }
+                return next;
+              });
+            }
           }
         }
       } catch {
