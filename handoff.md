@@ -5,7 +5,7 @@ Project root: `/home/marvel/Projects/bro/`
 Branch: `feat/supabase-chat` (working branch, pushed, PR #3 open → main)
 App name: **bro** (NOT "BROS" — sir confirmed the name stays `bro`, package `app.bro`)
 
-Current state: typecheck clean, lint 0 errors (3 known warnings: ErrorBoundary no-console + two `any` in invites.test.ts), 486/486 tests pass across 26 suites. Release + debug CI green, production JS bundle verified.
+Current state: typecheck clean, lint 0 errors (3 known warnings: ErrorBoundary no-console + two `any` in invites.test.ts), 496/496 tests pass across 27 suites. Release + debug CI green, production JS bundle verified.
 
 **Read section 5 before trusting any screen.** Three of them were hardcoded mock
 data or unreachable placeholders until this session.
@@ -536,7 +536,7 @@ confirmation OFF in the dashboard.
 
 ## 13. Session handoff — 2026-10-20 (chat hardening, idempotent sends, read cursor)
 
-Branch `feat/supabase-chat`, tip `e188cdd`. 486/486 tests across 26 suites,
+Branch `feat/supabase-chat`, tip `bfa168f`. 496/496 tests across 27 suites,
 typecheck 0, lint 0 errors (3 known warnings). Release and debug CI green; the
 release workflow's production JS bundle check passes.
 
@@ -582,15 +582,24 @@ suppress "seen" and racing writes cannot move the cursor backwards.
   `vercel deploy --prod --yes` (no Git integration). It was 14 days stale; the
   old "~200 MB" number came from the debug APK, not the site source.
 
-**Remaining review findings (not yet fixed):**
-1. A deep link to an old message can page older but not newer.
-2. Mention notifications still route to `/chats` rather than the conversation.
-3. Live media hydration race: realtime insert can beat the attachment link.
-4. Manual retry of a queued voice note can double-show the outbox entry.
-5. A missing GIF renders an infinite spinner.
-6. A few unhandled promise rejections remain.
-7. `focusHandledRef` never resets when the deep-link target changes.
-8. View-once media is effectively dead (pre-existing).
+**Review findings fixed in this session (newest first):**
+- `bfa168f` serialise outbox replays per client id, so the mount flush and a
+  manual retry cannot race the attachment link into duplicate media rows.
+- `98b5723` view-once: fetch `view_once`/`viewed_at`, block the thumbnail until
+  opened, show "Opened" to the recipient, reflect the burn immediately.
+- `b285a89` failed GIFs/photos show a static "unavailable" state instead of an
+  endless spinner; remaining fire-and-forget promises are caught.
+- `578bc7a` retry attachment hydration when the realtime insert beats the link;
+  re-arm deep-link focus per message id; absorb reaction-refresh failures.
+- `7da9e88` mentions target the message and carry an explicit deep link
+  (live-verified), so the tap no longer falls back to the chat list.
+- `b35a704` a deep link into old history shows a jump-to-latest banner instead
+  of silently showing a gap, and live inserts no longer splice across it.
+
+**Still verification-only (no code change planned):**
+- Device test: two-account realtime, voice notes, view-once, deep links.
+- The build artefact and blob manifest are re-verified by the workflow run
+  after this handoff.
 
 **Still open from before:** rotate the service-role key; two-device realtime +
 call test; push notifications; device-test voice notes; group calls; drops/
