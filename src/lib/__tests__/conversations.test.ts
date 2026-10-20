@@ -2,6 +2,7 @@ import {
   MESSAGES_PAGE_SIZE,
   compareMessagesNewestFirst,
   fetchMessages,
+  hasMessagesAfter,
   sendMessage,
   markConversationRead,
   fetchConversationSummaries,
@@ -162,6 +163,52 @@ describe("conversations", () => {
         ascending: false,
       });
       expect(orderSpy).toHaveBeenNthCalledWith(2, "id", { ascending: false });
+    });
+  });
+
+  describe("hasMessagesAfter", () => {
+    it("returns false when Supabase is not configured", async () => {
+      mockedGetSupabase.mockReturnValue(null);
+      await expect(
+        hasMessagesAfter("conv-1", {
+          createdAt: "2026-10-03T12:00:00Z",
+          id: "m1",
+        }),
+      ).resolves.toBe(false);
+    });
+
+    it("asks for anything strictly newer than the cursor pair", async () => {
+      const chain = createChain();
+      chain.limit.mockReturnValue(RESOLVED([{ id: "m2" }]));
+      const supabase = makeSupabase();
+      (supabase.from as jest.Mock).mockReturnValue(chain);
+      mockedGetSupabase.mockReturnValue(supabase);
+
+      await expect(
+        hasMessagesAfter("conv-1", {
+          createdAt: "2026-10-03T12:00:00Z",
+          id: "m1",
+        }),
+      ).resolves.toBe(true);
+      expect(chain.or).toHaveBeenCalledWith(
+        "created_at.gt.2026-10-03T12:00:00Z,and(created_at.eq.2026-10-03T12:00:00Z,id.gt.m1)",
+      );
+      expect(chain.limit).toHaveBeenCalledWith(1);
+    });
+
+    it("returns false when the probe errors instead of breaking the thread", async () => {
+      const chain = createChain();
+      chain.limit.mockReturnValue(RESOLVED(null, { message: "boom" }));
+      const supabase = makeSupabase();
+      (supabase.from as jest.Mock).mockReturnValue(chain);
+      mockedGetSupabase.mockReturnValue(supabase);
+
+      await expect(
+        hasMessagesAfter("conv-1", {
+          createdAt: "2026-10-03T12:00:00Z",
+          id: "m1",
+        }),
+      ).resolves.toBe(false);
     });
   });
 

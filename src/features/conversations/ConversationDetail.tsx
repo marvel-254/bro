@@ -33,6 +33,7 @@ import {
   editMessage,
   fetchMessageById,
   fetchMessages,
+  hasMessagesAfter,
   fetchReadCursors,
   fetchReactions,
   markConversationRead,
@@ -235,6 +236,13 @@ export default function ConversationDetail({
   const [replyingTo, setReplyingTo] = useState<MessageWithSender | null>(null);
   const [editing, setEditing] = useState<MessageWithSender | null>(null);
   const [hasMore, setHasMore] = useState(true);
+  /**
+   * A deep link opened a mid-history page. Older history pages from there, but
+   * newer messages are not loaded, so the list is showing a window with a hole
+   * below it rather than the present.
+   */
+  const [hasNewer, setHasNewer] = useState(false);
+  const [jumpingToLatest, setJumpingToLatest] = useState(false);
 
   // Device-local chat appearance (bubble shape + optional background image).
   const [appearance, setAppearance] = useState(DEFAULT_APPEARANCE);
@@ -250,6 +258,7 @@ export default function ConversationDetail({
 
   const listRef = useRef<FlatList<MessageWithSender>>(null);
   const lastIdRef = useRef<string | null>(null);
+  const hasNewerRef = useRef(false);
   const messagesRef = useRef<MessageWithSender[]>([]);
   const reactionsRef = useRef<Record<string, MessageReactionRow[]>>({});
   const insets = useSafeAreaInsets();
@@ -286,6 +295,10 @@ export default function ConversationDetail({
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  useEffect(() => {
+    hasNewerRef.current = hasNewer;
+  }, [hasNewer]);
 
   useEffect(() => {
     reactionsRef.current = reactions;
@@ -380,6 +393,7 @@ export default function ConversationDetail({
     try {
       setError(null);
       let rows = await fetchMessages(conversationId);
+      let openedAtDeepLink = false;
 
       // A deep link can point at a message older than the first page. Load the
       // page ending at it so the target is present, rather than opening the
@@ -401,12 +415,24 @@ export default function ConversationDetail({
             createdAt: new Date(created + 1).toISOString(),
             id: focused.id,
           });
-          if (around.length > 0) rows = around;
+          if (around.length > 0) {
+            rows = around;
+            openedAtDeepLink = true;
+          }
         }
       }
 
       setMessages(rows);
       setHasMore(rows.length >= MESSAGES_PAGE_SIZE);
+      const newestLoaded = rows[rows.length - 1];
+      setHasNewer(
+        openedAtDeepLink && newestLoaded
+          ? await hasMessagesAfter(conversationId, {
+              createdAt: newestLoaded.created_at,
+              id: newestLoaded.id,
+            })
+          : false,
+      );
       // The thread opens at the end (except for a deep link, which is still
       // the newest page around the target), so everything loaded is seen.
       atBottomRef.current = true;
@@ -448,6 +474,30 @@ export default function ConversationDetail({
     }
   }, [conversationId, hasMore, loadingOlder, messages, enrich]);
 
+  /**
+   * Replace the deep-linked mid-history window with the newest page. Appending
+   * page by page would be slower and could take several taps; the user asked
+   * for the present, not a history lesson.
+   */
+  const jumpToLatest = useCallback(async () => {
+    if (jumpingToLatest) return;
+    setJumpingToLatest(true);
+    try {
+      const rows = await fetchMessages(conversationId);
+      setMessages(rows);
+      setHasNewer(false);
+      await enrich(rows);
+      markReadUpTo(rows[rows.length - 1]?.created_at, true);
+      requestAnimationFrame(() =>
+        listRef.current?.scrollToEnd({ animated: false }),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load messages");
+    } finally {
+      setJumpingToLatest(false);
+    }
+  }, [conversationId, enrich, jumpingToLatest, markReadUpTo]);
+
   useEffect(() => {
     setLoading(true);
     void load();
@@ -480,6 +530,10 @@ export default function ConversationDetail({
         // Branch messages share the conversation_id, so this channel delivers
         // them too. They belong to the branch screen, not here.
         if (incoming.branch_id) return;
+        // We are looking at a mid-history window; appending this message would
+        // silently jump over everything in between. "Jump to latest" reloads
+        // the tail in one page instead.
+        if (hasNewerRef.current) return;
         setMessages((current) => {
           if (current.some((message) => message.id === incoming.id)) {
             return current;
@@ -1535,6 +1589,25 @@ export default function ConversationDetail({
               </Pressable>
             ) : null
           }
+          ListFooterComponent={
+            hasNewer ? (
+              <Pressable
+                style={styles.newerBanner}
+                onPress={() => void jumpToLatest()}
+                disabled={jumpingToLatest}
+                accessibilityRole="button"
+                accessibilityLabel="Jump to the latest messages"
+              >
+                {jumpingToLatest ? (
+                  <ActivityIndicator color={COLORS.surfaceTint} />
+                ) : (
+                  <Text style={styles.newerBannerText}>
+                    Newer messages are further down — jump to latest
+                  </Text>
+                )}
+              </Pressable>
+            ) : null
+          }
           ListEmptyComponent={
             <View style={styles.centered}>
               <Text style={styles.emptyTitle}>No messages yet</Text>
@@ -1880,6 +1953,19 @@ const styles = StyleSheet.create({
   olderErrorText: {
     ...TYPOGRAPHY.labelSM,
     color: COLORS.error,
+    textAlign: "center",
+  },
+  newerBanner: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: SPACING.spaceMd,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.surfaceTint,
+    marginTop: SPACING.spaceSm,
+  },
+  newerBannerText: {
+    ...TYPOGRAPHY.labelSM,
+    color: COLORS.background,
     textAlign: "center",
   },
   // Overlap the second tick with the first so the pair reads as one glyph

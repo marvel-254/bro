@@ -114,6 +114,37 @@ export async function fetchMessages(
 }
 
 /**
+ * Whether anything newer than `after` exists on the main thread. A deep link
+ * can open a page in the middle of history; older paging worked from there but
+ * nothing revealed that newer messages were one tap away.
+ */
+export async function hasMessagesAfter(
+  conversationId: string,
+  after: MessageCursor,
+): Promise<boolean> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return false;
+  }
+
+  const { data, error } = await supabase
+    .from("messages")
+    .select("id")
+    .eq("conversation_id", conversationId)
+    .is("branch_id", null)
+    .or(
+      // Strictly newer than the (created_at, id) cursor pair.
+      `created_at.gt.${after.createdAt},and(created_at.eq.${after.createdAt},id.gt.${after.id})`,
+    )
+    .limit(1);
+
+  if (error) {
+    return false;
+  }
+  return (data ?? []).length > 0;
+}
+
+/**
  * Columns returned for the sender's own row. Kept in one place because the
  * idempotency path below must return exactly the same shape as the insert.
  */
