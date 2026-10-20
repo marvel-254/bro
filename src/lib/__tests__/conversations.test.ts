@@ -1029,6 +1029,9 @@ describe("conversations", () => {
         type: "group",
         peerId: null,
         peerName: null,
+        name: null,
+        status: "accepted",
+        requestedBy: null,
       });
       expect(members.eq).not.toHaveBeenCalled();
     });
@@ -1056,6 +1059,9 @@ describe("conversations", () => {
         type: "direct",
         peerId: "peer",
         peerName: "Sarah",
+        name: null,
+        status: "accepted",
+        requestedBy: null,
       });
     });
 
@@ -1079,6 +1085,9 @@ describe("conversations", () => {
         type: "direct",
         peerId: null,
         peerName: null,
+        name: null,
+        status: "accepted",
+        requestedBy: null,
       });
     });
   });

@@ -44,6 +44,10 @@ export interface ConversationRow {
   created_by: string;
   is_pinned: boolean;
   created_at: string;
+  /** First-DM request state. Defaults to accepted on every older row. */
+  status?: "accepted" | "requested" | "declined";
+  /** Who sent a pending request; null for accepted conversations. */
+  requested_by?: string | null;
 }
 
 export interface ConversationMemberRow {
@@ -117,6 +121,10 @@ export interface ConversationSummary {
   last_message_sender: string | null;
   unread_count: number;
   is_pinned: boolean;
+  /** Normal conversation, or a first-DM request the caller sent. */
+  status: "accepted" | "requested" | "declined";
+  /** True when the caller is the sender of a pending request. */
+  requestedByMe: boolean;
   /** Peers (everyone except the caller) with peers list, for the list avatar. */
   peers: Array<{
     user_id: string;

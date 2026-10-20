@@ -70,6 +70,10 @@ import {
 } from "../../lib/chat-appearance";
 import { useAuth } from "../../lib/auth-context";
 import { usePrivacy } from "../../lib/privacy-context";
+import {
+  acceptMessageRequest,
+  declineMessageRequest,
+} from "../../lib/requests";
 import { useCall } from "../../lib/call-context";
 import { fetchConversationPeer, fetchProfilesByIds } from "../../lib/conversations";
 import {
@@ -227,6 +231,16 @@ export default function ConversationDetail({
   const [peerId, setPeerId] = useState<string | null>(null);
   /** Whether any other member is currently present in the conversation. */
   const [peerOnline, setPeerOnline] = useState(false);
+  /**
+   * Request state for a direct conversation. Null until the conversation is
+   * resolved, so no read receipt or typing event leaks before we know whether
+   * this is an ordinary thread or a pending message request.
+   */
+  const [conversationStatus, setConversationStatus] = useState<
+    "accepted" | "requested" | "declined" | null
+  >(null);
+  const [requestedBy, setRequestedBy] = useState<string | null>(null);
+  const [requestBusy, setRequestBusy] = useState(false);
   const [sendingImage, setSendingImage] = useState(false);
   /** When armed, the next photo is flagged view-once instead of permanent. */
   const [viewOnce, setViewOnce] = useState(false);
@@ -291,6 +305,9 @@ export default function ConversationDetail({
   const markReadUpTo = useCallback(
     (readAt: string | null | undefined, force = false) => {
       if (!readAt) return;
+      // A request is inspected from the request list, not opened as a thread.
+      // Until it is accepted there is no receipt to share.
+      if (conversationStatus !== "accepted") return;
       // Never write a receipt while the app is backgrounded: nobody saw it.
       if (!appActiveRef.current) return;
       if (!force && (!focusedRef.current || !atBottomRef.current)) return;
@@ -299,7 +316,7 @@ export default function ConversationDetail({
       lastMarkedReadRef.current = readAt;
       void markConversationRead(conversationId, readAt);
     },
-    [conversationId],
+    [conversationId, conversationStatus],
   );
 
   useEffect(() => {
@@ -685,9 +702,12 @@ export default function ConversationDetail({
       },
       // A hidden presence must not be broadcast: readers would otherwise see
       // "Online" from the live roster even though the stored row says offline.
-      { broadcast: privacy.sharePresence },
+      {
+        broadcast:
+          privacy.sharePresence && conversationStatus === "accepted",
+      },
     );
-  }, [conversationId, selfId, privacy.sharePresence]);
+  }, [conversationId, selfId, privacy.sharePresence, conversationStatus]);
 
   // Resolve the header name from the conversation itself when the route did
   // not pass one. Direct -> the peer's name; group/space -> the stored name.
@@ -699,6 +719,8 @@ export default function ConversationDetail({
     let live = true;
     void fetchConversationPeer(conversationId).then((peer) => {
       if (!live || !peer) return;
+      setConversationStatus(peer.status);
+      setRequestedBy(peer.requestedBy);
       if (peer.type === "direct") {
         setResolvedTitle(peer.peerName ?? "Conversation");
         setPeerId(peer.peerId);
@@ -714,9 +736,33 @@ export default function ConversationDetail({
     };
   }, [conversationId, title]);
 
+  const onAcceptRequest = useCallback(async () => {
+    if (requestBusy) return;
+    setRequestBusy(true);
+    const result = await acceptMessageRequest(conversationId);
+    setRequestBusy(false);
+    if (!result.ok) {
+      Alert.alert("Could not accept", result.error ?? "Try again in a bit.");
+      return;
+    }
+    setConversationStatus("accepted");
+  }, [conversationId, requestBusy]);
+
+  const onDeclineRequest = useCallback(async () => {
+    if (requestBusy) return;
+    setRequestBusy(true);
+    const result = await declineMessageRequest(conversationId);
+    setRequestBusy(false);
+    if (!result.ok) {
+      Alert.alert("Could not decline", result.error ?? "Try again in a bit.");
+      return;
+    }
+    router.back();
+  }, [conversationId, requestBusy, router]);
+
   const onDraftChange = (text: string) => {
     setDraft(text);
-    if (selfId && privacy.shareTyping) {
+    if (selfId && privacy.shareTyping && conversationStatus === "accepted") {
       sendTyping(
         conversationId,
         selfId,
@@ -732,7 +778,7 @@ export default function ConversationDetail({
    * timeout after every sent message.
    */
   const stopTyping = useCallback(() => {
-    if (selfId && privacy.shareTyping) {
+    if (selfId && privacy.shareTyping && conversationStatus === "accepted") {
       sendTyping(
         conversationId,
         selfId,
@@ -740,7 +786,13 @@ export default function ConversationDetail({
         false,
       );
     }
-  }, [conversationId, selfId, currentUser, privacy.shareTyping]);
+  }, [
+    conversationId,
+    selfId,
+    currentUser,
+    privacy.shareTyping,
+    conversationStatus,
+  ]);
 
   // Keyed on primitives, not the `currentUser` object: the auth provider used
   // to rebuild that object every render, and a changing identity here would
@@ -1223,6 +1275,8 @@ export default function ConversationDetail({
    */
   const sendImage = useCallback(async () => {
     if (sendingImage) return;
+    // Requests are text-only until the recipient accepts.
+    if (conversationStatus !== "accepted") return;
     setSendingImage(true);
 
     // Captured synchronously during the send so a failed upload can be queued
@@ -1312,6 +1366,7 @@ export default function ConversationDetail({
     insertQueuedPlaceholder,
     sendingImage,
     viewOnce,
+    conversationStatus,
   ]);
 
   /**
@@ -1321,6 +1376,8 @@ export default function ConversationDetail({
   const sendGif = useCallback(
     async (gif: Gif) => {
       if (sendingGif) return;
+      // A GIF chosen elsewhere must not slip into a text-only request.
+      if (conversationStatus !== "accepted") return;
       setGifPickerOpen(false);
       setSendingGif(true);
       const caption = draft.trim();
@@ -1385,7 +1442,14 @@ export default function ConversationDetail({
         ];
       });
     },
-    [conversationId, currentUser, draft, insertQueuedPlaceholder, sendingGif],
+    [
+      conversationId,
+      currentUser,
+      draft,
+      insertQueuedPlaceholder,
+      sendingGif,
+      conversationStatus,
+    ],
   );
 
   // Send a GIF chosen from a Space gallery as soon as the chat opens.
@@ -1562,6 +1626,20 @@ export default function ConversationDetail({
       ? `${[...typists.values()].join(", ")} ${typists.size > 1 ? "are" : "is"} typing…`
       : null;
 
+  const isRequestOutgoing =
+    conversationStatus === "requested" && requestedBy === selfId;
+  const isRequestIncoming =
+    conversationStatus === "requested" && requestedBy !== selfId;
+  /** The sender's single message is the whole budget of a pending request. */
+  const requestMessageSent = messages.some(
+    (message) => message.sender_id === selfId,
+  );
+  const canCompose =
+    conversationStatus === null ||
+    conversationStatus === "accepted" ||
+    (isRequestOutgoing && !requestMessageSent);
+  const requestPeerName = resolvedTitle ?? title ?? "this person";
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -1585,14 +1663,16 @@ export default function ConversationDetail({
           <Text style={styles.headerTitle} numberOfLines={1}>
             {resolvedTitle ?? title ?? "Conversation"}
           </Text>
-          {peerOnline ? (
+          {peerOnline && conversationStatus === "accepted" ? (
             <View style={styles.presenceRow}>
               <View style={styles.presenceDot} />
               <Text style={styles.presenceText}>Online</Text>
             </View>
           ) : null}
         </Pressable>
-        <CallButtons conversationId={conversationId} />
+        {conversationStatus === "accepted" ? (
+          <CallButtons conversationId={conversationId} />
+        ) : null}
       </View>
 
       {appearance.backgroundUri ? (
@@ -1728,17 +1808,21 @@ export default function ConversationDetail({
         </View>
       ) : null}
 
-      <View
-        style={[
-          styles.composer,
-          { paddingBottom: Math.max(insets.bottom, SPACING.spaceMd) },
-        ]}
-      >
-        <GifPicker
-          visible={gifPickerOpen}
-          onClose={() => setGifPickerOpen(false)}
-          onPick={(gif) => void sendGif(gif)}
-        />
+      {canCompose ? (
+        <View
+          style={[
+            styles.composer,
+            { paddingBottom: Math.max(insets.bottom, SPACING.spaceMd) },
+          ]}
+        >
+        {conversationStatus === "accepted" ? (
+          <GifPicker
+            visible={gifPickerOpen}
+            onClose={() => setGifPickerOpen(false)}
+            onPick={(gif) => void sendGif(gif)}
+          />
+        ) : null}
+        {conversationStatus === "accepted" ? (
         <Pressable
           style={[
             styles.gifButton,
@@ -1759,6 +1843,8 @@ export default function ConversationDetail({
             />
           )}
         </Pressable>
+        ) : null}
+        {conversationStatus === "accepted" ? (
         <Pressable
           style={[
             styles.imageButton,
@@ -1779,6 +1865,8 @@ export default function ConversationDetail({
             />
           )}
         </Pressable>
+        ) : null}
+        {conversationStatus === "accepted" ? (
         <Pressable
           style={[
             styles.viewOnceButton,
@@ -1795,10 +1883,13 @@ export default function ConversationDetail({
             color={viewOnce ? COLORS.primary : SEMANTIC_COLORS.textDim}
           />
         </Pressable>
+        ) : null}
         <VoiceRecorder
           conversationId={conversationId}
           currentUser={currentUser}
-          disabled={sending || sendingImage}
+          disabled={
+            sending || sendingImage || conversationStatus !== "accepted"
+          }
           onSent={(message) => {
             setMessages((current) => {
               if (current.some((m) => m.id === message.id)) return current;
@@ -1846,7 +1937,69 @@ export default function ConversationDetail({
             color={COLORS.onPrimary}
           />
         </Pressable>
-      </View>
+        </View>
+      ) : (
+        <View
+          style={[
+            styles.requestBar,
+            { paddingBottom: Math.max(insets.bottom, SPACING.spaceMd) },
+          ]}
+        >
+          <Ionicons
+            name={
+              conversationStatus === "declined"
+                ? "close-circle-outline"
+                : isRequestIncoming
+                  ? "mail-unread-outline"
+                  : "paper-plane-outline"
+            }
+            size={22}
+            color={COLORS.surfaceTint}
+          />
+          <View style={styles.requestBody}>
+            <Text style={styles.requestTitle}>
+              {conversationStatus === "declined"
+                ? "Request declined"
+                : isRequestIncoming
+                  ? "Message request"
+                  : isRequestOutgoing && requestMessageSent
+                    ? "Request sent"
+                    : "Send your first message"}
+            </Text>
+            <Text style={styles.requestText}>
+              {conversationStatus === "declined"
+                ? `${requestPeerName} declined this request, so messages are closed.`
+                : isRequestIncoming
+                  ? `${requestPeerName} wants to message you. Accept to start the conversation; until then they see no typing or read receipts.`
+                  : isRequestOutgoing && requestMessageSent
+                    ? `Waiting for ${requestPeerName} to accept. You can send one message until then.`
+                    : `You are not friends yet, so this is a request. You can send one text message — no photos or voice — until it is accepted.`}
+            </Text>
+            {isRequestIncoming ? (
+              <View style={styles.requestActions}>
+                <Pressable
+                  style={[styles.requestAccept, requestBusy && styles.btnBusy]}
+                  onPress={() => void onAcceptRequest()}
+                  disabled={requestBusy}
+                  accessibilityRole="button"
+                  accessibilityLabel="Accept message request"
+                >
+                  <Text style={styles.requestAcceptText}>Accept</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.requestDecline, requestBusy && styles.btnBusy]}
+                  onPress={() => void onDeclineRequest()}
+                  disabled={requestBusy}
+                  accessibilityRole="button"
+                  accessibilityLabel="Decline message request"
+                >
+                  <Text style={styles.requestDeclineText}>Decline</Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </View>
+        </View>
+      )}
 
       <Modal
         visible={actionTarget !== null}
@@ -2185,6 +2338,61 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.spaceMd,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: SEMANTIC_COLORS.ghostBorderLight,
+  },
+  requestBar: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.spaceMd,
+    paddingHorizontal: SPACING.gutter,
+    paddingTop: SPACING.spaceMd,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: SEMANTIC_COLORS.ghostBorderLight,
+    backgroundColor: SEMANTIC_COLORS.surfaceLevel1,
+  },
+  requestBody: {
+    flex: 1,
+    gap: SPACING.spaceXs,
+  },
+  requestTitle: {
+    ...TYPOGRAPHY.labelLG,
+    color: SEMANTIC_COLORS.textPrimary,
+  },
+  requestText: {
+    ...TYPOGRAPHY.bodySM,
+    color: SEMANTIC_COLORS.textSecondary,
+  },
+  requestActions: {
+    flexDirection: "row",
+    gap: SPACING.spaceSm,
+    marginTop: SPACING.spaceXs,
+  },
+  requestAccept: {
+    minHeight: 44,
+    paddingHorizontal: SPACING.spaceLg,
+    borderRadius: RADIUS.sm,
+    backgroundColor: COLORS.primaryContainer,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  requestAcceptText: {
+    ...TYPOGRAPHY.labelLG,
+    color: COLORS.onPrimary,
+  },
+  requestDecline: {
+    minHeight: 44,
+    paddingHorizontal: SPACING.spaceLg,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    borderColor: COLORS.outlineVariant,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  requestDeclineText: {
+    ...TYPOGRAPHY.labelLG,
+    color: COLORS.onSurface,
+  },
+  btnBusy: {
+    opacity: 0.6,
   },
   input: {
     flex: 1,

@@ -369,12 +369,19 @@ export async function fetchConversationSummaries(): Promise<
 
   const { data: userData } = await supabase.auth.getUser();
   const selfId = userData.user?.id;
+  if (!selfId) {
+    return [];
+  }
 
+  // Accepted conversations plus requests this user sent (so a pending request
+  // is still visible to its sender). Incoming requests live on their own
+  // screen and declined ones disappear from the inbox entirely.
   const { data, error } = await supabase
     .from("conversations")
     .select(
-      "id, type, name, avatar_url, created_at, is_pinned, conversation_members!inner (user_id, last_read_at)",
+      "id, type, name, avatar_url, created_at, is_pinned, status, requested_by, conversation_members!inner (user_id, last_read_at)",
     )
+    .or(`status.eq.accepted,and(status.eq.requested,requested_by.eq.${selfId})`)
     .order("is_pinned", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(50);
@@ -414,6 +421,8 @@ export async function fetchConversationSummaries(): Promise<
       last_message_sender: latest?.senderId ?? null,
       unread_count: latest?.unreadCount ?? 0,
       is_pinned: row.is_pinned ?? false,
+      status: row.status ?? "accepted",
+      requestedByMe: row.requested_by === selfId,
       peers: [],
     });
   }
@@ -458,6 +467,15 @@ export async function fetchConversationSummaries(): Promise<
       }
       for (const summary of summaries) {
         summary.peers = byConversation.get(summary.id) ?? [];
+        if (summary.status !== "accepted") {
+          // A pending request must not leak presence to its sender.
+          summary.peers = summary.peers.map((peer) => ({
+            ...peer,
+            presence: null,
+            presence_text: null,
+            presence_emoji: null,
+          }));
+        }
       }
     }
   }
@@ -711,6 +729,10 @@ export interface ConversationPeer {
   peerName: string | null;
   /** The conversation's own name, for groups and spaces (null for direct). */
   name: string | null;
+  /** accepted, or a first-DM request (pending/declined). */
+  status: "accepted" | "requested" | "declined";
+  /** Who sent a pending request; null for accepted conversations. */
+  requestedBy: string | null;
 }
 
 /**
@@ -732,7 +754,7 @@ export async function fetchConversationPeer(conversationId: string): Promise<Con
 
   const { data: conversation, error: conversationError } = await supabase
     .from("conversations")
-    .select("id, type, name")
+    .select("id, type, name, status, requested_by")
     .eq("id", conversationId)
     .maybeSingle();
 
@@ -740,9 +762,23 @@ export async function fetchConversationPeer(conversationId: string): Promise<Con
     return null;
   }
 
-  const row = conversation as { id: string; type: string; name: string | null };
+  const row = conversation as {
+    id: string;
+    type: string;
+    name: string | null;
+    status: "accepted" | "requested" | "declined" | null;
+    requested_by: string | null;
+  };
+  const status = row.status ?? "accepted";
   if (row.type !== "direct") {
-    return { type: row.type, peerId: null, peerName: null, name: row.name };
+    return {
+      type: row.type,
+      peerId: null,
+      peerName: null,
+      name: row.name ?? null,
+      status,
+      requestedBy: row.requested_by ?? null,
+    };
   }
 
   const { data: members } = await supabase
@@ -756,14 +792,23 @@ export async function fetchConversationPeer(conversationId: string): Promise<Con
     profile: { display_name: string } | null;
   }>;
   if (peers.length !== 1) {
-    return { type: row.type, peerId: null, peerName: null, name: row.name };
+    return {
+      type: row.type,
+      peerId: null,
+      peerName: null,
+      name: row.name ?? null,
+      status,
+      requestedBy: row.requested_by ?? null,
+    };
   }
 
   return {
     type: row.type,
     peerId: peers[0].user_id,
     peerName: peers[0].profile?.display_name ?? "Someone",
-    name: row.name,
+    name: row.name ?? null,
+    status,
+    requestedBy: row.requested_by ?? null,
   };
 }
 

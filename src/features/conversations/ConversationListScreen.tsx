@@ -8,6 +8,7 @@ import {
   RefreshControl,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS, SPACING, TYPOGRAPHY } from "../../theme";
 import { Avatar } from "../../components/ui/Avatar";
@@ -20,6 +21,7 @@ import { isSupabaseConfigured } from "../../lib/supabase";
 import { getSupabase } from "../../lib/supabase";
 import { useActivityBadge } from "../../lib/activity-badge-context";
 import type { ConversationSummary } from "../../lib/database.types";
+import { fetchMessageRequests } from "../../lib/requests";
 import {
   LoadingState,
   ErrorState,
@@ -60,14 +62,19 @@ export default function ConversationListScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [requestCount, setRequestCount] = useState(0);
 
   const load = useCallback(async (asRefresh = false) => {
     if (asRefresh) setRefreshing(true);
     else setLoading(true);
     setError(null);
     try {
-      const rows = await fetchConversationSummaries();
+      const [rows, requests] = await Promise.all([
+        fetchConversationSummaries(),
+        fetchMessageRequests().catch(() => []),
+      ]);
       setConversations(rows);
+      setRequestCount(requests.length);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not load conversations",
@@ -85,6 +92,13 @@ export default function ConversationListScreen() {
     });
     return unsubscribe;
   }, [load]);
+
+  // Accepting or declining happens on another screen; re-count on return.
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   const openConversation = (id: string) => {
     router.push(`/chat/${id}`);
@@ -140,7 +154,9 @@ export default function ConversationListScreen() {
           </View>
           <View style={styles.rowBottom}>
             <Text style={styles.rowPreview} numberOfLines={1}>
-              {preview}
+              {item.status === "requested"
+                ? `Request pending · ${preview}`
+                : preview}
             </Text>
             {item.unread_count > 0 ? (
               <View style={styles.unreadBadge}>
@@ -232,6 +248,40 @@ export default function ConversationListScreen() {
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
+          ListHeaderComponent={
+            requestCount > 0 ? (
+              <TouchableOpacity
+                style={styles.requestsRow}
+                onPress={() => router.push("/chat/requests")}
+                accessibilityRole="button"
+                accessibilityLabel={`Message requests, ${requestCount} waiting`}
+              >
+                <View style={styles.requestsIcon}>
+                  <Ionicons
+                    name="mail-unread-outline"
+                    size={20}
+                    color={COLORS.onPrimary}
+                  />
+                </View>
+                <View style={styles.requestsBody}>
+                  <Text style={styles.requestsTitle}>Message requests</Text>
+                  <Text style={styles.requestsSub}>
+                    {requestCount} waiting for your answer
+                  </Text>
+                </View>
+                <View style={styles.requestsBadge}>
+                  <Text style={styles.requestsBadgeText}>
+                    {requestCount > 99 ? "99+" : requestCount}
+                  </Text>
+                </View>
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={COLORS.onSurfaceVariant}
+                />
+              </TouchableOpacity>
+            ) : null
+          }
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -293,6 +343,48 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: SPACING.gutter,
     paddingBottom: SPACING.spaceXl,
+  },
+  requestsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.spaceMd,
+    paddingVertical: SPACING.spaceMd,
+    marginBottom: SPACING.spaceSm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.semantic.ghostBorderLight,
+  },
+  requestsIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.primaryContainer,
+  },
+  requestsBody: {
+    flex: 1,
+  },
+  requestsTitle: {
+    ...TYPOGRAPHY.bodyMD,
+    color: COLORS.semantic.textPrimary,
+    fontWeight: "600",
+  },
+  requestsSub: {
+    ...TYPOGRAPHY.bodySM,
+    color: COLORS.semantic.textSecondary,
+  },
+  requestsBadge: {
+    minWidth: 22,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 11,
+    alignItems: "center",
+    backgroundColor: COLORS.primaryContainer,
+  },
+  requestsBadgeText: {
+    ...TYPOGRAPHY.labelSM,
+    fontWeight: "700",
+    color: COLORS.onPrimary,
   },
   row: {
     flexDirection: "row",

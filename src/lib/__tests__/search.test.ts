@@ -276,7 +276,9 @@ describe("searchConversations", () => {
         last_message_preview: "uko wapi",
         last_message_sender: "peer",
         unread_count: 0,
-      is_pinned: false,
+        is_pinned: false,
+        status: "accepted",
+        requestedByMe: false,
         peers: [
           {
             user_id: "p1",
@@ -306,7 +308,9 @@ describe("searchConversations", () => {
         last_message_preview: "tacos at 7?",
         last_message_sender: "peer",
         unread_count: 0,
-      is_pinned: false,
+        is_pinned: false,
+        status: "accepted",
+        requestedByMe: false,
         peers: [],
       },
     ]);
@@ -327,7 +331,9 @@ describe("searchConversations", () => {
         last_message_preview: "see you there",
         last_message_sender: "peer",
         unread_count: 0,
-      is_pinned: false,
+        is_pinned: false,
+        status: "accepted",
+        requestedByMe: false,
         peers: [],
       },
     ]);
