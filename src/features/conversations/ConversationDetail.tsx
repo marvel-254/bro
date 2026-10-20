@@ -217,6 +217,12 @@ export default function ConversationDetail({
   const [gifs, setGifs] = useState<Record<string, Gif>>({});
   /** Header name resolved from the conversation when no title prop is given. */
   const [resolvedTitle, setResolvedTitle] = useState<string | null>(null);
+  /**
+   * The other member of a direct conversation, when there is exactly one.
+   * The header uses this to open their profile; groups have no single person
+   * to open, so it stays null and the header is not tappable.
+   */
+  const [peerId, setPeerId] = useState<string | null>(null);
   /** Whether any other member is currently present in the conversation. */
   const [peerOnline, setPeerOnline] = useState(false);
   const [sendingImage, setSendingImage] = useState(false);
@@ -686,7 +692,9 @@ export default function ConversationDetail({
       if (!live || !peer) return;
       if (peer.type === "direct") {
         setResolvedTitle(peer.peerName ?? "Conversation");
+        setPeerId(peer.peerId);
       } else {
+        setPeerId(null);
         setResolvedTitle(
           peer.name ?? (peer.type === "space" ? "Space chat" : "Group chat"),
         );
@@ -1552,7 +1560,19 @@ export default function ConversationDetail({
       keyboardVerticalOffset={insets.top}
     >
       <View style={styles.header}>
-        <View style={styles.headerTitleWrap}>
+        <Pressable
+          style={styles.headerTitleWrap}
+          onPress={() => {
+            if (peerId) router.push(`/profile/${peerId}`);
+          }}
+          disabled={!peerId}
+          accessibilityRole={peerId ? "button" : undefined}
+          accessibilityLabel={
+            peerId
+              ? `Open ${resolvedTitle ?? title ?? "their"} profile`
+              : undefined
+          }
+        >
           <Text style={styles.headerTitle} numberOfLines={1}>
             {resolvedTitle ?? title ?? "Conversation"}
           </Text>
@@ -1562,7 +1582,7 @@ export default function ConversationDetail({
               <Text style={styles.presenceText}>Online</Text>
             </View>
           ) : null}
-        </View>
+        </Pressable>
         <CallButtons conversationId={conversationId} />
       </View>
 

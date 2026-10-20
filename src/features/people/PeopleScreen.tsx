@@ -150,25 +150,32 @@ export default function PeopleScreen() {
     const busy = busyId === item.userId;
     return (
       <View style={styles.personRow}>
-        <Avatar
-          uri={item.avatarUrl}
-          name={item.displayName}
-          size={44}
-          presence={item.presence}
-        />
-        <View style={styles.personInfo}>
-          <Text style={styles.personName}>{item.displayName}</Text>
-          {activity ? (
-            <Text style={styles.personActivity}>
-              {item.emoji ? `${item.emoji} ` : ""}
-              {item.statusText ?? ""}
-            </Text>
-          ) : (
-            <Text style={styles.personPresence}>
-              {PRESENCE_LABELS[item.presence]}
-            </Text>
-          )}
-        </View>
+        <TouchableOpacity
+          style={styles.personIdentity}
+          onPress={() => router.push(`/profile/${item.userId}`)}
+          accessibilityRole="button"
+          accessibilityLabel={`Open ${item.displayName}'s profile`}
+        >
+          <Avatar
+            uri={item.avatarUrl}
+            name={item.displayName}
+            size={44}
+            presence={item.presence}
+          />
+          <View style={styles.personInfo}>
+            <Text style={styles.personName}>{item.displayName}</Text>
+            {activity ? (
+              <Text style={styles.personActivity}>
+                {item.emoji ? `${item.emoji} ` : ""}
+                {item.statusText ?? ""}
+              </Text>
+            ) : (
+              <Text style={styles.personPresence}>
+                {PRESENCE_LABELS[item.presence]}
+              </Text>
+            )}
+          </View>
+        </TouchableOpacity>
         <View style={styles.personActions}>
           {!isFriend ? (
             <TouchableOpacity
@@ -501,6 +508,13 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.spaceSm,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: COLORS.semantic.ghostBorderLight,
+  },
+  personIdentity: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.spaceMd,
+    minHeight: 48,
   },
   personInfo: {
     flex: 1,
