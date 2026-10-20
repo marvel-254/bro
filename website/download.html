@@ -120,7 +120,11 @@ code{font-family:var(--mono);font-size:12px;color:var(--cyan);background:rgba(0,
       var pairs = [["arm64", m.arm64], ["armeabi", m.armeabi]];
       for (var i = 0; i < pairs.length; i++) {
         var el = document.querySelector('[data-download="' + pairs[i][0] + '"]');
-        if (el && pairs[i][1]) el.href = pairs[i][1] + v;
+        // Only absolute URLs; a malformed manifest must not replace a working
+        // static link with a broken relative one.
+        if (el && /^https?:\/\//.test(pairs[i][1] || "")) {
+          el.href = pairs[i][1] + v;
+        }
       }
     })
     .catch(function () {});

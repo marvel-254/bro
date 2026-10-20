@@ -24,15 +24,30 @@ if (!token) {
   process.exit(1);
 }
 
-const [arm64Url, armeabiUrl] = process.argv.slice(2);
+/** Only accept absolute http(s) URLs; anything else (e.g. a log line) is a bug. */
+function cleanUrl(value) {
+  if (typeof value !== 'string') return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:'
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+const [rawArm64, rawArmeabi] = process.argv.slice(2);
+const arm64Url = cleanUrl(rawArm64);
+const armeabiUrl = cleanUrl(rawArmeabi);
 if (!arm64Url && !armeabiUrl) {
-  console.error('Pass at least one APK URL');
+  console.error(`No usable APK URLs: arm64=${rawArm64 ?? ''} armeabi=${rawArmeabi ?? ''}`);
   process.exit(1);
 }
 
 const manifest = {
-  arm64: arm64Url || null,
-  armeabi: armeabiUrl || null,
+  arm64: arm64Url,
+  armeabi: armeabiUrl,
   commit: process.env.GITHUB_SHA ?? null,
   ref: process.env.GITHUB_REF_NAME ?? null,
   builtAt: new Date().toISOString(),

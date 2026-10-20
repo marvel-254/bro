@@ -9,7 +9,8 @@
  * `pathname` defaults to `apk/<basename>`. Pass it to publish the same build
  * under a stable alias the site links to (e.g. `apk/app-release.apk`).
  *
- * Prints the public URL to stdout and sets APK_PUBLIC_URL in GitHub Actions.
+ * Prints ONLY the public URL to stdout (so callers can capture it with
+ * `url=$(...)`) and sets APK_PUBLIC_URL in GitHub Actions.
  */
 import { put } from '@vercel/blob';
 import { readFile } from 'node:fs/promises';
@@ -48,7 +49,10 @@ try {
     // from apk/latest.json for browsers that already hold an old copy.
     cacheControlMaxAge: 60,
   });
-  console.log(`${pathname} -> ${blob.url}`);
+  // stdout is the machine-readable URL only; the mapping goes to stderr so it
+  // still shows in the log.
+  console.error(`${pathname} -> ${blob.url}`);
+  console.log(blob.url);
   if (process.env.GITHUB_ENV) {
     const { appendFile } = await import('node:fs/promises');
     await appendFile(process.env.GITHUB_ENV, `APK_PUBLIC_URL=${blob.url}\n`);

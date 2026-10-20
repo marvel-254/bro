@@ -1,0 +1,45 @@
+name: Publish APK Manifest
+
+# Repairs the `apk/latest.json` pointer the download page reads, without
+# rebuilding an APK. android-build.yml and release.yml already publish it on
+# every build; this exists so a malformed or missing pointer can be corrected
+# in under a minute instead of waiting for (or forcing) a full release build.
+
+on:
+  workflow_dispatch:
+    inputs:
+      arm64_url:
+        description: arm64 APK URL
+        required: false
+        default: https://x3zj3ht2vzg6otli.public.blob.vercel-storage.com/apk/app-arm64-v8a-release.apk
+      armeabi_url:
+        description: armeabi-v7a APK URL
+        required: false
+        default: https://x3zj3ht2vzg6otli.public.blob.vercel-storage.com/apk/app-armeabi-v7a-release.apk
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish latest.json
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Publish manifest
+        env:
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          node scripts/publish-apk-manifest.mjs "${{ inputs.arm64_url }}" "${{ inputs.armeabi_url }}"
