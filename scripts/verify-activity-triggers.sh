@@ -77,6 +77,15 @@ curl -s "${URL}/rest/v1/activity?select=type,actor_id,target_id,target_type&orde
 echo "--- notifications fan-out (migration 004) ---"
 curl -s "${URL}/rest/v1/notifications?select=user_id,is_read,deep_link&order=created_at.desc&limit=10" "${auth[@]}" | jq -r '.[] | "  user=\(.user_id[0:8]) read=\(.is_read) link=\(.deep_link)"'
 
+# The mention notification must point at the message. If it points at the
+# mentioned user, resolveActivityDestination() cannot open anything and the tap
+# lands on the chat list instead.
+MENTION_LINK=$(curl -s "${URL}/rest/v1/notifications?select=deep_link&user_id=eq.$BOB&order=created_at.desc&limit=1" "${auth[@]}" | jq -r '.[0].deep_link // empty')
+case "$MENTION_LINK" in
+  *"?message=$ROOT") echo "mention deep link OK: $MENTION_LINK" ;;
+  *) echo "MENTION DEEP LINK WRONG: '$MENTION_LINK' (expected ...?message=$ROOT)"; exit 1 ;;
+esac
+
 echo "=== Bob reacts to Alice's message (expect reaction activity) ==="
 insert message_reactions "{\"message_id\":\"$ROOT\",\"user_id\":\"$BOB\",\"emoji\":\"fr\"}" >/dev/null
 curl -s "${URL}/rest/v1/activity?select=type&order=created_at.desc&limit=10" "${auth[@]}" | jq -r '[.[].type] | join(", ")'
@@ -93,7 +102,7 @@ curl -s -X DELETE "${URL}/rest/v1/conversations?id=eq.$CONV" "${auth[@]}" >/dev/
 LEFT=$(curl -s "${URL}/rest/v1/notifications?select=id" "${auth[@]}" | jq 'length')
 echo "remaining notification rows: $LEFT"
 
-if [ -n "${TEMP_EMAIL:-}" ]; then
+if [ -n "${TEMP_ID:-}" ]; then
   curl -s -X DELETE "${URL}/auth/v1/admin/users/$TEMP_ID" "${auth[@]}" >/dev/null
   echo "removed temp user $TEMP_EMAIL"
 fi

@@ -409,6 +409,33 @@ describe("resolveActivityDestination", () => {
     expect(messages.eq).toHaveBeenCalledWith("id", "msg-3");
   });
 
+  it("opens a mention at the mentioned message", async () => {
+    // Mentions used to target the mentioned *user*, which is not a
+    // destination, so the tap fell back to the chat list. The producer now
+    // targets the message and the notification carries its id.
+    const messages = createChain();
+    messages.maybeSingle.mockReturnValue(
+      Promise.resolve({
+        data: { conversation_id: "conv-7", branch_id: null },
+        error: null,
+      }),
+    );
+    const branches = createChain();
+    const supabase = makeSupabase();
+    (supabase.from as jest.Mock).mockImplementation((table: string) =>
+      table === "messages" ? messages : branches,
+    );
+    mockedGetSupabase.mockReturnValue(supabase);
+
+    expect(
+      await resolveActivityDestination(
+        item({ type: "mention", targetType: "message", targetId: "msg-5" }),
+      ),
+    ).toBe("/chat/conv-7?message=msg-5");
+    // Only replies care whether the parent started a branch.
+    expect(branches.maybeSingle).not.toHaveBeenCalled();
+  });
+
   it("opens the branch directly when the message already belongs to one", async () => {
     const messages = createChain();
     messages.maybeSingle.mockReturnValue(
