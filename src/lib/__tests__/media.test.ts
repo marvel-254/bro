@@ -10,6 +10,7 @@ import {
   uploadChatFile,
   insertAttachment,
   fetchMessageAttachments,
+  fetchMessageAttachmentWithRetry,
   signedChatUrl,
   sendImageMessage,
   sendStoredImage,
@@ -434,6 +435,43 @@ describe("fetchMessageAttachments", () => {
     mockedGetSupabase.mockReturnValue(supabase);
 
     expect(await fetchMessageAttachments(["m1"])).toEqual({});
+  });
+});
+
+describe("fetchMessageAttachmentWithRetry", () => {
+  const row = {
+    id: "a1",
+    message_id: "m1",
+    storage_path: "p1",
+    thumb_path: "t1",
+    mime_type: "image/jpeg",
+    size_bytes: 10,
+  };
+
+  it("finds an attachment linked just after the message insert", async () => {
+    const chain = createChain();
+    chain.in
+      .mockReturnValueOnce(Promise.resolve({ data: [], error: null }))
+      .mockReturnValueOnce(Promise.resolve({ data: [row], error: null }));
+    const { supabase } = makeSupabase({ attachments: chain });
+    mockedGetSupabase.mockReturnValue(supabase);
+
+    const result = await fetchMessageAttachmentWithRetry("m1", { delayMs: 0 });
+
+    expect(result?.id).toBe("a1");
+    expect(chain.in).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives up after the attempts instead of waiting forever", async () => {
+    const chain = createChain();
+    chain.in.mockReturnValue(Promise.resolve({ data: [], error: null }));
+    const { supabase } = makeSupabase({ attachments: chain });
+    mockedGetSupabase.mockReturnValue(supabase);
+
+    await expect(
+      fetchMessageAttachmentWithRetry("m1", { attempts: 2, delayMs: 0 }),
+    ).resolves.toBeNull();
+    expect(chain.in).toHaveBeenCalledTimes(2);
   });
 });
 

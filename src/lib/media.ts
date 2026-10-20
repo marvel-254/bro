@@ -370,6 +370,33 @@ function cacheSignedUrl(path: string, url: string, expiresInSeconds: number): vo
 }
 
 /** Signed URL for a private object, cached until just before expiry. */
+/**
+ * Fetch the attachment for a freshly received message, retrying briefly.
+ *
+ * The upload links the attachment row after inserting the message, so the
+ * realtime INSERT can arrive first. A single fetch then returns nothing and the
+ * bubble stays permanently blank until the thread is reopened.
+ */
+export async function fetchMessageAttachmentWithRetry(
+  messageId: string,
+  options: { attempts?: number; delayMs?: number } = {},
+): Promise<AttachmentRef | null> {
+  const attempts = options.attempts ?? 4;
+  const delayMs = options.delayMs ?? 400;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (attempt > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
+    }
+    const found = await fetchMessageAttachments([messageId]);
+    if (found[messageId]) {
+      return found[messageId];
+    }
+  }
+
+  return null;
+}
+
 export async function signedChatUrl(
   storagePath: string,
   expiresIn = 3600,

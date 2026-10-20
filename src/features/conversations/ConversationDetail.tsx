@@ -79,6 +79,7 @@ import {
 
 import {
   fetchMessageAttachments,
+  fetchMessageAttachmentWithRetry,
   sendImageMessage,
   sendStoredImage,
   sendStoredVoice,
@@ -503,17 +504,20 @@ export default function ConversationDetail({
     void load();
   }, [load]);
 
-  // Scroll the deep-linked message into view once it is on screen. Runs once
-  // per focused id; the list has no fixed row height, so a failure falls back
-  // to an offset-based attempt in onScrollToIndexFailed.
-  const focusHandledRef = useRef(false);
+  // Scroll the deep-linked message into view once it is on screen. Track the id
+  // that was handled rather than a boolean: a second notification can arrive
+  // while this screen is already mounted, and a sticky flag would ignore it.
+  // The list has no fixed row height, so a failure falls back to an offset-based
+  // attempt in onScrollToIndexFailed.
+  const focusHandledRef = useRef<string | null>(null);
   useEffect(() => {
-    if (focusHandledRef.current || loading || !focusMessageId) return;
+    if (loading || !focusMessageId) return;
+    if (focusHandledRef.current === focusMessageId) return;
     const index = messages.findIndex(
       (message) => message.id === focusMessageId,
     );
     if (index < 0) return;
-    focusHandledRef.current = true;
+    focusHandledRef.current = focusMessageId;
     const timer = setTimeout(() => {
       listRef.current?.scrollToIndex({
         index,
@@ -551,9 +555,17 @@ export default function ConversationDetail({
         // arriving message needs its sender profile (the realtime payload has
         // no join), or a group message shows no name until a reload.
         if (incoming.type === "image" || incoming.type === "voice") {
-          void fetchMessageAttachments([incoming.id]).then((attached) => {
-            setAttachments((current) => ({ ...current, ...attached }));
-          });
+          // The attachment link is written just after the message insert, so
+          // this can race it; retrying is what stops a blank media bubble.
+          void fetchMessageAttachmentWithRetry(incoming.id).then(
+            (attachment) => {
+              if (!attachment) return;
+              setAttachments((current) => ({
+                ...current,
+                [incoming.id]: attachment,
+              }));
+            },
+          );
         }
         if (incoming.type === "gif" && incoming.gif_id) {
           void getGifsByIds([incoming.gif_id]).then((fetched) => {
@@ -590,14 +602,19 @@ export default function ConversationDetail({
             return;
           }
           void (async () => {
-            const fresh = await fetchReactions([messageId]);
-            // Set the key explicitly: fetchReactions omits messages with no
-            // reactions, so a plain merge would keep the last removed reaction
-            // on screen.
-            setReactions((current) => ({
-              ...current,
-              [messageId]: fresh[messageId] ?? [],
-            }));
+            try {
+              const fresh = await fetchReactions([messageId]);
+              // Set the key explicitly: fetchReactions omits messages with no
+              // reactions, so a plain merge would keep the last removed
+              // reaction on screen.
+              setReactions((current) => ({
+                ...current,
+                [messageId]: fresh[messageId] ?? [],
+              }));
+            } catch {
+              // A failed reaction refresh must not take down the screen; the
+              // next event or reload will catch up.
+            }
           })();
           return;
         }
@@ -605,14 +622,18 @@ export default function ConversationDetail({
         // 20261019000200_reaction_replica_identity.sql). Rather than drop the
         // change, refresh every reaction on the loaded page.
         void (async () => {
-          const ids = messagesRef.current.map((message) => message.id);
-          if (ids.length === 0) return;
-          const fresh = await fetchReactions(ids);
-          setReactions((current) => {
-            const next = { ...current };
-            for (const id of ids) next[id] = fresh[id] ?? [];
-            return next;
-          });
+          try {
+            const ids = messagesRef.current.map((message) => message.id);
+            if (ids.length === 0) return;
+            const fresh = await fetchReactions(ids);
+            setReactions((current) => {
+              const next = { ...current };
+              for (const id of ids) next[id] = fresh[id] ?? [];
+              return next;
+            });
+          } catch {
+            // Nothing actionable for a background refresh.
+          }
         })();
       },
       onReadCursorChange: () => {
@@ -1146,9 +1167,13 @@ export default function ConversationDetail({
         .then((fresh) => setReactions((current) => ({ ...current, ...fresh })))
         .catch(() => {
           setError("Could not update that reaction.");
-          void fetchReactions([messageId]).then((fresh) =>
-            setReactions((current) => ({ ...current, ...fresh })),
-          );
+          // Roll back to the server's view, but a failed refresh is not worth
+          // another error: the optimistic row will be replaced on reload.
+          void fetchReactions([messageId])
+            .then((fresh) =>
+              setReactions((current) => ({ ...current, ...fresh })),
+            )
+            .catch(() => undefined);
         });
     },
     [selfId],
