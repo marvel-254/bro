@@ -40,11 +40,13 @@ export function InviteProvider({ children }: { children: ReactNode }) {
 
   // Load any previously saved invite on mount
   useEffect(() => {
-    getPendingInvite().then((saved) => {
-      if (saved) {
-        setPendingInviteState(saved);
-      }
-    });
+    void getPendingInvite()
+      .then((saved) => {
+        if (saved) {
+          setPendingInviteState(saved);
+        }
+      })
+      .catch(() => undefined);
   }, []);
 
   const handleUrl = useCallback((url: string | null) => {
@@ -59,7 +61,7 @@ export function InviteProvider({ children }: { children: ReactNode }) {
   // Listen to deep links on app launch and while open
   useEffect(() => {
     // 1. Initial URL when app was launched from a link
-    Linking.getInitialURL().then(handleUrl);
+    void Linking.getInitialURL().then(handleUrl).catch(() => undefined);
 
     // 2. Incoming URLs while the app is active
     const subscription = Linking.addEventListener("url", (event) => {

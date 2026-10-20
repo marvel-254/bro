@@ -141,24 +141,32 @@ function ChatImage({
   onOpen: (fullPath: string, viewOnce?: boolean) => void;
 }) {
   const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let live = true;
+    setFailed(false);
     if (!attachment) {
       setUrl(null);
       return;
     }
-    void signedChatUrl(attachment.thumbPath ?? attachment.storagePath).then(
-      (resolved) => {
-        if (live) setUrl(resolved);
-      },
-    );
+    void signedChatUrl(attachment.thumbPath ?? attachment.storagePath)
+      .then((resolved) => {
+        if (!live) return;
+        // A null URL is a failure, not a pending load: spinning forever hides
+        // the fact that the image cannot be opened.
+        if (resolved) setUrl(resolved);
+        else setFailed(true);
+      })
+      .catch(() => {
+        if (live) setFailed(true);
+      });
     return () => {
       live = false;
     };
   }, [attachment]);
 
-  if (!attachment) {
+  if (!attachment || failed) {
     return (
       <View style={styles.photoPlaceholder}>
         <Text style={styles.photoPlaceholderText}>Photo unavailable</Text>
@@ -196,14 +204,24 @@ function ChatImage({
 /**
  * Inline GIF for a gif message. The catalogue row carries the dimensions, so
  * the bubble keeps the animation's aspect ratio instead of squashing it.
- * A missing row (deleted or the library lookup failed) shows a placeholder
- * rather than a collapsed, invisible bubble.
+ *
+ * A missing row is terminal, not loading: the catalogue lookup happens once
+ * with the page, so animating a spinner here promises an animation that will
+ * never arrive. Show a static "unavailable" box instead.
  */
 function GifBubble({ gif }: { gif: Gif | undefined }) {
   if (!gif) {
     return (
-      <View style={styles.gifPlaceholder}>
-        <ActivityIndicator size="small" color={SEMANTIC_COLORS.textDim} />
+      <View
+        style={styles.gifPlaceholder}
+        accessibilityLabel="GIF unavailable"
+      >
+        <Ionicons
+          name="image-outline"
+          size={22}
+          color={SEMANTIC_COLORS.textDim}
+        />
+        <Text style={styles.gifPlaceholderText}>GIF unavailable</Text>
       </View>
     );
   }
@@ -581,7 +599,12 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.sm,
     alignItems: "center",
     justifyContent: "center",
+    gap: SPACING.spaceXs,
     backgroundColor: SEMANTIC_COLORS.surfaceLevel2,
+  },
+  gifPlaceholderText: {
+    ...TYPOGRAPHY.labelSM,
+    color: SEMANTIC_COLORS.textDim,
   },
   viewOnceBadge: {
     position: "absolute",

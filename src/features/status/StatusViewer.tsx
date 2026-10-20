@@ -218,10 +218,12 @@ export default function StatusViewer({
       return;
     }
     let cancelled = false;
-    void fetchStatusReplies(item.id).then((rows) => {
-      if (cancelled) return;
-      setReplies(rows.map((row) => row.body));
-    });
+    void fetchStatusReplies(item.id)
+      .then((rows) => {
+        if (cancelled) return;
+        setReplies(rows.map((row) => row.body));
+      })
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };
@@ -239,10 +241,12 @@ export default function StatusViewer({
       return;
     }
     let cancelled = false;
-    void fetchStatusViews(item.id).then((rows) => {
-      if (cancelled) return;
-      setViews(rows);
-    });
+    void fetchStatusViews(item.id)
+      .then((rows) => {
+        if (cancelled) return;
+        setViews(rows);
+      })
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };

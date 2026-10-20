@@ -42,14 +42,18 @@ export default function VoiceMessage({ attachment }: Props) {
     let cancelled = false;
     setAudioUrl(null);
     setError(null);
-    void signedChatUrl(attachment.storagePath, 3600).then((url) => {
-      if (cancelled) return;
-      if (url) {
-        setAudioUrl(url);
-      } else {
-        setError("Voice note unavailable");
-      }
-    });
+    void signedChatUrl(attachment.storagePath, 3600)
+      .then((url) => {
+        if (cancelled) return;
+        if (url) {
+          setAudioUrl(url);
+        } else {
+          setError("Voice note unavailable");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setError("Voice note unavailable");
+      });
     return () => {
       cancelled = true;
     };

@@ -94,9 +94,14 @@ export default function ActivityScreen() {
       // Resolve the destination (reply/reaction activity carries a message id
       // that must be turned into its conversation) then navigate. Falls back to
       // the chat list when nothing concrete can be opened.
-      void resolveActivityDestination(item).then((destination) => {
-        router.push((destination ?? "/chats") as never);
-      });
+      void resolveActivityDestination(item)
+        .then((destination) => {
+          router.push((destination ?? "/chats") as never);
+        })
+        .catch(() => {
+          // A failed lookup should still take the user somewhere useful.
+          router.push("/chats" as never);
+        });
     },
     [router],
   );

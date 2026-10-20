@@ -154,7 +154,9 @@ function DiscussionSheet({
     if (loadedFor === discussion.id) return;
     setLoadedFor(discussion.id);
     setDraft(discussion.myContribution ?? "");
-    void fetchContributions(discussion.id).then(setContributions);
+    void fetchContributions(discussion.id)
+      .then(setContributions)
+      .catch(() => undefined);
   }, [discussion, loadedFor]);
 
   const submit = useCallback(async () => {

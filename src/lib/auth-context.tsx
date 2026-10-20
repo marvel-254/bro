@@ -93,6 +93,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSession(data.session ?? null);
         }
       })
+      // A failed session read must still end the loading state; leaving the
+      // rejection unhandled is an app-level crash on some runtimes.
+      .catch(() => undefined)
       .finally(() => {
         if (active) {
           setIsLoading(false);
