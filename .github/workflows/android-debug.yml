@@ -18,6 +18,9 @@ on:
     paths:
       - 'app/**'
       - 'src/**'
+      - 'modules/**'
+      - 'android/**'
+      - 'app.json'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/android-debug.yml'
