@@ -47,7 +47,8 @@
         "INTERNET",
         "CAMERA",
         "RECORD_AUDIO",
-        "MODIFY_AUDIO_SETTINGS"
+        "MODIFY_AUDIO_SETTINGS",
+        "WAKE_LOCK"
       ],
       "usesCleartextTraffic": false,
       "allowBackup": false
