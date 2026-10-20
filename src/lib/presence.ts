@@ -35,7 +35,7 @@ export const PRESENCE_COLORS: Record<Presence, string> = {
   gaming: "#B388FF",
   listening: "#FFB020",
   afk: "#8F9CAE",
-  offline: "#4F5B6E",
+  offline: "#7C8A9E",
 };
 
 export interface PresencePayload {

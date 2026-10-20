@@ -54,7 +54,7 @@ export const COLORS = {
     ghostBorderLight: "rgba(255, 255, 255, 0.08)",
     textPrimary: "#F2F5F9",
     textSecondary: "#8F9CAE",
-    textDim: "#4F5B6E",
+    textDim: "#7C8A9E",
   },
 } as const;
 
@@ -66,7 +66,7 @@ export const SEMANTIC_COLORS = {
   ghostBorderLight: "rgba(255, 255, 255, 0.08)",
   textPrimary: "#F2F5F9",
   textSecondary: "#8F9CAE",
-  textDim: "#4F5B6E",
+  textDim: "#7C8A9E",
 } as const;
 
 export const TYPOGRAPHY = {
