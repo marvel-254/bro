@@ -1,11 +1,16 @@
 # BRO — Handoff / State of Work
 
-Date: 2026-10-20 (updated after chat hardening, idempotent sends, read-cursor fix, and distribution freshness)
+Date: 2026-10-22 (updated after closing the remaining GitHub backlog and before device test/release)
 Project root: `/home/marvel/Projects/bro/`
-Branch: `feat/supabase-chat` (working branch, pushed, PR #3 open → main)
+Branch: `feat/supabase-chat` (pushed, tip `061f21d`; PR #3 → main still open)
 App name: **bro** (NOT "BROS" — sir confirmed the name stays `bro`, package `app.bro`)
 
-Current state: typecheck clean, lint 0 errors (3 known warnings: ErrorBoundary no-console + two `any` in invites.test.ts), 496/496 tests pass across 27 suites. Release + debug CI green, production JS bundle verified.
+Current state: typecheck clean, lint 0 errors, **528/528 tests across 30 suites**.
+Migrations through `20261020000600_message_requests.sql` are applied to the live
+DB. Latest release Android build `39547186310` is green; latest debug APK build
+`39497995245` is green. **All GitHub issues #4–#14 are closed.** A device
+(SM-G965U, `365149554b4e3098`) is connected for the final test pass; release is
+deliberately not cut yet.
 
 **Read section 5 before trusting any screen.** Three of them were hardcoded mock
 data or unreachable placeholders until this session.
@@ -604,3 +609,111 @@ suppress "seen" and racing writes cannot move the cursor backwards.
 **Still open from before:** rotate the service-role key; two-device realtime +
 call test; push notifications; device-test voice notes; group calls; drops/
 statuses/squads UI; delete the smoke-test user/conversation.
+
+
+## 14. Session handoff — 2026-10-22 (profile/privacy/requests/accessibility/IME, all issues closed)
+
+Branch `feat/supabase-chat`, tip `061f21d`. `tsc` clean, 528/528 tests across
+30 suites, lint 0 errors. All open issues (#4–#14) are implemented and closed.
+The next step is **device testing, then release**; do not tag until the test
+checklist below has been run on the connected phone.
+
+### Landed, newest first
+
+| Commit | What |
+|---|---|
+| `061f21d` | Debug workflow now triggers on `modules/**`, `android/**`, `app.json` (it silently skipped the native-module commit because of path filters) |
+| `17dbb83` | IME listener setup marshalled onto the Android main queue (first CI attempt failed Kotlin compile) |
+| `32c5fd9` | #10 Android keyboard GIF/image ingestion: local Expo module, cache copy, MIME/size validation, preview/send, original-bytes upload |
+| `20cecda` | #9 local reaction bursts (reduced-motion aware) **and** #12 privacy-aware typing state in the direct-chat header |
+| `a46344b` | #8 `textDim` raised `#4F5B6E` → `#7C8A9E` (≥4.91:1), audit in `docs/accessibility/chat-contrast.md` |
+| `cb67a8d` | #13 message requests: status/requested_by, one-message budget, attachments refused, accept/decline RPCs, block/report, Chats badge, request screen |
+| `d77258b` | #14 privacy controls: presence, last active, typing, read receipts + settings screen |
+| `f9f13c0` | #11 profile screen from chat header/People, follow/block, social counts, last-active gating |
+
+Migrations applied live (via `env -u HTTP_PROXY -u HTTPS_PROXY supabase db push --yes`):
+
+- `20261020000400_profile_social.sql` — follower/following counts RPC.
+- `20261020000500_privacy_settings.sql` — privacy columns + read-cursor filtering.
+- `20261020000600_message_requests.sql` — request state, send budget, attachment
+  trigger, accept/decline, `user_reports`.
+  - Kept the existing `gif_library` listed-GIF check when recreating
+    `messages_insert`; do not drop it in future rewrites.
+  - The one-message budget counts soft-deleted messages, so delete-then-resend
+    cannot reset a request.
+
+### New files worth knowing
+
+- `src/lib/requests.ts`, `src/features/conversations/MessageRequestsScreen.tsx`,
+  `app/chat/requests.tsx`.
+- `src/lib/profiles.ts`, `src/lib/blocks.ts`,
+  `src/features/profile/ProfileScreen.tsx`, `app/profile/[id].tsx`.
+- `src/lib/privacy.ts`, `src/lib/privacy-context.tsx`,
+  `src/features/settings/PrivacyScreen.tsx`, `app/settings/privacy.tsx`.
+- `modules/bro-ime/` — local Expo module (autolinked; verified by
+  `npx expo-modules-autolinking search -p android`). Kotlin receive-content
+  listener + JS wrapper `enableKeyboardRichContent` / `onKeyboardRichContent`.
+- `docs/accessibility/chat-contrast.md` — measured contrast pairs.
+
+### CI / artifacts
+
+- Release build (prebuild + tests + bundle + `assembleRelease`):
+  run `39547186310`, **success**, artifact `BRO-release`
+  (`12322163086`), ~37.9 MB zipped.
+- Debug APK (`android-debug.yml`): run `39497995245`, **success**.
+- Attempting to download the release artifact via `gh api`/`curl` from this
+  machine was extremely slow and the first attempt timed out part-way; retry or
+  use the GitHub UI if the local zip is incomplete. Partial files in
+  `/tmp/opencode/` are not trustworthy.
+
+### Device test checklist (before release)
+
+Device: SM-G965U serial `365149554b4e3098`, 1440×2960. Reminder: screenshots are
+physical pixels; `adb shell input tap` uses device pixels, not compressed image
+coordinates.
+
+1. Install the freshly downloaded release APK (`adb install -r ...`) or use a
+   debug build with Metro for JS fixes.
+2. #13: send a DM from a non-friend account → Chats shows "Message requests (1)"
+   → request row shows sender/preview → accept opens the thread; test decline,
+   block and report. Confirm photos/GIF/voice are unavailable while pending and
+   that only one text message can be sent.
+3. #14: toggle each privacy switch; confirm presence disappears, typing stops,
+   read receipts stay put, and last-active hides on the profile.
+4. #11: open profile from a direct-chat header and from People; check counts,
+   follow/unfollow, block confirm and last-active.
+5. #8/#9/#12: check timestamps/status legibility in daylight brightness; react
+   to a message and confirm a brief burst plus persistent chip; with Reduce
+   Motion enabled confirm no movement; type from the other account and confirm
+   the header shows Typing… (not Online) and clears.
+6. #10: focus the composer with Gboard and Samsung Keyboard, insert a GIF or
+   sticker, confirm preview → Cancel/Send, and that a sent GIF keeps animation.
+   Try an oversized/unsupported item and confirm a useful failure.
+7. Regression: send/edit/delete/reaction/reply, branch open/back, photo,
+   view-once, voice note, search, activity deep link, Android back.
+8. Watch `adb logcat` for crashes and Supabase errors during the pass.
+
+### Release after the checklist
+
+1. Fix any device-only failures, rerun `npx tsc --noEmit`, `npx jest --silent`,
+   and the relevant targeted tests; push and wait for green CI.
+2. Confirm migrations are in sync (`supabase migration list`).
+3. Create and push the release tag (`v*`; agree the version with sir — current
+   `app.json` is `0.1.0`). `release.yml` builds and attaches the APK.
+4. If the tag push does not trigger Actions (known repo issue), use
+   `gh workflow run release.yml --ref <tag>`.
+5. Download the release artifact, install it once, and verify the version/commit
+   shown by the app matches the tag.
+6. Update the Vercel Blob APK + `apk/latest.json` per the existing distribution
+   flow if the public download page is part of the release.
+
+### Remaining caveats
+
+- #10 was closed with an explicit note: the Gboard/Samsung Keyboard matrix has
+  **not** been exercised on hardware yet. That is test item 6 above.
+- `release.yml`/tag-trigger behaviour and the public download manifest have not
+  been re-verified this session.
+- Service-role key rotation and the smoke-test user/conversation from earlier
+  sessions are still open (see section 9).
+- LSP diagnostics shown during editing can be stale; `npx tsc --noEmit` is the
+  source of truth.
