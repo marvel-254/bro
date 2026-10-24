@@ -56,6 +56,10 @@ export const COLORS = {
     textSecondary: "#8F9CAE",
     textDim: "#7C8A9E",
   },
+  // Convenience aliases
+  textPrimary: "#F2F5F9",
+  textSecondary: "#8F9CAE",
+  textDim: "#7C8A9E",
 } as const;
 
 export const SEMANTIC_COLORS = {
@@ -99,6 +103,14 @@ export const SPACING = {
   spaceMd: 12,
   spaceLg: 20,
   spaceXl: 32,
+  // Aliases for convenience
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 20,
+  xl: 32,
+  xxl: 48,
+  xxxl: 64,
 } as const;
 
 export const RADIUS = {
