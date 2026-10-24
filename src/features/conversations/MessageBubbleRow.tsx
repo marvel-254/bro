@@ -487,7 +487,7 @@ function MessageBubbleRowImpl({
 
         {isDeleted ? (
           <Text style={[styles.messageText, styles.deletedText]}>
-            Message deleted
+            This message was deleted
           </Text>
         ) : item.content ? (
           <Text style={[styles.messageText, bubbleTextStyle]}>
