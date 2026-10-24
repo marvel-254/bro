@@ -29,6 +29,28 @@ import type {
 import VoiceMessage from "./VoiceMessage";
 import { useReducedMotion } from "../../hooks/useReducedMotion";
 
+/** Parse @mentions from text and return segments for rendering */
+function parseMentions(text: string): Array<{ type: "text" | "mention"; value: string }> {
+  const segments: Array<{ type: "text" | "mention"; value: string }> = [];
+  let lastIndex = 0;
+  const mentionRegex = /@(\w+)/g;
+  let match;
+
+  while ((match = mentionRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push({ type: "text", value: text.slice(lastIndex, match.index) });
+    }
+    segments.push({ type: "mention", value: match[0] });
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    segments.push({ type: "text", value: text.slice(lastIndex) });
+  }
+
+  return segments.length > 0 ? segments : [{ type: "text", value: text }];
+}
+
 /**
  * Message status indicator — shows sent/delivered/read/failed state.
  * Uses the message's status field: "pending" | "sending" | "sent" | "delivered" | "seen" | "failed"
@@ -492,7 +514,24 @@ function MessageBubbleRowImpl({
           </Text>
         ) : item.content ? (
           <Text style={[styles.messageText, bubbleTextStyle]}>
-            {item.content}
+            {parseMentions(item.content).map((segment, index) => (
+              segment.type === "mention" ? (
+                <Text
+                  key={index}
+                  style={[
+                    styles.mention,
+                    bubbleTextStyle,
+                    { color: COLORS.primary },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={segment.value}
+                >
+                  {segment.value}
+                </Text>
+              ) : (
+                <Text key={index}>{segment.value}</Text>
+              )
+            ))}
           </Text>
         ) : null}
 
@@ -677,6 +716,9 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.labelSM,
     color: COLORS.primary,
     alignSelf: "flex-end",
+    fontWeight: "600" as const,
+  },
+  mention: {
     fontWeight: "600" as const,
   },
   metaRow: {
