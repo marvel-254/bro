@@ -343,6 +343,8 @@ export default function ConversationDetail({
   );
   const [replyingTo, setReplyingTo] = useState<MessageWithSender | null>(null);
   const [editing, setEditing] = useState<MessageWithSender | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
   const [hasMore, setHasMore] = useState(true);
   /**
    * A deep link opened a mid-history page. Older history pages from there, but
@@ -1779,6 +1781,19 @@ export default function ConversationDetail({
           onReact={onReact}
           onOpenBranch={openBranch}
           onOpenViewer={openViewer}
+          selectMode={selectMode}
+          isSelected={selectedMessages.has(item.id)}
+          onSelect={(id) => {
+            setSelectedMessages((prev) => {
+              const next = new Set(prev);
+              if (next.has(id)) {
+                next.delete(id);
+              } else {
+                next.add(id);
+              }
+              return next;
+            });
+          }}
         />
       );
     },
@@ -1801,6 +1816,8 @@ export default function ConversationDetail({
       appearance.theirsColor,
       retryMessage,
       onReact,
+      selectMode,
+      selectedMessages,
     ],
   );
 
@@ -1912,6 +1929,18 @@ export default function ConversationDetail({
             />
           </Pressable>
         ) : null}
+        <Pressable
+          style={styles.headerSearchBtn}
+          onPress={() => setSelectMode(!selectMode)}
+          accessibilityRole="button"
+          accessibilityLabel={selectMode ? "Exit select mode" : "Select messages"}
+        >
+          <Ionicons
+            name={selectMode ? "checkmark-done-outline" : "checkmark-outline"}
+            size={22}
+            color={SEMANTIC_COLORS.textPrimary}
+          />
+        </Pressable>
       </View>
 
       {appearance.backgroundUri ? (
@@ -1920,6 +1949,60 @@ export default function ConversationDetail({
           style={styles.chatBackground}
           resizeMode="cover"
         />
+      ) : null}
+
+      {selectMode ? (
+        <View style={styles.selectModeBar}>
+          <Text style={styles.selectModeText}>
+            {selectedMessages.size} selected
+          </Text>
+          <View style={styles.selectModeActions}>
+            <Pressable
+              style={styles.selectModeAction}
+              onPress={() => {
+                // TODO: Bulk forward
+                console.log('Bulk forward:', Array.from(selectedMessages));
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Forward selected"
+            >
+              <Ionicons name="send-outline" size={20} color={SEMANTIC_COLORS.textPrimary} />
+            </Pressable>
+            <Pressable
+              style={styles.selectModeAction}
+              onPress={() => {
+                // TODO: Bulk copy
+                console.log('Bulk copy:', Array.from(selectedMessages));
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Copy selected"
+            >
+              <Ionicons name="copy-outline" size={20} color={SEMANTIC_COLORS.textPrimary} />
+            </Pressable>
+            <Pressable
+              style={[styles.selectModeAction, styles.selectModeDanger]}
+              onPress={() => {
+                // TODO: Bulk delete
+                console.log('Bulk delete:', Array.from(selectedMessages));
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Delete selected"
+            >
+              <Ionicons name="trash-outline" size={20} color={COLORS.error} />
+            </Pressable>
+            <Pressable
+              style={styles.selectModeAction}
+              onPress={() => {
+                setSelectMode(false);
+                setSelectedMessages(new Set());
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Exit select mode"
+            >
+              <Ionicons name="close-outline" size={20} color={SEMANTIC_COLORS.textPrimary} />
+            </Pressable>
+          </View>
+        </View>
       ) : null}
 
       {loading ? (
@@ -2733,6 +2816,31 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.labelSM,
     color: SEMANTIC_COLORS.textDim,
     marginTop: 2,
+  },
+  selectModeBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: SPACING.gutter,
+    paddingVertical: SPACING.spaceSm,
+    backgroundColor: SEMANTIC_COLORS.surfaceLevel1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: SEMANTIC_COLORS.ghostBorderLight,
+  },
+  selectModeText: {
+    ...TYPOGRAPHY.labelMD,
+    color: SEMANTIC_COLORS.textPrimary,
+  },
+  selectModeActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.spaceSm,
+  },
+  selectModeAction: {
+    padding: SPACING.spaceXs,
+  },
+  selectModeDanger: {
+    marginRight: SPACING.spaceSm,
   },
   headerTitle: {
     ...TYPOGRAPHY.headlineSM,

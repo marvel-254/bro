@@ -335,6 +335,12 @@ export interface MessageBubbleRowProps {
   onReact: (messageId: string, emoji: string) => void;
   onOpenBranch: (item: MessageWithSender) => void;
   onOpenViewer: (fullPath: string, viewOnce?: boolean) => void;
+  /** Select mode for bulk actions. */
+  selectMode?: boolean;
+  /** Whether this message is currently selected. */
+  isSelected?: boolean;
+  /** Callback when selection changes. */
+  onSelect?: (id: string) => void;
 }
 
 const EMPTY_REACTIONS: MessageReactionRow[] = [];
@@ -361,6 +367,9 @@ function MessageBubbleRowImpl({
   onReact,
   onOpenBranch,
   onOpenViewer,
+  selectMode = false,
+  isSelected = false,
+  onSelect,
 }: MessageBubbleRowProps) {
   const messageReactions = reactions.length > 0 ? reactions : EMPTY_REACTIONS;
   const isDeleted = item.deleted_for_everyone;
@@ -425,16 +434,42 @@ function MessageBubbleRowImpl({
       ]}
       // A failed message is a retry target: tapping it tries again
       // immediately rather than waiting for the automatic flush's backoff.
-      onPress={item.status === "failed" ? () => onRetry(item) : undefined}
-      accessibilityRole={item.status === "failed" ? "button" : undefined}
+      onPress={
+        selectMode
+          ? () => onSelect?.(item.id)
+          : item.status === "failed"
+            ? () => onRetry(item)
+            : undefined
+      }
+      accessibilityRole={
+        item.status === "failed" || selectMode ? "button" : undefined
+      }
       accessibilityLabel={
         item.status === "failed"
           ? "Message failed to send. Double tap to retry."
-          : undefined
+          : selectMode
+            ? isSelected
+              ? "Message selected. Tap to deselect."
+              : "Message not selected. Tap to select."
+            : undefined
       }
       onLongPress={() => onLongPress(item)}
       delayLongPress={350}
     >
+      {selectMode ? (
+        <View style={styles.selectCheckboxWrap}>
+          <View
+            style={[
+              styles.selectCheckbox,
+              isSelected && styles.selectCheckboxActive,
+            ]}
+          >
+            {isSelected ? (
+              <Ionicons name="checkmark" size={14} color={COLORS.onPrimary} />
+            ) : null}
+          </View>
+        </View>
+      ) : null}
       {burstVisible && burst ? (
         <Animated.View
           pointerEvents="none"
@@ -641,6 +676,24 @@ const styles = StyleSheet.create({
   bubbleRow: {
     flexDirection: "row",
     marginBottom: SPACING.spaceXs,
+  },
+  selectCheckboxWrap: {
+    justifyContent: "center",
+    marginRight: SPACING.spaceSm,
+  },
+  selectCheckbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: SEMANTIC_COLORS.ghostBorderLight,
+    backgroundColor: "transparent",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  selectCheckboxActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
   },
   bubbleRowMine: {
     justifyContent: "flex-end",
