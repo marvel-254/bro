@@ -13,12 +13,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { COLORS, SPACING, TYPOGRAPHY } from "../../theme";
 import { Avatar } from "../../components/ui/Avatar";
 import AppBar from "../../components/layout/AppBar";
+import { useAuth } from "../../lib/auth-context";
 import {
   fetchConversationSummaries,
   subscribeToConversationList,
 } from "../../lib/conversations";
 import { isSupabaseConfigured } from "../../lib/supabase";
 import { getSupabase } from "../../lib/supabase";
+import { watchTypingMany } from "../../lib/presence";
 import { useActivityBadge } from "../../lib/activity-badge-context";
 import type { ConversationSummary } from "../../lib/database.types";
 import { fetchMessageRequests } from "../../lib/requests";
@@ -63,6 +65,9 @@ export default function ConversationListScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [requestCount, setRequestCount] = useState(0);
+  const [typistsByConversation, setTypistsByConversation] = useState<
+    Map<string, Map<string, string>>
+  >(new Map());
 
   const load = useCallback(async (asRefresh = false) => {
     if (asRefresh) setRefreshing(true);
@@ -91,7 +96,20 @@ export default function ConversationListScreen() {
       onChange: () => void load(),
     });
     return unsubscribe;
-  }, [load]);
+  }, [load])
+
+  const { user } = useAuth();
+
+  useEffect(() => {
+    const ids = conversations.map((c) => c.id);
+    if (!user || ids.length === 0) {
+      setTypistsByConversation(new Map());
+      return () => {};
+    }
+    return watchTypingMany(ids, user.id, (typing) => {
+      setTypistsByConversation(new Map(typing));
+    });
+  }, [user, conversations]);
 
   // Accepting or declining happens on another screen; re-count on return.
   useFocusEffect(
@@ -154,9 +172,23 @@ export default function ConversationListScreen() {
           </View>
           <View style={styles.rowBottom}>
             <Text style={styles.rowPreview} numberOfLines={1}>
-              {item.status === "requested"
-                ? `Request pending · ${preview}`
-                : preview}
+              {( () => {
+                const typingMap = typistsByConversation.get(item.id);
+                if (typingMap && typingMap.size > 0) {
+                  const names = Array.from(typingMap.values());
+                  if (names.length === 1) {
+                    return `${names[0]} is typing…`;
+                  }
+                  if (names.length === 2) {
+                    return `${names[0]} and ${names[1]} are typing…`;
+                  }
+                  return `${names[0]} and ${names.length - 1} others are typing…`;
+                }
+                if (item.status === "requested") {
+                  return `Request pending · ${preview}`;
+                }
+                return preview;
+              })()}
             </Text>
             {item.unread_count > 0 ? (
               <View style={styles.unreadBadge}>
