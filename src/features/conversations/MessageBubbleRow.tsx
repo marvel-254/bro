@@ -574,6 +574,32 @@ function MessageBubbleRowImpl({
           <Text style={[styles.editedHint, bubbleTextStyle]}>edited</Text>
         ) : null}
 
+        {/* Disappearing message timer indicator */}
+        {item.expires_at && !isDeleted && (
+          (() => {
+            const remainingMs = Date.parse(item.expires_at) - Date.now();
+            if (remainingMs <= 0) return null;
+            
+            const hours = Math.floor(remainingMs / 3600000);
+            const minutes = Math.floor((remainingMs % 3600000) / 60000);
+            const seconds = Math.floor((remainingMs % 60000) / 1000);
+            let label = "";
+            if (hours > 0) {
+              label = `${hours}h ${minutes}m`;
+            } else if (minutes > 0) {
+              label = `${minutes}m ${seconds}s`;
+            } else {
+              label = `${seconds}s`;
+            }
+            return (
+              <View style={styles.expireIndicator}>
+                <Ionicons name="timer-outline" size={10} color="#FFB020" />
+                <Text style={styles.expireText}>Disappears in {label}</Text>
+              </View>
+            );
+          })()
+        )}
+
         {/* Unsend time limit indicator for own messages */}
         {isMine && !isDeleted && item.created_at && (
           (() => {
@@ -769,6 +795,22 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.labelSM,
     color: COLORS.primary,
     alignSelf: "flex-end",
+    fontWeight: "600" as const,
+  },
+  expireIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    alignSelf: "flex-end",
+    marginTop: SPACING.spaceXs,
+    paddingHorizontal: SPACING.spaceXs,
+    paddingVertical: 1,
+    backgroundColor: "#FFB02020",
+    borderRadius: RADIUS.sm,
+  },
+  expireText: {
+    ...TYPOGRAPHY.labelSM,
+    color: "#FFB020",
     fontWeight: "600" as const,
   },
   mention: {
