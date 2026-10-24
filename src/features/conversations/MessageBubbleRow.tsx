@@ -21,6 +21,7 @@ import { signedChatUrl, type AttachmentRef } from "../../lib/media";
 import { BRANCH_SUGGEST_AT } from "../../lib/branches";
 import { ownMessageStatus } from "../../lib/message-display";
 import type { Gif } from "../../lib/gifs";
+import { UNSEND_LIMIT_MS } from "../../constants";
 import type {
   MessageReactionRow,
   MessageWithSender,
@@ -499,6 +500,31 @@ function MessageBubbleRowImpl({
           <Text style={[styles.editedHint, bubbleTextStyle]}>edited</Text>
         ) : null}
 
+        {/* Unsend time limit indicator for own messages */}
+        {isMine && !isDeleted && item.created_at && (
+          (() => {
+            const ageMs = Date.now() - Date.parse(item.created_at);
+            const remainingMs = UNSEND_LIMIT_MS - ageMs;
+            if (remainingMs <= 0) return null;
+            
+            const hours = Math.floor(remainingMs / 3600000);
+            const minutes = Math.floor((remainingMs % 3600000) / 60000);
+            let label = "";
+            if (hours > 0) {
+              label = `${hours}h`;
+            } else if (minutes > 0) {
+              label = `${minutes}m`;
+            } else {
+              label = `${Math.ceil(remainingMs / 1000)}s`;
+            }
+            return (
+              <Text style={[styles.unsendHint, bubbleTextStyle]}>
+                Unsend: {label}
+              </Text>
+            );
+          })()
+        )}
+
         <View style={styles.metaRow}>
           <Text style={[styles.timestamp, bubbleTextStyle]}>
             {new Date(item.created_at).toLocaleTimeString([], {
@@ -644,6 +670,12 @@ const styles = StyleSheet.create({
   editedHint: {
     ...TYPOGRAPHY.labelSM,
     color: SEMANTIC_COLORS.textSecondary,
+    alignSelf: "flex-end",
+    fontWeight: "600" as const,
+  },
+  unsendHint: {
+    ...TYPOGRAPHY.labelSM,
+    color: COLORS.primary,
     alignSelf: "flex-end",
     fontWeight: "600" as const,
   },

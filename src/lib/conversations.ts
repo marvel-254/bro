@@ -1,4 +1,5 @@
 import { getSupabase } from "./supabase";
+import { UNSEND_LIMIT_MS } from "../constants";
 import type {
   ConversationRow,
   ConversationSummary,
@@ -646,6 +647,26 @@ export async function deleteMessage(messageId: string): Promise<SendResult> {
   const supabase = getSupabase();
   if (!supabase) {
     return { ok: false, error: "Backend not configured" };
+  }
+
+  // Enforce the unsend window server-side by checking the message age before
+  // blanking it out. The client also enforces it in the UI, but the backend
+  // must never trust client-side checks alone.
+  const { data: existing, error: fetchError } = await supabase
+    .from("messages")
+    .select("created_at, sender_id")
+    .eq("id", messageId)
+    .single();
+  if (fetchError) {
+    return { ok: false, error: fetchError.message };
+  }
+
+  const ageMs = Date.now() - Date.parse(existing.created_at);
+  if (ageMs > UNSEND_LIMIT_MS) {
+    return {
+      ok: false,
+      error: `Unsend window of ${Math.floor(UNSEND_LIMIT_MS / 3600000)}h has passed`,
+    };
   }
 
   const { data, error } = await supabase
