@@ -1965,9 +1965,17 @@ export default function ConversationDetail({
 
       {replyingTo ? (
         <View style={styles.replyBar}>
-          <Text style={styles.replyBarText} numberOfLines={1}>
-            Replying to {replyingTo.sender?.display_name ?? "message"}
-          </Text>
+          <View style={styles.replyBarContent}>
+            <View style={styles.replyBarIndicator} />
+            <View style={styles.replyBarMessage}>
+              <Text style={styles.replyBarAuthor} numberOfLines={1}>
+                Replying to {replyingTo.sender?.display_name ?? "message"}
+              </Text>
+              <Text style={styles.replyBarPreview} numberOfLines={2}>
+                {replyingTo.content || ""}
+              </Text>
+            </View>
+          </View>
           <Pressable onPress={() => setReplyingTo(null)}>
             <Text style={styles.replyBarClose}>✕</Text>
           </Pressable>
@@ -2598,6 +2606,31 @@ const styles = StyleSheet.create({
     backgroundColor: SEMANTIC_COLORS.surfaceLevel1,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: SEMANTIC_COLORS.ghostBorderLight,
+  },
+  replyBarContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    gap: SPACING.spaceSm,
+  },
+  replyBarIndicator: {
+    width: 3,
+    height: 40,
+    borderRadius: 2,
+    backgroundColor: COLORS.primary,
+  },
+  replyBarMessage: {
+    flex: 1,
+    minWidth: 0,
+  },
+  replyBarAuthor: {
+    ...TYPOGRAPHY.labelMD,
+    color: SEMANTIC_COLORS.textSecondary,
+  },
+  replyBarPreview: {
+    ...TYPOGRAPHY.bodySM,
+    color: SEMANTIC_COLORS.textPrimary,
+    marginTop: 2,
   },
   replyBarText: {
     ...TYPOGRAPHY.labelMD,
