@@ -2284,7 +2284,23 @@ export default function ConversationDetail({
                 size={20}
                 color={SEMANTIC_COLORS.textPrimary}
               />
-              <Text style={styles.sheetActionText}>Reply</Text>
+              <Text style={styles.sheetActionText}>Reply in main</Text>
+            </Pressable>
+            <Pressable
+              style={styles.sheetAction}
+              onPress={() => {
+                const target = actionTarget;
+                setActionTarget(null);
+                if (target) openBranch(target);
+              }}
+              accessibilityRole="button"
+            >
+              <Ionicons
+                name="git-branch-outline"
+                size={20}
+                color={SEMANTIC_COLORS.textPrimary}
+              />
+              <Text style={styles.sheetActionText}>Reply in thread</Text>
             </Pressable>
             {/* Copy message */}
             <Pressable
