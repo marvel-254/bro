@@ -643,8 +643,9 @@ const styles = StyleSheet.create({
   },
   editedHint: {
     ...TYPOGRAPHY.labelSM,
-    color: SEMANTIC_COLORS.textDim,
+    color: SEMANTIC_COLORS.textSecondary,
     alignSelf: "flex-end",
+    fontWeight: "600" as const,
   },
   metaRow: {
     flexDirection: "row",
