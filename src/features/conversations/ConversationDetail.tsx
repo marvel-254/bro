@@ -275,6 +275,8 @@ export default function ConversationDetail({
   const [searchResults, setSearchResults] = useState<MessageWithSender[]>([]);
   const [searching, setSearching] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [pinnedMessages, setPinnedMessages] = useState<string[]>([]);
+  const [showPinned, setShowPinned] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [olderError, setOlderError] = useState<string | null>(null);
@@ -1896,6 +1898,20 @@ export default function ConversationDetail({
             color={SEMANTIC_COLORS.textPrimary}
           />
         </Pressable>
+        {pinnedMessages.length > 0 ? (
+          <Pressable
+            style={styles.headerSearchBtn}
+            onPress={() => setShowPinned(true)}
+            accessibilityRole="button"
+            accessibilityLabel={`View ${pinnedMessages.length} pinned message${pinnedMessages.length === 1 ? "" : "s"}`}
+          >
+            <Ionicons
+              name="pin-outline"
+              size={22}
+              color={SEMANTIC_COLORS.textPrimary}
+            />
+          </Pressable>
+        ) : null}
       </View>
 
       {appearance.backgroundUri ? (
@@ -2113,6 +2129,48 @@ export default function ConversationDetail({
               </Text>
             </Pressable>
           ))}
+        </View>
+      ) : null}
+
+      {showPinned && pinnedMessages.length > 0 ? (
+        <View style={styles.pinnedMessagesPanel}>
+          <View style={styles.pinnedMessagesHeader}>
+            <Text style={styles.pinnedMessagesTitle}>Pinned Messages</Text>
+            <Pressable
+              onPress={() => setShowPinned(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Close pinned messages"
+            >
+              <Text style={styles.replyBarClose}>✕</Text>
+            </Pressable>
+          </View>
+          {pinnedMessages
+            .map((id) => messages.find((m) => m.id === id))
+            .filter(Boolean)
+            .map((msg) => (
+              <Pressable
+                key={msg!.id}
+                style={styles.pinnedMessageRow}
+                onPress={() => setShowPinned(false)}
+                accessibilityRole="button"
+                accessibilityLabel={msg!.content ? `Jump to: ${msg!.content}` : "Jump to message"}
+              >
+                <Text style={styles.pinnedMessageSender} numberOfLines={1}>
+                  {msg!.sender?.display_name ?? "Message"}
+                </Text>
+                <Text style={styles.pinnedMessageContent} numberOfLines={2}>
+                  {msg!.content || ""}
+                </Text>
+                <Text style={styles.pinnedMessageTime}>
+                  {new Date(msg!.created_at).toLocaleString([], {
+                    month: "short",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </Text>
+              </Pressable>
+            ))}
         </View>
       ) : null}
 
@@ -2459,6 +2517,36 @@ export default function ConversationDetail({
               />
               <Text style={styles.sheetActionText}>Forward</Text>
             </Pressable>
+            {/* Pin/Unpin message */}
+            <Pressable
+              style={styles.sheetAction}
+              onPress={() => {
+                const target = actionTarget;
+                setActionTarget(null);
+                if (target) {
+                  const isPinned = pinnedMessages.includes(target.id);
+                  setPinnedMessages((prev) =>
+                    isPinned
+                      ? prev.filter((id) => id !== target.id)
+                      : [...prev, target.id],
+                  );
+                }
+              }}
+              accessibilityRole="button"
+            >
+              <Ionicons
+                name={pinnedMessages.includes(actionTarget?.id ?? "")
+                  ? "pin-outline"
+                  : "pin"}
+                size={20}
+                color={SEMANTIC_COLORS.textPrimary}
+              />
+              <Text style={styles.sheetActionText}>
+                {pinnedMessages.includes(actionTarget?.id ?? "")
+                  ? "Unpin"
+                  : "Pin"}
+              </Text>
+            </Pressable>
             {actionTarget?.sender_id === selfId ? (
               <Pressable
                 style={styles.sheetAction}
@@ -2605,6 +2693,43 @@ const styles = StyleSheet.create({
     color: SEMANTIC_COLORS.textPrimary,
   },
   searchResultTime: {
+    ...TYPOGRAPHY.labelSM,
+    color: SEMANTIC_COLORS.textDim,
+    marginTop: 2,
+  },
+  pinnedMessagesPanel: {
+    paddingHorizontal: SPACING.gutter,
+    paddingVertical: SPACING.spaceSm,
+    maxHeight: 260,
+    backgroundColor: SEMANTIC_COLORS.surfaceLevel1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: SEMANTIC_COLORS.ghostBorderLight,
+  },
+  pinnedMessagesHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: SPACING.spaceXs,
+  },
+  pinnedMessagesTitle: {
+    ...TYPOGRAPHY.labelSM,
+    color: SEMANTIC_COLORS.textDim,
+  },
+  pinnedMessageRow: {
+    paddingVertical: SPACING.spaceSm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: SEMANTIC_COLORS.ghostBorderLight,
+  },
+  pinnedMessageSender: {
+    ...TYPOGRAPHY.labelSM,
+    color: COLORS.primary,
+    marginBottom: 2,
+  },
+  pinnedMessageContent: {
+    ...TYPOGRAPHY.bodySM,
+    color: SEMANTIC_COLORS.textPrimary,
+  },
+  pinnedMessageTime: {
     ...TYPOGRAPHY.labelSM,
     color: SEMANTIC_COLORS.textDim,
     marginTop: 2,
