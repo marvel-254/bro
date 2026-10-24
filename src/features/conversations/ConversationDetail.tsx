@@ -50,6 +50,7 @@ import {
   subscribeToConversation,
   toggleReaction,
   MESSAGES_PAGE_SIZE,
+  searchMessages,
 } from "../../lib/conversations";
 import {
   dequeue,
@@ -270,6 +271,10 @@ export default function ConversationDetail({
   const { settings: privacy } = usePrivacy();
   const [messages, setMessages] = useState<MessageWithSender[]>([]);
   const [draft, setDraft] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<MessageWithSender[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [olderError, setOlderError] = useState<string | null>(null);
@@ -896,6 +901,32 @@ export default function ConversationDetail({
     privacy.shareTyping,
     conversationStatus,
   ]);
+
+  /**
+   * Search this conversation's main thread. Runs client-side over the loaded
+   * page first (instant), then hits the backend for the authoritative result.
+   */
+  const runSearch = useCallback(
+    async (query: string) => {
+      setSearchQuery(query);
+      if (!query.trim()) {
+        setSearchResults([]);
+        setSearching(false);
+        return;
+      }
+      setSearching(true);
+      try {
+        const results = await searchMessages(conversationId, query);
+        setSearchResults(results);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
+      }
+    },
+    [conversationId],
+  );
+
 
   // Keyed on primitives, not the `currentUser` object: the auth provider used
   // to rebuild that object every render, and a changing identity here would
@@ -1853,6 +1884,18 @@ export default function ConversationDetail({
         {conversationStatus === "accepted" ? (
           <CallButtons conversationId={conversationId} />
         ) : null}
+        <Pressable
+          style={styles.headerSearchBtn}
+          onPress={() => setShowSearch(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Search in conversation"
+        >
+          <Ionicons
+            name="search-outline"
+            size={22}
+            color={SEMANTIC_COLORS.textPrimary}
+          />
+        </Pressable>
       </View>
 
       {appearance.backgroundUri ? (
@@ -1995,6 +2038,81 @@ export default function ConversationDetail({
           >
             <Text style={styles.replyBarClose}>✕</Text>
           </Pressable>
+        </View>
+      ) : null}
+
+      {showSearch ? (
+        <View style={styles.searchBar}>
+          <Ionicons
+            name="search-outline"
+            size={18}
+            color={SEMANTIC_COLORS.textDim}
+          />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search in conversation"
+            placeholderTextColor={SEMANTIC_COLORS.textDim}
+            value={searchQuery}
+            onChangeText={(text) => void runSearch(text)}
+            autoFocus
+            accessibilityLabel="Search messages in this conversation"
+          />
+          {searching ? (
+            <ActivityIndicator size="small" color={COLORS.surfaceTint} />
+          ) : null}
+          <Pressable
+            onPress={() => {
+              setShowSearch(false);
+              setSearchQuery("");
+              setSearchResults([]);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Close search"
+          >
+            <Text style={styles.replyBarClose}>✕</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {showSearch && searchQuery.trim() ? (
+        <View style={styles.searchResultsPanel}>
+          <Text style={styles.searchResultsTitle}>
+            {searchResults.length === 0
+              ? searching
+                ? "Searching…"
+                : "No results"
+              : `${searchResults.length} result${searchResults.length === 1 ? "" : "s"}`}
+          </Text>
+          {searchResults.map((result) => (
+            <Pressable
+              key={result.id}
+              style={styles.searchResultRow}
+              onPress={() => {
+                setShowSearch(false);
+                setSearchQuery("");
+                setSearchResults([]);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={
+                result.content ? `Jump to: ${result.content}` : "Jump to message"
+              }
+            >
+              <Text style={styles.searchResultSender} numberOfLines={1}>
+                {result.sender?.display_name ?? "Message"}
+              </Text>
+              <Text style={styles.searchResultContent} numberOfLines={2}>
+                {result.content || ""}
+              </Text>
+              <Text style={styles.searchResultTime}>
+                {new Date(result.created_at).toLocaleString([], {
+                  month: "short",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </Text>
+            </Pressable>
+          ))}
         </View>
       ) : null}
 
@@ -2439,6 +2557,57 @@ const styles = StyleSheet.create({
   },
   headerTitleWrap: {
     flex: 1,
+  },
+  headerSearchBtn: {
+    padding: SPACING.spaceSm,
+  },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.spaceSm,
+    paddingHorizontal: SPACING.gutter,
+    paddingVertical: SPACING.spaceSm,
+    backgroundColor: SEMANTIC_COLORS.surfaceLevel1,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: SEMANTIC_COLORS.ghostBorderLight,
+  },
+  searchInput: {
+    flex: 1,
+    color: SEMANTIC_COLORS.textPrimary,
+    paddingVertical: 0,
+    fontSize: 15,
+  },
+  searchResultsPanel: {
+    paddingHorizontal: SPACING.gutter,
+    paddingVertical: SPACING.spaceSm,
+    maxHeight: 260,
+    backgroundColor: SEMANTIC_COLORS.surfaceLevel1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: SEMANTIC_COLORS.ghostBorderLight,
+  },
+  searchResultsTitle: {
+    ...TYPOGRAPHY.labelSM,
+    color: SEMANTIC_COLORS.textDim,
+    marginBottom: SPACING.spaceXs,
+  },
+  searchResultRow: {
+    paddingVertical: SPACING.spaceSm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: SEMANTIC_COLORS.ghostBorderLight,
+  },
+  searchResultSender: {
+    ...TYPOGRAPHY.labelSM,
+    color: COLORS.primary,
+    marginBottom: 2,
+  },
+  searchResultContent: {
+    ...TYPOGRAPHY.bodySM,
+    color: SEMANTIC_COLORS.textPrimary,
+  },
+  searchResultTime: {
+    ...TYPOGRAPHY.labelSM,
+    color: SEMANTIC_COLORS.textDim,
+    marginTop: 2,
   },
   headerTitle: {
     ...TYPOGRAPHY.headlineSM,

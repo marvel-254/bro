@@ -115,6 +115,54 @@ export async function fetchMessages(
 }
 
 /**
+ * Full-text search within a conversation's main thread (branch_id IS NULL).
+ * Uses Postgres's to_tsvector on content + sender profiles.
+ */
+export async function searchMessages(
+  conversationId: string,
+  query: string,
+  limit: number = 20,
+): Promise<MessageWithSender[]> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return [];
+  }
+
+  if (!query.trim()) {
+    return [];
+  }
+
+  const { data, error } = await supabase.rpc("search_messages", {
+    p_conversation_id: conversationId,
+    p_query: query.trim(),
+    p_limit: limit,
+  });
+
+  if (error) {
+    // Fallback to simple ILIKE if RPC doesn't exist
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from("messages")
+      .select(
+        "id, conversation_id, sender_id, content, type, gif_id, status, reply_to_message_id, branch_id, created_at, updated_at, expires_at, edited_at, deleted_at, deleted_for_everyone, sender:profiles!messages_sender_id_fkey (id, username, display_name, avatar_url, status, presence, presence_text, presence_emoji)",
+      )
+      .eq("conversation_id", conversationId)
+      .is("branch_id", null)
+      .ilike("content", `%${query.trim()}%`)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (fallbackError) {
+      throw new Error(fallbackError.message);
+    }
+
+    return (fallbackData ?? []).reverse() as unknown as MessageWithSender[];
+  }
+
+  return (data ?? []) as unknown as MessageWithSender[];
+}
+
+
+/**
  * Whether anything newer than `after` exists on the main thread. A deep link
  * can open a page in the middle of history; older paging worked from there but
  * nothing revealed that newer messages were one tap away.
