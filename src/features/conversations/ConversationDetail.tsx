@@ -5,6 +5,7 @@ import {
   Alert,
   Animated,
   AppState,
+  Clipboard,
   Easing,
   FlatList,
   Image,
@@ -2276,6 +2277,45 @@ export default function ConversationDetail({
                 color={SEMANTIC_COLORS.textPrimary}
               />
               <Text style={styles.sheetActionText}>Reply</Text>
+            </Pressable>
+            {/* Copy message */}
+            <Pressable
+              style={styles.sheetAction}
+              onPress={() => {
+                const target = actionTarget;
+                setActionTarget(null);
+                if (target) {
+                  Clipboard.setString(target.content);
+                }
+              }}
+              accessibilityRole="button"
+            >
+              <Ionicons
+                name="copy-outline"
+                size={20}
+                color={SEMANTIC_COLORS.textPrimary}
+              />
+              <Text style={styles.sheetActionText}>Copy</Text>
+            </Pressable>
+            {/* Forward message */}
+            <Pressable
+              style={styles.sheetAction}
+              onPress={() => {
+                const target = actionTarget;
+                setActionTarget(null);
+                if (target) {
+                  // TODO: Implement forward to conversation selection
+                  console.log('Forward message:', target.id);
+                }
+              }}
+              accessibilityRole="button"
+            >
+              <Ionicons
+                name="send-outline"
+                size={20}
+                color={SEMANTIC_COLORS.textPrimary}
+              />
+              <Text style={styles.sheetActionText}>Forward</Text>
             </Pressable>
             {actionTarget?.sender_id === selfId ? (
               <Pressable
